@@ -74,10 +74,8 @@ export default function MediaGenerationModal({
   const [ttsTotalChunks, setTtsTotalChunks] = useState(0);
   const ttsRef = useRef<TTSController | null>(null);
 
-  // Estimated + elapsed recording time for countdown display
+  // Estimated recording time (set once scenes are built — video mode only)
   const [estimatedRecordingSecs, setEstimatedRecordingSecs] = useState(0);
-  const [recordingElapsed, setRecordingElapsed] = useState(0);
-  const recordingStartRef = useRef<number>(0);
 
   // Single recording canvas — always in DOM, shown/hidden by stage
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -121,19 +119,6 @@ export default function MediaGenerationModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Live countdown timer during video recording
-  useEffect(() => {
-    if (stage !== 'recording') {
-      setRecordingElapsed(0);
-      return;
-    }
-    recordingStartRef.current = Date.now();
-    const timer = setInterval(() => {
-      setRecordingElapsed(Math.floor((Date.now() - recordingStartRef.current) / 1000));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [stage]);
-
   // Re-draw preview canvas when currentScene changes (done + video mode)
   useEffect(() => {
     if (stage === 'done' && scenes.length > 0 && previewCanvasRef.current) {
@@ -163,7 +148,6 @@ export default function MediaGenerationModal({
     setProgressLabel('');
     setErrorMsg('');
     setEstimatedRecordingSecs(0);
-    setRecordingElapsed(0);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -226,7 +210,12 @@ export default function MediaGenerationModal({
       }
 
       setScript(generatedScript);
-      if (generatedScenes) setScenes(generatedScenes);
+      if (generatedScenes) {
+        setScenes(generatedScenes);
+        // Compute real recording estimate from actual scene durations
+        const totalSecs = generatedScenes.reduce((sum, s) => sum + s.duration, 0) + 3;
+        setEstimatedRecordingSecs(totalSecs);
+      }
 
       const estSecs = estimateSpeechSeconds(generatedScript);
       const id = `media_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -362,7 +351,8 @@ export default function MediaGenerationModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${sourceName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}_video.webm`;
+    const ext = (meta?.videoMimeType ?? 'video/webm').includes('mp4') ? 'mp4' : 'webm';
+    a.download = `${sourceName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}_video.${ext}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [savedItemId, sourceName]);
@@ -413,7 +403,7 @@ export default function MediaGenerationModal({
               </div>
 
               {/* Mode selector */}
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-4 gap-1">
                 {(Object.keys(MODE_INFO) as MediaMode[]).map(m => {
                   const info = MODE_INFO[m];
                   const Icon = info.icon;
@@ -424,13 +414,13 @@ export default function MediaGenerationModal({
                       onClick={() => { if (!isBusy) setMode(m); }}
                       disabled={isBusy}
                       className={cn(
-                        'flex flex-col items-center gap-1 p-2.5 rounded-2xl border transition-all text-center',
+                        'flex flex-col items-center gap-1 p-2 rounded-2xl border transition-all text-center min-w-0',
                         active ? 'border-primary bg-primary/10' : 'border-border/50 hover:border-border hover:bg-secondary/50',
                         'disabled:opacity-40 disabled:cursor-not-allowed'
                       )}
                     >
-                      <Icon className="w-4 h-4" style={{ color: active ? info.color : undefined }} />
-                      <span className={cn('text-[10px] font-semibold', active ? 'text-primary' : 'text-muted-foreground')}>
+                      <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? info.color : undefined }} />
+                      <span className={cn('text-[9px] font-semibold leading-tight', active ? 'text-primary' : 'text-muted-foreground')}>
                         {info.label}
                       </span>
                     </button>
@@ -439,9 +429,10 @@ export default function MediaGenerationModal({
               </div>
 
               {/* Mode description */}
-              <p className="text-[11px] text-muted-foreground bg-secondary/30 rounded-xl px-3 py-2">
-                {MODE_INFO[mode].desc} · up to {limits.maxPages === 999 ? 'all' : limits.maxPages} pages ·{' '}
-                ~{Math.round(limits.maxAudioSeconds / 60)} min audio
+              <p className="text-[11px] text-muted-foreground bg-secondary/30 rounded-xl px-3 py-2 leading-relaxed">
+                {MODE_INFO[mode].desc}
+                {' · '}up to {limits.maxPages === 999 ? 'all' : limits.maxPages} pages
+                {' · '}~{Math.round(limits.maxAudioSeconds / 60)} min audio
                 {mode === 'video' ? ` · ${limits.maxVideoSeconds}s video` : ''}
               </p>
 
@@ -533,10 +524,18 @@ export default function MediaGenerationModal({
 
               {/* Generate button (idle / error state) */}
               {(stage === 'idle' || stage === 'error') && (
-                <Button onClick={handleGenerate} className="w-full rounded-2xl h-11 font-semibold gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  Generate {MODE_INFO[mode].label}
-                </Button>
+                <div className="space-y-1.5">
+                  <Button onClick={handleGenerate} className="w-full rounded-2xl h-11 font-semibold gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Generate {MODE_INFO[mode].label}
+                  </Button>
+                  <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
+                    <Clock className="w-3 h-3 flex-shrink-0" />
+                    {mode === 'video'
+                      ? 'Est. 30–60 sec for video recording'
+                      : `Est. ~5 sec prep · up to ~${Math.round(limits.maxAudioSeconds / 60)} min audio`}
+                  </div>
+                </div>
               )}
 
               {/* Error message */}
@@ -550,9 +549,9 @@ export default function MediaGenerationModal({
               {/* Progress (extracting / generating / recording) */}
               {isBusy && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
-                    <span className="text-sm text-muted-foreground">{progressLabel}</span>
+                    <span className="text-sm text-muted-foreground truncate">{progressLabel}</span>
                   </div>
                   <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
                     <motion.div
@@ -561,9 +560,16 @@ export default function MediaGenerationModal({
                       transition={{ duration: 0.4 }}
                     />
                   </div>
-                  {stage === 'recording' && (
-                    <p className="text-[10px] text-muted-foreground text-center">Recording video to your device…</p>
-                  )}
+                  <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground text-center">
+                    <Clock className="w-3 h-3 flex-shrink-0" />
+                    {stage === 'recording'
+                      ? estimatedRecordingSecs > 0
+                        ? `Recording video — est. ~${estimatedRecordingSecs} sec total · please keep this screen open`
+                        : 'Recording video to your browser — please keep this screen open'
+                      : stage === 'generating'
+                      ? 'Building script — almost done…'
+                      : 'Reading your content…'}
+                  </div>
                   <Button
                     variant="ghost" size="sm" className="w-full rounded-xl text-xs text-muted-foreground"
                     onClick={() => {

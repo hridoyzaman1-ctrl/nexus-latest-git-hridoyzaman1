@@ -646,7 +646,12 @@ export function isVideoSupported(): boolean {
   try {
     const canvas = document.createElement('canvas');
     const stream = canvas.captureStream(1);
-    return !!stream && typeof MediaRecorder !== 'undefined';
+    if (!stream || typeof MediaRecorder === 'undefined') return false;
+    return (
+      MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ||
+      MediaRecorder.isTypeSupported('video/webm') ||
+      MediaRecorder.isTypeSupported('video/mp4')
+    );
   } catch {
     return false;
   }

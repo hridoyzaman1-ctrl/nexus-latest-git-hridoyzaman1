@@ -171,7 +171,8 @@ export default function MediaPlayer({ item, onDelete, compact = false }: MediaPl
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${item.sourceName.replace(/\s+/g, '_')}_video.webm`;
+    const ext = (item.videoMimeType ?? 'video/webm').includes('mp4') ? 'mp4' : 'webm';
+    a.download = `${item.sourceName.replace(/\s+/g, '_')}_video.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
   };
