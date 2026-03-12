@@ -173,7 +173,38 @@ function extractTopParagraphs(text: string, n = 5): string[] {
 
 // ── Script builders ───────────────────────────────────────────────────────────
 
-export function buildSummaryScript(rawText: string, title: string): string {
+const BN = {
+  summaryOf: (t: string) => `"${t}"-এর সারসংক্ষেপ।`,
+  coversTopics: (h: string) => `এই বিষয়বস্তুতে রয়েছে: ${h}।`,
+  hereAreMain: 'এখানে মূল বিষয়গুলি রয়েছে।',
+  keyPoint: (i: number) => `মূল বিষয় ${i + 1}:`,
+  importantHighlights: 'গুরুত্বপূর্ণ বিষয়সমূহ:',
+  concludes: (t: string) => `এটি "${t}"-এর সারসংক্ষেপের সমাপ্তি।`,
+  welcomeExplainer: (t: string) => `"${t}" বিষয়ক এই ব্যাখ্যায় আপনাকে স্বাগতম।`,
+  explainerGoThrough: (h: string) => `এই ব্যাখ্যায়, আমরা আলোচনা করব ${h}।`,
+  explainerBreakDown: (t: string) => `এই ব্যাখ্যায়, আমরা "${t}" থেকে মূল ধারণাগুলি ব্যাখ্যা করব।`,
+  keyHighlights: 'আসুন মূল বিষয়গুলি দেখি।',
+  point: (i: number) => `বিষয় ${i + 1}:`,
+  letsReview: 'আসুন পুনরালোচনা করি।',
+  fullExplainer: (t: string) => `এটি "${t}"-এর সম্পূর্ণ ব্যাখ্যা। শুনার জন্য ধন্যবাদ।`,
+  podcastIntro: (t: string) => `নমস্কার! আবারও স্বাগতম। আজ আমরা "${t}" নিয়ে আলোচনা করব। এটি একটি চমৎকার পর্ব হতে চলেছে, তাই চলুন শুরু করি।`,
+  coveringToday: (h: string) => `আজ আমরা যা নিয়ে আলোচনা করব: ${h}। দারুণ বিষয়!`,
+  richInsights: 'আজকের বিষয়টি অনেক তথ্যসমৃদ্ধ। চলুন সবচেয়ে আকর্ষণীয় বিষয়গুলি নিয়ে আলোচনা করি।',
+  connectors: ['তাই,', 'এখন,', 'আকর্ষণীয়ভাবে,', 'বিষয়টি হল,', 'যা আশ্চর্যজনক তা হল'],
+  keyTakeaways: 'এখন মূল শিক্ষণীয় বিষয়গুলি জানাই।',
+  number: (i: number) => `নম্বর ${i + 1}:`,
+  sumUp: 'সবচেয়ে গুরুত্বপূর্ণ বিষয়গুলি সংক্ষেপে জানাই।',
+  wrapUp: (t: string, h: string) => `ঠিক আছে, শেষ করা যাক। আজ আমরা "${t}" নিয়ে আলোচনা করলাম। ${h ? `মূল বিষয়গুলি ছিল: ${h}।` : ''} আশা করি আপনি এটি মূল্যবান মনে করেছেন!`,
+  outro: 'শুনার জন্য ধন্যবাদ! আবার দেখা হবে।',
+  keyConceptsInsights: 'মূল ধারণা ও অন্তর্দৃষ্টি',
+  topicsCovered: 'আলোচিত বিষয়সমূহ',
+  keyPoints: (idx: number) => `মূল বিষয়সমূহ${idx > 0 ? ` (${idx + 1})` : ''}`,
+  section: (i: number) => `অনুচ্ছেদ ${i + 1}`,
+  recap: 'পুনরালোচনা',
+} as const;
+
+export function buildSummaryScript(rawText: string, title: string, lang = 'en'): string {
+  const bn = lang === 'bn';
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
@@ -181,23 +212,24 @@ export function buildSummaryScript(rawText: string, title: string): string {
 
   const topSentences = sentences.slice(0, 8).join(' ');
   const keyPoints = bullets.length > 0
-    ? bullets.slice(0, 6).map((b, i) => `Key point ${i + 1}: ${b}`).join('. ')
+    ? bullets.slice(0, 6).map((b, i) => `${bn ? BN.keyPoint(i) : `Key point ${i + 1}:`} ${b}`).join('. ')
     : sentences.slice(8, 14).join(' ');
   const topicLine = headings.length > 0
-    ? `This content covers: ${headings.slice(0, 4).join(', ')}.`
+    ? (bn ? BN.coversTopics(headings.slice(0, 4).join(', ')) : `This content covers: ${headings.slice(0, 4).join(', ')}.`)
     : '';
 
   return [
-    `Summary of "${title}".`,
+    bn ? BN.summaryOf(title) : `Summary of "${title}".`,
     topicLine,
-    'Here are the main points.',
+    bn ? BN.hereAreMain : 'Here are the main points.',
     topSentences,
-    keyPoints ? `Important highlights: ${keyPoints}` : '',
-    `That concludes the summary of "${title}".`,
+    keyPoints ? `${bn ? BN.importantHighlights : 'Important highlights:'} ${keyPoints}` : '',
+    bn ? BN.concludes(title) : `That concludes the summary of "${title}".`,
   ].filter(Boolean).join(' ');
 }
 
-export function buildExplainerScript(rawText: string, title: string): string {
+export function buildExplainerScript(rawText: string, title: string, lang = 'en'): string {
+  const bn = lang === 'bn';
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
@@ -205,58 +237,65 @@ export function buildExplainerScript(rawText: string, title: string): string {
   const paragraphs = extractTopParagraphs(text, 6);
 
   const topicIntro = headings.length > 0
-    ? `In this explainer, we'll go through ${headings.slice(0, 5).join(', ')}.`
-    : `In this explainer, we'll break down the key concepts from "${title}".`;
+    ? (bn ? BN.explainerGoThrough(headings.slice(0, 5).join(', ')) : `In this explainer, we'll go through ${headings.slice(0, 5).join(', ')}.`)
+    : (bn ? BN.explainerBreakDown(title) : `In this explainer, we'll break down the key concepts from "${title}".`);
 
   const mainExplain = paragraphs.length > 0
     ? paragraphs.join(' ')
     : sentences.slice(0, 20).join(' ');
 
   const keyHighlights = bullets.length > 0
-    ? `Let's look at the key highlights. ${bullets.slice(0, 8).map((b, i) => `Point ${i + 1}: ${b}.`).join(' ')}`
+    ? `${bn ? BN.keyHighlights : "Let's look at the key highlights."} ${bullets.slice(0, 8).map((b, i) => `${bn ? BN.point(i) : `Point ${i + 1}:`} ${b}.`).join(' ')}`
     : '';
 
   return [
-    `Welcome to this explainer on "${title}".`,
+    bn ? BN.welcomeExplainer(title) : `Welcome to this explainer on "${title}".`,
     topicIntro,
     mainExplain,
     keyHighlights,
-    `Let's review. ${sentences.slice(-4).join(' ')}`,
-    `That's the full explainer for "${title}". Thanks for listening.`,
+    `${bn ? BN.letsReview : "Let's review."} ${sentences.slice(-4).join(' ')}`,
+    bn ? BN.fullExplainer(title) : `That's the full explainer for "${title}". Thanks for listening.`,
   ].filter(Boolean).join(' ');
 }
 
-export function buildPodcastScript(rawText: string, title: string): string {
+export function buildPodcastScript(rawText: string, title: string, lang = 'en'): string {
+  const bn = lang === 'bn';
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
   const headings = extractHeadings(text);
   const paragraphs = extractTopParagraphs(text, 8);
 
-  const intro = `Hey there! Welcome back. Today we're diving into "${title}". This is going to be a great episode, so let's get started.`;
+  const intro = bn
+    ? BN.podcastIntro(title)
+    : `Hey there! Welcome back. Today we're diving into "${title}". This is going to be a great episode, so let's get started.`;
 
   const overview = headings.length > 0
-    ? `Here's what we're covering today: ${headings.slice(0, 5).join(', ')}. Exciting stuff!`
-    : `Today's topic is rich with insights. Let me walk you through what I found most interesting.`;
+    ? (bn ? BN.coveringToday(headings.slice(0, 5).join(', ')) : `Here's what we're covering today: ${headings.slice(0, 5).join(', ')}. Exciting stuff!`)
+    : (bn ? BN.richInsights : `Today's topic is rich with insights. Let me walk you through what I found most interesting.`);
+
+  const connectors = bn
+    ? BN.connectors
+    : ['So,', 'Now,', 'Interestingly,', "Here's the thing,", "What's fascinating is that"];
 
   const mainContent = paragraphs.length > 0
-    ? paragraphs.map((p, i) => {
-        const connectors = ['So,', 'Now,', 'Interestingly,', 'Here\'s the thing,', 'What\'s fascinating is that'];
-        return `${connectors[i % connectors.length]} ${p}`;
-      }).join(' ')
+    ? paragraphs.map((p, i) => `${connectors[i % connectors.length]} ${p}`).join(' ')
     : sentences.slice(0, 25).join(' ');
 
   const keyTakeaways = bullets.length > 0
-    ? `Now let me give you the key takeaways. ${bullets.slice(0, 6).map((b, i) => `Number ${i + 1}: ${b}.`).join(' ')}`
-    : `Let me sum up the most important things. ${sentences.slice(-8).join(' ')}`;
+    ? `${bn ? BN.keyTakeaways : 'Now let me give you the key takeaways.'} ${bullets.slice(0, 6).map((b, i) => `${bn ? BN.number(i) : `Number ${i + 1}:`} ${b}.`).join(' ')}`
+    : `${bn ? BN.sumUp : 'Let me sum up the most important things.'} ${sentences.slice(-8).join(' ')}`;
 
-  const recap = `Alright, let's wrap up. We covered "${title}" today. ${headings.slice(0, 3).length > 0 ? `The main topics were: ${headings.slice(0, 3).join(', ')}.` : ''} I hope you found this valuable!`;
-  const outro = `Thanks for listening! See you next time.`;
+  const recap = bn
+    ? BN.wrapUp(title, headings.slice(0, 3).join(', '))
+    : `Alright, let's wrap up. We covered "${title}" today. ${headings.slice(0, 3).length > 0 ? `The main topics were: ${headings.slice(0, 3).join(', ')}.` : ''} I hope you found this valuable!`;
+  const outro = bn ? BN.outro : `Thanks for listening! See you next time.`;
 
   return [intro, overview, mainContent, keyTakeaways, recap, outro].filter(Boolean).join(' ');
 }
 
-export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
+export function buildVideoScenes(rawText: string, title: string, lang = 'en'): VideoScene[] {
+  const bn = lang === 'bn';
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
@@ -269,7 +308,7 @@ export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
   scenes.push({
     type: 'title',
     heading: title,
-    body: headings.slice(0, 3).join(' · ') || 'Key concepts & insights',
+    body: headings.slice(0, 3).join(' · ') || (bn ? BN.keyConceptsInsights : 'Key concepts & insights'),
     duration: 4,
   });
 
@@ -277,7 +316,7 @@ export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
   if (headings.length > 0) {
     scenes.push({
       type: 'keypoint',
-      heading: 'Topics Covered',
+      heading: bn ? BN.topicsCovered : 'Topics Covered',
       body: headings.slice(0, 5).map(h => `• ${h}`).join('\n'),
       duration: 5,
     });
@@ -291,7 +330,7 @@ export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
   pointGroups.forEach((group, idx) => {
     scenes.push({
       type: 'keypoint',
-      heading: `Key Points ${idx > 0 ? `(${idx + 1})` : ''}`.trim(),
+      heading: bn ? BN.keyPoints(idx) : `Key Points ${idx > 0 ? `(${idx + 1})` : ''}`.trim(),
       body: group.map(b => `• ${b}`).join('\n'),
       duration: Math.max(5, group.length * 2),
     });
@@ -302,7 +341,7 @@ export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
     const short = para.length > 200 ? para.slice(0, 200) + '…' : para;
     scenes.push({
       type: i % 2 === 0 ? 'definition' : 'example',
-      heading: headings[i + 1] || `Section ${i + 1}`,
+      heading: headings[i + 1] || (bn ? BN.section(i) : `Section ${i + 1}`),
       body: short,
       duration: Math.max(5, Math.ceil(countWords(short) / 40)),
     });
@@ -317,7 +356,7 @@ export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
     senGroups.slice(0, 4).forEach((group, i) => {
       scenes.push({
         type: 'keypoint',
-        heading: `Section ${i + 1}`,
+        heading: bn ? BN.section(i) : `Section ${i + 1}`,
         body: group.join(' '),
         duration: Math.max(5, Math.ceil(countWords(group.join(' ')) / 40)),
       });
@@ -330,7 +369,7 @@ export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
     : sentences.slice(-3).join(' ');
   scenes.push({
     type: 'recap',
-    heading: 'Recap',
+    heading: bn ? BN.recap : 'Recap',
     body: recapText,
     duration: 5,
   });
@@ -342,17 +381,18 @@ export function buildVideoScenes(rawText: string, title: string): VideoScene[] {
 export function buildScriptForMode(
   rawText: string,
   title: string,
-  mode: MediaMode
+  mode: MediaMode,
+  lang = 'en'
 ): { script: string; scenes?: VideoScene[] } {
   switch (mode) {
     case 'summary':
-      return { script: buildSummaryScript(rawText, title) };
+      return { script: buildSummaryScript(rawText, title, lang) };
     case 'explainer':
-      return { script: buildExplainerScript(rawText, title) };
+      return { script: buildExplainerScript(rawText, title, lang) };
     case 'podcast':
-      return { script: buildPodcastScript(rawText, title) };
+      return { script: buildPodcastScript(rawText, title, lang) };
     case 'video': {
-      const scenes = buildVideoScenes(rawText, title);
+      const scenes = buildVideoScenes(rawText, title, lang);
       const script = scenes.map(s => {
         const spokenBody = s.body
           .replace(/^[•\-\*]\s*/gm, '')

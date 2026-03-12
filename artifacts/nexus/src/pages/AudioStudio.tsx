@@ -62,6 +62,7 @@ export default function AudioStudio() {
   const [items, setItems] = useState<GeneratedMediaItem[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [language, setLanguage] = useState<'en' | 'bn'>('en');
 
   const refreshItems = useCallback(() => {
     setItems(getAllMediaItems().filter(m => m.sourceModule === 'audio-studio'));
@@ -124,7 +125,7 @@ STRICT RULES — violations will break the audio:
 - NO quotes around the title when you mention it
 - Begin immediately with the first spoken sentence of the narration
 - Conversational, engaging tone — write as if speaking directly to a listener
-- Aim for 400–600 words`,
+- Aim for 400–600 words${language === 'bn' ? '\n- Write ENTIRELY in Bangla (Bengali language, বাংলা). Every single word must be in Bangla script. Do not use any English words.' : ''}`,
         },
         {
           role: 'user',
@@ -187,6 +188,16 @@ STRICT RULES — violations will break the audio:
               <h1 className="text-xl font-bold">Audio Studio</h1>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">Upload, paste, or describe → generate narrated audio</p>
+          </div>
+          <div className="flex items-center bg-muted/60 rounded-xl p-0.5 gap-0.5 flex-shrink-0">
+            <button
+              onClick={() => setLanguage('en')}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${language === 'en' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}
+            >EN</button>
+            <button
+              onClick={() => setLanguage('bn')}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${language === 'bn' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}
+            >বাংলা</button>
           </div>
         </div>
 
@@ -395,6 +406,7 @@ STRICT RULES — violations will break the audio:
           getSourceText={getSourceText}
           totalPages={0}
           initialMode="summary"
+          language={language}
         />
       )}
     </Layout>

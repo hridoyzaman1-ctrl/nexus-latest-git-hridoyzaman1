@@ -32,6 +32,8 @@ interface MediaGenerationModalProps {
   totalPages?: number;
   /** Starting mode. Defaults to 'summary'. */
   initialMode?: MediaMode;
+  /** Script/TTS language: 'en' (default) or 'bn' (Bangla). */
+  language?: string;
 }
 
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
@@ -45,7 +47,7 @@ type GenStage = 'idle' | 'extracting' | 'generating' | 'recording' | 'done' | 'e
 
 export default function MediaGenerationModal({
   open, onClose, sourceModule, sourceId, sourceName,
-  getSourceText, totalPages = 0, initialMode = 'summary',
+  getSourceText, totalPages = 0, initialMode = 'summary', language = 'en',
 }: MediaGenerationModalProps) {
   const navigate = useNavigate();
 
@@ -92,7 +94,8 @@ export default function MediaGenerationModal({
       if (v.length > 0) {
         setVoices(v);
         if (!selectedVoiceUri) {
-          const def = getDefaultVoice('en');
+          const langCode = language === 'bn' ? 'bn' : 'en';
+          const def = getDefaultVoice(langCode) ?? getDefaultVoice('en');
           if (def) setSelectedVoiceUri(def.voiceURI);
         }
       }
@@ -203,7 +206,7 @@ export default function MediaGenerationModal({
       await new Promise(r => setTimeout(r, 0));
       if (cancelSignal.current.cancelled) return;
 
-      const { script: generatedScript, scenes: generatedScenes } = buildScriptForMode(truncated, sourceName, mode);
+      const { script: generatedScript, scenes: generatedScenes } = buildScriptForMode(truncated, sourceName, mode, language);
 
       if (!generatedScript || generatedScript.trim().length < 20) {
         throw new Error('Could not generate a script. Please try a different page range or mode.');
@@ -504,17 +507,43 @@ export default function MediaGenerationModal({
                           onChange={e => setSelectedVoiceUri(e.target.value)}
                           className="w-full text-[11px] bg-secondary/40 rounded-xl px-2 py-1.5 border border-border/40"
                         >
-                          <optgroup label="English">
-                            {voices.filter(v => v.lang.startsWith('en')).map(v => (
-                              <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
-                            ))}
-                          </optgroup>
-                          {voices.filter(v => !v.lang.startsWith('en')).length > 0 && (
-                            <optgroup label="Other Languages">
-                              {voices.filter(v => !v.lang.startsWith('en')).slice(0, 30).map(v => (
-                                <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
-                              ))}
-                            </optgroup>
+                          {language === 'bn' ? (
+                            <>
+                              {voices.filter(v => v.lang.startsWith('bn')).length > 0 && (
+                                <optgroup label="বাংলা (Bangla)">
+                                  {voices.filter(v => v.lang.startsWith('bn')).map(v => (
+                                    <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              <optgroup label="English">
+                                {voices.filter(v => v.lang.startsWith('en')).map(v => (
+                                  <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+                                ))}
+                              </optgroup>
+                              {voices.filter(v => !v.lang.startsWith('bn') && !v.lang.startsWith('en')).length > 0 && (
+                                <optgroup label="Other Languages">
+                                  {voices.filter(v => !v.lang.startsWith('bn') && !v.lang.startsWith('en')).slice(0, 20).map(v => (
+                                    <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <optgroup label="English">
+                                {voices.filter(v => v.lang.startsWith('en')).map(v => (
+                                  <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+                                ))}
+                              </optgroup>
+                              {voices.filter(v => !v.lang.startsWith('en')).length > 0 && (
+                                <optgroup label="Other Languages">
+                                  {voices.filter(v => !v.lang.startsWith('en')).slice(0, 30).map(v => (
+                                    <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </>
                           )}
                         </select>
                       )}

@@ -62,6 +62,7 @@ export default function VideoStudio() {
   const [items, setItems] = useState<GeneratedMediaItem[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [language, setLanguage] = useState<'en' | 'bn'>('en');
 
   const refreshItems = useCallback(() => {
     setItems(getAllMediaItems().filter(m => m.sourceModule === 'video-studio'));
@@ -125,7 +126,7 @@ STRICT RULES — violations will break the audio:
 - Begin immediately with the first spoken sentence of the narration
 - Organise naturally into 5–8 clear topic sections with smooth spoken transitions
 - Each section should be 2–4 sentences long
-- Aim for 400–600 words total`,
+- Aim for 400–600 words total${language === 'bn' ? '\n- Write ENTIRELY in Bangla (Bengali language, বাংলা). Every single word must be in Bangla script. Do not use any English words.' : ''}`,
         },
         {
           role: 'user',
@@ -185,6 +186,16 @@ STRICT RULES — violations will break the audio:
               <h1 className="text-xl font-bold">Video Studio</h1>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">Upload, paste, or describe → generate visual slideshow video</p>
+          </div>
+          <div className="flex items-center bg-muted/60 rounded-xl p-0.5 gap-0.5 flex-shrink-0">
+            <button
+              onClick={() => setLanguage('en')}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${language === 'en' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}
+            >EN</button>
+            <button
+              onClick={() => setLanguage('bn')}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${language === 'bn' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}
+            >বাংলা</button>
           </div>
         </div>
 
@@ -399,6 +410,7 @@ STRICT RULES — violations will break the audio:
           getSourceText={getSourceText}
           totalPages={0}
           initialMode="video"
+          language={language}
         />
       )}
     </Layout>
