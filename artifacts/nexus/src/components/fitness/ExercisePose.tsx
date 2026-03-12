@@ -1,4 +1,5 @@
-const POSE_SVGS: Record<string, (size: number) => JSX.Element> = {
+import React from 'react';
+const POSE_SVGS: Record<string, (size: number) => React.JSX.Element> = {
   standing_neutral: (s) => (
     <svg width={s} height={s} viewBox="0 0 80 120" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary/70">
       <circle cx="40" cy="15" r="8" />

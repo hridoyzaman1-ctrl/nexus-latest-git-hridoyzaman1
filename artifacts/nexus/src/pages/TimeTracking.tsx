@@ -57,8 +57,8 @@ export default function TimeTracking() {
   const [editProjName, setEditProjName] = useState('');
   const [editProjRate, setEditProjRate] = useState('');
   const [showProjectsList, setShowProjectsList] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
-  const idleRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const idleRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const lastActivityRef = useRef(Date.now());
 
   if (!hasInit) setInit(true);

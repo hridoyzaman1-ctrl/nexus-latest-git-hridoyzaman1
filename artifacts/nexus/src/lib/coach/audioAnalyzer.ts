@@ -18,7 +18,7 @@ const DEFAULT_METRICS: AudioMetrics = {
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
 let sourceNode: MediaStreamAudioSourceNode | null = null;
-let dataArray: Uint8Array | null = null;
+let dataArray: Uint8Array<ArrayBuffer> | null = null;
 let recognition: any = null;
 
 let volumeHistory: number[] = [];

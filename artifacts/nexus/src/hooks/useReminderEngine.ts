@@ -54,7 +54,7 @@ function fireCountdownReminder(
 }
 
 export function useReminderEngine() {
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const countdownFired = useRef<Set<string>>(new Set());
 
   const checkReminders = useCallback(() => {

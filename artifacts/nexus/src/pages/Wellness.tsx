@@ -338,7 +338,7 @@ function MeditationView({ onBack }: { onBack: () => void }) {
   const [duration, setDuration] = useState(300);
   const [timeLeft, setTimeLeft] = useState(300);
   const [running, setRunning] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const presets = [5, 10, 15, 20, 30];
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1226,8 +1226,8 @@ function BreathingView({ onBack }: { onBack: () => void }) {
   const [feedbackNotes, setFeedbackNotes] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [feedbackHistory, setFeedbackHistory] = useLocalStorage<BreathingFeedback[]>('breathingFeedback', []);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
-  const elapsedRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => {
     if (!active) return;

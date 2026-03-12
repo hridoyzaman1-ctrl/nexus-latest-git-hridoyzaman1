@@ -42,7 +42,7 @@ export default function FocusTimer() {
   const [sessionCount, setSessionCount] = useLocalStorage<number>('focusSessionCount', 0);
   const [alarmEnabled, setAlarmEnabled] = useLocalStorage<boolean>('focusAlarmEnabled', true);
   const [alarmSound, setAlarmSound] = useLocalStorage<AlarmSoundType>('focusAlarmSound', 'chime');
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const music = useMusicPlayer();
 
   const getDuration = useCallback((t: SessionType) => {

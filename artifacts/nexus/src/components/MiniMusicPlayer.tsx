@@ -214,7 +214,7 @@ export default function MiniMusicPlayer() {
   const [activeTab, setActiveTab] = useState<'visualizer' | 'tracks'>('visualizer');
   const [sleepSeconds, setSleepSeconds] = useState(0);
   const [sleepRemaining, setSleepRemaining] = useState(0);
-  const sleepRef = useRef<ReturnType<typeof setInterval>>();
+  const sleepRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Sleep timer logic
   const startSleepTimer = useCallback((secs: number) => {

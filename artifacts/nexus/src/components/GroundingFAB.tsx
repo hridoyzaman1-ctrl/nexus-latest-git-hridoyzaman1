@@ -16,7 +16,7 @@ export default function GroundingFAB() {
   const [phase, setPhase] = useState<Phase>('inhale');
   const [counter, setCounter] = useState(4);
   const [cycles, setCycles] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => {
     if (!active) return;

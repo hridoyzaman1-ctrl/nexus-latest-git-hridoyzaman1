@@ -136,7 +136,7 @@ export function buildWeeklySummary(): string {
 }
 
 export function useNotificationReminders() {
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const firedRef = useRef<Set<string>>(new Set());
 
   const check = useCallback(() => {

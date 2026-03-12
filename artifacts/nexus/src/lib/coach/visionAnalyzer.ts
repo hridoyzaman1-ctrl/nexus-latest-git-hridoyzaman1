@@ -41,6 +41,7 @@ export async function initVisionAnalyzer(): Promise<boolean> {
   if (initFailed) return false;
 
   try {
+    // @ts-ignore – CDN dynamic import, no type declarations available
     const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
     const { FaceLandmarker, PoseLandmarker, FilesetResolver } = vision;
 
