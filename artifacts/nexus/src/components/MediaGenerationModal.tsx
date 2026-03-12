@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Headphones, Video, FileText, Mic, Play, Square, Pause, RotateCcw,
   Download, X, Sparkles, ChevronDown, ChevronUp, Settings2, Library,
-  Loader2, BookOpen, CheckCircle2, AlertCircle,
+  Loader2, BookOpen, CheckCircle2, AlertCircle, Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -74,6 +74,11 @@ export default function MediaGenerationModal({
   const [ttsTotalChunks, setTtsTotalChunks] = useState(0);
   const ttsRef = useRef<TTSController | null>(null);
 
+  // Estimated + elapsed recording time for countdown display
+  const [estimatedRecordingSecs, setEstimatedRecordingSecs] = useState(0);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
+  const recordingStartRef = useRef<number>(0);
+
   // Single recording canvas — always in DOM, shown/hidden by stage
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Preview canvas for done-state scene browsing
@@ -116,6 +121,19 @@ export default function MediaGenerationModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Live countdown timer during video recording
+  useEffect(() => {
+    if (stage !== 'recording') {
+      setRecordingElapsed(0);
+      return;
+    }
+    recordingStartRef.current = Date.now();
+    const timer = setInterval(() => {
+      setRecordingElapsed(Math.floor((Date.now() - recordingStartRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [stage]);
+
   // Re-draw preview canvas when currentScene changes (done + video mode)
   useEffect(() => {
     if (stage === 'done' && scenes.length > 0 && previewCanvasRef.current) {
@@ -144,6 +162,8 @@ export default function MediaGenerationModal({
     setProgress(0);
     setProgressLabel('');
     setErrorMsg('');
+    setEstimatedRecordingSecs(0);
+    setRecordingElapsed(0);
   }, []);
 
   const handleClose = useCallback(() => {
