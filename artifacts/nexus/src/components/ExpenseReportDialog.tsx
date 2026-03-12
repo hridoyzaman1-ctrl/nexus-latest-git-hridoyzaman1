@@ -101,7 +101,7 @@ export default function ExpenseReportDialog({ expenses, income, open, onClose }:
   return (
     <AnimatePresence>
       {open && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-4">
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="bg-background rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold font-display">Expense Report</h2>

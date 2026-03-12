@@ -720,11 +720,11 @@ export default function Dashboard() {
       <AnimatePresence>
         {editingQuickActions && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end justify-center"
+            className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-end justify-center"
             onClick={() => setEditingQuickActions(false)}>
             <motion.div initial={{ y: 300 }} animate={{ y: 0 }} exit={{ y: 300 }} transition={{ type: 'spring', damping: 25 }}
               onClick={e => e.stopPropagation()}
-              className="w-full max-w-[480px] glass-strong rounded-t-3xl p-5 pb-36 space-y-4 max-h-[85vh] overflow-y-auto">
+              className="w-full max-w-[480px] glass-strong rounded-t-3xl p-5 pb-8 space-y-4 max-h-[85vh] overflow-y-auto">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold font-display">Edit Quick Actions</h2>
                 <button onClick={() => setEditingQuickActions(false)} className="w-8 h-8 rounded-lg bg-secondary/50 flex items-center justify-center">

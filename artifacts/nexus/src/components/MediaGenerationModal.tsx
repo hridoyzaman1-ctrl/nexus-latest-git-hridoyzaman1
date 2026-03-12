@@ -383,7 +383,7 @@ export default function MediaGenerationModal({
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50"
+            className="fixed inset-0 bg-black/60 z-[60]"
             onClick={isBusy ? undefined : handleClose}
           />
 
@@ -391,7 +391,7 @@ export default function MediaGenerationModal({
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 34 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border rounded-t-3xl max-h-[92vh] overflow-y-auto"
+            className="fixed bottom-0 left-0 right-0 z-[60] bg-background border-t border-border rounded-t-3xl max-h-[92vh] overflow-y-auto"
           >
             {/* Recording canvas — always in DOM so captureStream works */}
             <canvas

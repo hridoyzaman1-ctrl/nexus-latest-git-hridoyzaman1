@@ -2205,7 +2205,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     const sessions = getStudySessions();
     const links = getStudyPresentationLinks();
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowStudyPlannerModal(false); setStudyPlannerTargetId(null); }}>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowStudyPlannerModal(false); setStudyPlannerTargetId(null); }}>
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
           className="glass-strong rounded-2xl p-4 mx-4 max-w-[400px] w-full max-h-[70vh] overflow-y-auto"
