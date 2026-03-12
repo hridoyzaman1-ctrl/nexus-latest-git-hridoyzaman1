@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { logError } from '@/lib/logger';
 import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
 import { StudySession, StudyMaterial, StudyNote, StudyTimeLog, StudyHighlight, AlarmSoundType, QuizResult } from '@/types';
+import { getAllMediaItems } from '@/lib/mediaStorage';
 import { exampleStudySessions } from '@/lib/examples';
 import { saveStudyFile, deleteStudyFile, type StudyFileData } from '@/lib/studyStorage';
 import { ArrowLeft, Plus, X, CheckCircle2, Circle, CalendarDays, Bell, Clock, Upload, BookOpen, FileText, Video, Trash2, ChevronDown, ChevronUp, Play, Pause, RotateCcw, StickyNote, Timer, BarChart2, LayoutDashboard, Brain, Sparkles, Download, Presentation, Eye, Headphones } from 'lucide-react';
@@ -847,6 +848,23 @@ export default function StudyPlanner() {
                 ))}
               </div>
             )}
+            {(() => {
+              const studyMedia = getAllMediaItems().filter(m => m.sourceModule === 'study');
+              if (studyMedia.length === 0) return null;
+              return (
+                <div className="pt-1 space-y-1">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">🎧 Generated Media ({studyMedia.length})</p>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {studyMedia.slice(0, 10).map(m => (
+                      <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b border-border/20">
+                        <span className="font-medium truncate max-w-[65%]">{m.title}</span>
+                        <span className="text-muted-foreground capitalize shrink-0 ml-2">{m.mode} · {m.wordCount}w</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </motion.div>
         )}
       </AnimatePresence>

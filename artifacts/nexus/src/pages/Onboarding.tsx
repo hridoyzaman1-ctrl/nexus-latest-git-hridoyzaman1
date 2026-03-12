@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
-import { Camera, ChevronRight, ChevronLeft, SkipForward, Check, Target, Brain, BarChart3, Sparkles, ShieldAlert, Heart, GraduationCap, Palette, Timer, BookOpen, MessageCircle, Droplets, Moon, Wind, Wallet, Bell, Volume2, CheckSquare, Clock, Flame, Presentation, Mic, CloudSun, UtensilsCrossed, Dumbbell, Newspaper } from 'lucide-react';
+import { Camera, ChevronRight, ChevronLeft, SkipForward, Check, Target, Brain, BarChart3, Sparkles, ShieldAlert, Heart, GraduationCap, Palette, Timer, BookOpen, MessageCircle, Droplets, Moon, Wind, Wallet, Bell, Volume2, CheckSquare, Clock, Flame, Presentation, Mic, CloudSun, UtensilsCrossed, Dumbbell, Newspaper, Headphones } from 'lucide-react';
 
 const slides = [
   {
@@ -17,7 +17,7 @@ const slides = [
     color: 'hsl(245, 58%, 62%)',
     title: 'Welcome to MindFlow',
     subtitle: 'Your wellbeing, study & life companion',
-    description: '28+ modules in one app — goals, habits, tasks, focus timer, notes, study planner, book reader, AI assistant, expense tracker, wellness tools, presentation maker, nutrition planner, fitness coach, news portal, weather, and much more.',
+    description: '30+ modules in one app — goals, habits, tasks, focus timer, notes, study planner, book reader, AI assistant, expense tracker, wellness tools, presentation maker, audio & video studio, nutrition planner, fitness coach, news portal, weather, and much more.',
     previews: [
       { emoji: '🎯', label: 'Goals' },
       { emoji: '📝', label: 'Notes' },
@@ -163,6 +163,21 @@ const slides = [
       { emoji: '🔍', label: 'Search' },
       { emoji: '⚡', label: 'Breaking News' },
       { emoji: '📴', label: 'Offline Cache' },
+    ],
+  },
+  {
+    icon: Headphones,
+    color: 'hsl(217, 91%, 60%)',
+    title: 'Audio & Video Studio',
+    subtitle: 'Create Narrated Content • AI Script Writer • 100% Offline',
+    description: 'Turn any text, PDF, or idea into narrated audio summaries, podcast-style episodes, or animated slideshow videos — all generated locally in your browser. Use the Describe mode to have Kira write a full script from just a sentence. No uploads, no servers, no cost.',
+    previews: [
+      { emoji: '🎧', label: 'Audio Studio' },
+      { emoji: '🎬', label: 'Video Studio' },
+      { emoji: '✨', label: 'AI Scriptwriter' },
+      { emoji: '📚', label: 'From Any Text' },
+      { emoji: '📥', label: 'Download WebM' },
+      { emoji: '🔒', label: '100% Private' },
     ],
   },
   {

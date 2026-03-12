@@ -10,7 +10,7 @@ import {
   ChevronLeft, Play, Smartphone, Zap, Menu, X, Sun, Handshake, Map,
   Presentation, Mic, CloudSun, CheckCircle, AlertTriangle,
   UtensilsCrossed, Dumbbell, Newspaper, Pause, Share2, MousePointerClick, Code2, Rocket, ExternalLink,
-  Monitor
+  Monitor, Headphones, Film
 } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { SHOCASE_PROJECTS } from './Showcase';
@@ -142,7 +142,7 @@ const SHOWCASE_SLIDES: {
     {
       icon: Sparkles, color: 'from-[hsl(245,70%,60%)] to-[hsl(199,80%,55%)]',
       tag: 'ALL-IN-ONE', title: 'One App.\nEndless Possibilities.',
-      desc: '28+ modules for productivity, studying, wellness, fitness, nutrition, news — all in one lightweight app.',
+      desc: '30+ modules for productivity, studying, wellness, fitness, nutrition, news — all in one lightweight app.',
       features: ['Goals & Habits', 'Focus Timer', 'Study LMS', 'AI Analytics'],
     },
     {
@@ -486,6 +486,8 @@ export default function Landing() {
     { icon: UtensilsCrossed, title: 'Nutrition Planner', desc: 'Meal planning with macro tracking, recipe engine, pantry management, health scores & weekly nutrition reports.' },
     { icon: Dumbbell, title: 'Body & Fitness', desc: 'BMI calculator, personalized workout routines, exercise database, progress tracking & fitness goal management.' },
     { icon: Newspaper, title: 'News Portal', desc: 'Curated news from multiple sources with category filters, search, bookmarks, and smart deduplication.' },
+    { icon: Headphones, title: 'Audio Studio', desc: 'Upload a PDF or describe any topic — Kira writes the script and your device narrates it. No servers, 100% private.' },
+    { icon: Film, title: 'Video Studio', desc: 'Turn text or AI-generated scripts into animated slideshow videos. Canvas-rendered, downloadable WebM, fully offline.' },
   ];
 
   const uniqueFeatures = [
@@ -600,7 +602,7 @@ export default function Landing() {
             className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full border border-border bg-muted/50 mb-6 sm:mb-8"
           >
             <Sparkles className="w-3 h-3 text-primary" />
-            <span className="text-[10px] sm:text-[11px] text-muted-foreground tracking-wider uppercase">28+ Modules • 100% Free • Offline First</span>
+            <span className="text-[10px] sm:text-[11px] text-muted-foreground tracking-wider uppercase">30+ Modules • 100% Free • Offline First</span>
           </motion.div>
 
           {/* Headline */}
@@ -1046,7 +1048,7 @@ export default function Landing() {
                   <span className="text-foreground/90 italic"> "Why do I need ten apps for what one should do?"</span>
                 </p>
                 <p>
-                  28+ modules later, it handles productivity, studying, wellness, fitness, nutrition, finance,
+                  30+ modules later, it handles productivity, studying, wellness, fitness, nutrition, finance,
                   presentations, weather, news, and more — constantly improving with every update for the
                   best possible user experience.
                 </p>
@@ -1081,7 +1083,7 @@ export default function Landing() {
                   <AlertTriangle className="w-4 h-4" /> Why We Need Your Help
                 </h3>
                 <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                  MindFlow was built from scratch with <span className="font-semibold text-foreground">zero budget</span> — every feature, every module, every line of code. We created the <span className="font-semibold text-foreground">first app of its kind in the entire world</span>: 28+ modules for productivity, studying, wellness, and life management in one fast, bloat-free experience.
+                  MindFlow was built from scratch with <span className="font-semibold text-foreground">zero budget</span> — every feature, every module, every line of code. We created the <span className="font-semibold text-foreground">first app of its kind in the entire world</span>: 30+ modules for productivity, studying, wellness, and life management in one fast, bloat-free experience.
                 </p>
                 <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
                   But our entire infrastructure — codebase, hosting, deployment — runs on a <span className="font-semibold text-foreground">restrictive free tier</span>. To keep MindFlow alive and truly independent, <span className="font-semibold text-foreground">we urgently need to buy an actual independent domain and shared hosting with proper SSL, security, and cloud sync features</span>. This will free us from complicated terms, ensure 100% ownership, and let us scale without fear of losing the project.
@@ -1190,7 +1192,7 @@ export default function Landing() {
               if (navigator.share) {
                 navigator.share({
                   title: 'MindFlow - Your All-In-One Companion',
-                  text: 'Check out MindFlow! It has 28+ modules for productivity, studying, wellness, and more. 100% Free.',
+                  text: 'Check out MindFlow! It has 30+ modules for productivity, studying, wellness, and more. 100% Free.',
                   url: 'https://nexusmindflow.vercel.app',
                 }).catch(console.error);
               } else {

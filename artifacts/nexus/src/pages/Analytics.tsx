@@ -3,6 +3,7 @@ import { useLocalStorage, getLocalStorage, isDemoMode } from '@/hooks/useLocalSt
 import { Goal, Habit, Task, FocusSession, MeditationSession, Expense, Book, StudySession, StudyMaterial, StudyNote, StudyTimeLog, Todo, TimeEntry, SavedReport, MoodEntry, MoodType, UserProfile, BreathingFeedback, GamificationState, SleepEntry, WaterEntry, QuizResult } from '@/types';
 import type { SavedAISummary } from '@/components/AISummarizer';
 import { chatWithLongCat, ANALYTICS_SYSTEM_PROMPT, LongCatMessage } from '@/lib/longcat';
+import { getAllMediaItems } from '@/lib/mediaStorage';
 import { Sparkles, FileText, Loader2, Trash2, Download, TrendingUp, TrendingDown, Minus, Calendar, ChevronDown, X, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -262,6 +263,18 @@ function generateStudyInsights(
     insights.push(`✨ ${aiSummariesAll.length} AI summaries/explainers saved (${modeStr}). Great use of AI-assisted learning!`);
   }
 
+  // Media generation insight
+  const allMedia = getAllMediaItems();
+  if (allMedia.length > 0) {
+    const audioCount = allMedia.filter(m => m.mode !== 'video').length;
+    const videoCount = allMedia.filter(m => m.mode === 'video').length;
+    const moduleSet = [...new Set(allMedia.map(m => m.sourceModule))];
+    const parts = [];
+    if (audioCount > 0) parts.push(`${audioCount} audio`);
+    if (videoCount > 0) parts.push(`${videoCount} video`);
+    insights.push(`🎧 ${allMedia.length} media items generated (${parts.join(', ')}) from ${moduleSet.length} module${moduleSet.length > 1 ? 's' : ''}. Creative content creation in action!`);
+  }
+
   return insights;
 }
 
@@ -515,6 +528,20 @@ export default function Analytics() {
     const notesSummary = notesAll.length > 0 ? `\nNotes: ${notesAll.length} total${notesWithReminders > 0 ? `, ${notesWithReminders} with reminders` : ''}` : '';
     const booksSummary = booksAll.length > 0 ? `\nBooks: ${booksAll.length} in library, ${booksReading} in progress` : '';
 
+    // Media generation data
+    const allMediaItems = getAllMediaItems();
+    const mediaSummary = allMediaItems.length > 0
+      ? (() => {
+        const byModule: Record<string, number> = {};
+        allMediaItems.forEach(m => { byModule[m.sourceModule] = (byModule[m.sourceModule] || 0) + 1; });
+        const byMode: Record<string, number> = {};
+        allMediaItems.forEach(m => { byMode[m.mode] = (byMode[m.mode] || 0) + 1; });
+        const moduleStr = Object.entries(byModule).map(([k, v]) => `${k}:${v}`).join(', ');
+        const modeStr = Object.entries(byMode).map(([k, v]) => `${v} ${k}`).join(', ');
+        return `\n\nMEDIA GENERATION DATA:\nTotal items: ${allMediaItems.length}\nBy source: ${moduleStr}\nBy mode: ${modeStr}\nAudio items: ${allMediaItems.filter(m => m.mode !== 'video').length}, Video items: ${allMediaItems.filter(m => m.mode === 'video').length}`;
+      })()
+      : '';
+
     const nutritionLogs = getLocalStorage<any[]>('nutritionLogs', []);
     const periodNutritionLogs = nutritionLogs.filter((l: any) => { try { return isWithinInterval(parseISO(l.date), { start, end }); } catch { return false; } });
     const nutritionSummary = periodNutritionLogs.length > 0
@@ -557,7 +584,7 @@ export default function Analytics() {
       }
     } catch { }
 
-    const dataSummary = `${profileContext}${periodLabel} | P:${productivityScore} W:${wellnessScoreWithSleep || wellnessScore} C:${consistencyScore}\nTasks:${tasksDone}/${periodTasks.length} Focus:${periodFocusMin}m Med:${periodMedMin}m Goals:${avgGoalProgress}%\nHabits:${activeHabits}/${habits.length} Streak:${bestHabitStreak}d Lvl:${gamification.level}(${gamification.totalXp}XP)\nBreathing:${breathingSessions.length}(${avgBreathingImprovement}) Time:${Math.floor(totalTimeTracked / 60)}h${totalTimeTracked % 60}m${sleepSummary}${waterSummary}${habitStreakSummary}${notesSummary}${booksSummary}${weatherContext}${wellnessExtra}${studySummary}${presentationSummary}${coachSummary}${nutritionSummary}${fitnessSummary}${newsSummary}`;
+    const dataSummary = `${profileContext}${periodLabel} | P:${productivityScore} W:${wellnessScoreWithSleep || wellnessScore} C:${consistencyScore}\nTasks:${tasksDone}/${periodTasks.length} Focus:${periodFocusMin}m Med:${periodMedMin}m Goals:${avgGoalProgress}%\nHabits:${activeHabits}/${habits.length} Streak:${bestHabitStreak}d Lvl:${gamification.level}(${gamification.totalXp}XP)\nBreathing:${breathingSessions.length}(${avgBreathingImprovement}) Time:${Math.floor(totalTimeTracked / 60)}h${totalTimeTracked % 60}m${sleepSummary}${waterSummary}${habitStreakSummary}${notesSummary}${booksSummary}${weatherContext}${wellnessExtra}${studySummary}${presentationSummary}${coachSummary}${nutritionSummary}${fitnessSummary}${newsSummary}${mediaSummary}`;
     try {
       const messages: LongCatMessage[] = [
         { role: 'system', content: ANALYTICS_SYSTEM_PROMPT },

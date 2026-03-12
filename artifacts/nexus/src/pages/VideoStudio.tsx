@@ -3,17 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Video, Upload, FileText, Clipboard,
   X, Film, Play, RefreshCw, Trash2, ChevronRight,
+  Sparkles, Loader2, Wand2,
 } from 'lucide-react';
 import Layout from '@/components/Layout';
 import MediaGenerationModal from '@/components/MediaGenerationModal';
 import MediaPlayer from '@/components/MediaPlayer';
 import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import { extractPdfText } from '@/lib/extractText';
+import { chatWithKira } from '@/lib/longcat';
+import { isDemoMode } from '@/hooks/useLocalStorage';
 
 interface StudioSource {
   id: string;
   name: string;
-  type: 'pdf' | 'txt' | 'paste';
+  type: 'pdf' | 'txt' | 'paste' | 'describe';
   text: string;
   wordCount: number;
 }
@@ -21,10 +24,7 @@ interface StudioSource {
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(',')[1]);
-    };
+    reader.onload = () => { resolve((reader.result as string).split(',')[1]); };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -43,16 +43,20 @@ function countWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+type InputMode = 'upload' | 'paste' | 'describe';
+
 export default function VideoStudio() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pasteRef = useRef<HTMLTextAreaElement>(null);
 
   const [source, setSource] = useState<StudioSource | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pasteMode, setPasteMode] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>('upload');
   const [pasteText, setPasteText] = useState('');
+  const [describeText, setDescribeText] = useState('');
+  const [aiEnhancing, setAiEnhancing] = useState(false);
+  const [aiHint, setAiHint] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalSourceId, setModalSourceId] = useState('');
   const [items, setItems] = useState<GeneratedMediaItem[]>([]);
@@ -66,39 +70,22 @@ export default function VideoStudio() {
   useEffect(() => { refreshItems(); }, [refreshItems]);
 
   const processFile = async (file: File) => {
-    if (!file.name.match(/\.(pdf|txt|md)$/i)) {
-      setError('Only PDF, TXT, or MD files are supported.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    if (!file.name.match(/\.(pdf|txt|md)$/i)) { setError('Only PDF, TXT, or MD files are supported.'); return; }
+    setLoading(true); setError(null);
     try {
       const name = file.name.replace(/\.[^.]+$/, '');
-      let text = '';
-      if (file.name.toLowerCase().endsWith('.pdf')) {
-        const base64 = await fileToBase64(file);
-        text = await extractPdfText(base64, undefined, 1, 9999);
-      } else {
-        text = await fileToText(file);
-      }
+      let text = file.name.toLowerCase().endsWith('.pdf')
+        ? await extractPdfText(await fileToBase64(file), undefined, 1, 9999)
+        : await fileToText(file);
       if (!text.trim()) throw new Error('No readable text found in this file.');
-      setSource({
-        id: `vs-${Date.now()}`,
-        name,
-        type: file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'txt',
-        text,
-        wordCount: countWords(text),
-      });
+      setSource({ id: `vs-${Date.now()}`, name, type: file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'txt', text, wordCount: countWords(text) });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to read file.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
+    e.preventDefault(); setDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) processFile(file);
   };
@@ -113,8 +100,46 @@ export default function VideoStudio() {
     const text = pasteText.trim();
     if (!text) return;
     setSource({ id: `vs-${Date.now()}`, name: 'Pasted Content', type: 'paste', text, wordCount: countWords(text) });
-    setPasteMode(false);
     setPasteText('');
+    setInputMode('upload');
+  };
+
+  const handleDescribeEnhance = async () => {
+    const desc = describeText.trim();
+    if (!desc) return;
+    if (isDemoMode) {
+      setAiHint('AI enhancement not available in preview mode. Your description will be used as the content.');
+      setSource({ id: `vs-${Date.now()}`, name: desc.slice(0, 50), type: 'describe', text: desc, wordCount: countWords(desc) });
+      setInputMode('upload');
+      return;
+    }
+    setAiEnhancing(true); setAiHint(null); setError(null);
+    try {
+      const script = await chatWithKira([
+        {
+          role: 'system',
+          content: `You are a professional visual content scriptwriter. The user wants to create a video slideshow. Write a structured, scene-by-scene script with clear sections and headings. Each section will become a video scene/slide. Use descriptive headings (3-6 words), followed by 2-4 sentences of content for that scene. Include an introduction and conclusion. Aim for 5-10 scenes, 400-700 words total. Do NOT include speaker names, stage directions, or meta-commentary — just the content itself.`,
+        },
+        {
+          role: 'user',
+          content: `Write a visual slideshow script for: ${desc}`,
+        },
+      ], { maxTokens: 1200, temperature: 0.72 });
+      const title = desc.length > 55 ? desc.slice(0, 55) + '…' : desc;
+      setSource({ id: `vs-${Date.now()}`, name: title, type: 'describe', text: script, wordCount: countWords(script) });
+      setDescribeText('');
+      setInputMode('upload');
+    } catch {
+      setError('AI generation failed. Check your connection and try again, or use your description as-is.');
+    } finally { setAiEnhancing(false); }
+  };
+
+  const handleUseDescriptionAsIs = () => {
+    const text = describeText.trim();
+    if (!text) return;
+    setSource({ id: `vs-${Date.now()}`, name: text.slice(0, 55), type: 'describe', text, wordCount: countWords(text) });
+    setDescribeText('');
+    setInputMode('upload');
   };
 
   const openModal = () => {
@@ -123,9 +148,7 @@ export default function VideoStudio() {
     setModalOpen(true);
   };
 
-  const getSourceText = useCallback(async (_f: number, _t: number): Promise<string> => {
-    return source?.text ?? '';
-  }, [source]);
+  const getSourceText = useCallback(async (_f: number, _t: number): Promise<string> => source?.text ?? '', [source]);
 
   const handleDelete = (id: string) => {
     deleteMediaItem(id);
@@ -133,14 +156,17 @@ export default function VideoStudio() {
     if (expandedId === id) setExpandedId(null);
   };
 
+  const inputTabs: { id: InputMode; label: string; icon: typeof Upload }[] = [
+    { id: 'upload', label: 'Upload File', icon: Upload },
+    { id: 'paste', label: 'Paste Text', icon: Clipboard },
+    { id: 'describe', label: 'Describe', icon: Sparkles },
+  ];
+
   return (
     <Layout>
-      <div className="min-h-screen bg-background pb-24">
-        <div className="px-4 pt-4 pb-2 flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 rounded-full hover:bg-muted transition-colors"
-          >
+      <div className="min-h-screen bg-background pb-24" data-tour="video-studio-page">
+        <div className="px-4 pt-4 pb-2 flex items-center gap-3" data-tour="video-studio-header">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-muted transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
@@ -150,168 +176,186 @@ export default function VideoStudio() {
               </div>
               <h1 className="text-xl font-bold">Video Studio</h1>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Upload any document → generate visual slideshow video
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">Upload, paste, or describe → generate visual slideshow video</p>
           </div>
         </div>
 
-        <div className="px-4 space-y-4 mt-2">
-          {!pasteMode ? (
-            <>
-              {!source ? (
-                <div
-                  onDrop={handleDrop}
-                  onDragOver={e => { e.preventDefault(); setDragging(true); }}
-                  onDragLeave={() => setDragging(false)}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-                    dragging
-                      ? 'border-purple-400 bg-purple-500/10'
-                      : 'border-border hover:border-purple-400/60 hover:bg-muted/40'
-                  }`}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.txt,.md"
-                    className="hidden"
-                    onChange={handleFileInput}
-                  />
-                  {loading ? (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                      <p className="text-sm text-muted-foreground">Extracting text…</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-14 h-14 rounded-2xl bg-purple-500/15 flex items-center justify-center">
-                        <Upload className="w-7 h-7 text-purple-500" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-base">Drop a file or tap to upload</p>
-                        <p className="text-xs text-muted-foreground mt-1">PDF, TXT, or Markdown · any size</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 justify-center mt-1">
-                        {['Scene-by-scene slides', 'Canvas animation', 'Downloadable WebM'].map(tag => (
-                          <span key={tag} className="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-400 text-xs font-medium border border-purple-500/20">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-purple-500/15 flex items-center justify-center shrink-0">
-                      <FileText className="w-5 h-5 text-purple-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate">{source.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {source.wordCount.toLocaleString()} words · {source.type.toUpperCase()}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setSource(null)}
-                      className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="text-xs text-muted-foreground bg-muted/50 rounded-xl p-3 max-h-20 overflow-hidden line-clamp-3">
-                    {source.text.slice(0, 300)}…
-                  </div>
-                  <button
-                    onClick={openModal}
-                    className="w-full py-3 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <Film className="w-4 h-4" />
-                    Generate Video
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <p className="text-xs text-center text-muted-foreground">
-                    All 4 modes available · starts with Video mode
-                  </p>
-                </div>
-              )}
-
-              {error && (
-                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-                  <X className="w-4 h-4 shrink-0" />
-                  {error}
-                </div>
-              )}
-
-              {!source && (
-                <button
-                  onClick={() => setPasteMode(true)}
-                  className="w-full py-3 rounded-xl border border-border hover:bg-muted/50 flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors"
-                >
-                  <Clipboard className="w-4 h-4" />
-                  Or paste text directly
-                </button>
-              )}
-            </>
-          ) : (
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-sm">Paste your text</p>
-                <button onClick={() => { setPasteMode(false); setPasteText(''); }} className="p-1.5 rounded-lg hover:bg-muted">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <textarea
-                ref={pasteRef}
-                value={pasteText}
-                onChange={e => setPasteText(e.target.value)}
-                placeholder="Paste your document text here…"
-                className="w-full h-40 bg-muted/50 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setPasteMode(false); setPasteText(''); }}
-                  className="flex-1 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handlePasteConfirm}
-                  disabled={!pasteText.trim()}
-                  className="flex-1 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 disabled:opacity-40 text-white text-sm font-semibold transition-colors"
-                >
-                  Use This Text
-                </button>
-              </div>
+        <div className="px-4 space-y-3 mt-2">
+          {aiHint && (
+            <div className="rounded-xl bg-purple-500/10 border border-purple-500/20 px-4 py-2.5 text-xs text-purple-400 flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              {aiHint}
+              <button onClick={() => setAiHint(null)} className="ml-auto"><X className="w-3 h-3" /></button>
             </div>
           )}
 
+          {/* Input mode tabs */}
+          {!source && (
+            <div className="flex rounded-xl bg-muted/50 p-1 gap-1" data-tour="video-studio-input-tabs">
+              {inputTabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setInputMode(tab.id)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${inputMode === tab.id ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Upload tab */}
+          {!source && inputMode === 'upload' && (
+            <>
+              <div
+                onDrop={handleDrop}
+                onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onClick={() => fileInputRef.current?.click()}
+                data-tour="video-studio-upload"
+                className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${dragging ? 'border-purple-400 bg-purple-500/10' : 'border-border hover:border-purple-400/60 hover:bg-muted/40'}`}
+              >
+                <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden" onChange={handleFileInput} />
+                {loading ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+                    <p className="text-sm text-muted-foreground">Extracting text…</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-purple-500/15 flex items-center justify-center">
+                      <Upload className="w-7 h-7 text-purple-500" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-base">Drop a file or tap to upload</p>
+                      <p className="text-xs text-muted-foreground mt-1">PDF, TXT, or Markdown · any size</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center mt-1">
+                      {['Scene-by-scene slides', 'Canvas animation', 'Downloadable WebM'].map(tag => (
+                        <span key={tag} className="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-400 text-xs font-medium border border-purple-500/20">{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {error && (
+                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive flex items-center gap-2">
+                  <X className="w-4 h-4 shrink-0" />{error}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Paste tab */}
+          {!source && inputMode === 'paste' && (
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <p className="text-sm font-medium">Paste your text</p>
+              <textarea
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder="Paste your document, article, or notes here…"
+                className="w-full h-44 bg-muted/50 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                autoFocus
+              />
+              <button
+                onClick={handlePasteConfirm}
+                disabled={!pasteText.trim()}
+                className="w-full py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 disabled:opacity-40 text-white text-sm font-semibold transition-colors"
+              >
+                Use This Text
+              </button>
+            </div>
+          )}
+
+          {/* Describe tab */}
+          {!source && inputMode === 'describe' && (
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3" data-tour="video-studio-describe">
+              <div>
+                <p className="text-sm font-semibold">Describe your video</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Tell us what you want and Kira will create a scene-by-scene script</p>
+              </div>
+              <textarea
+                value={describeText}
+                onChange={e => setDescribeText(e.target.value)}
+                placeholder="e.g. &quot;A 5-slide video about how photosynthesis works, for middle school students&quot; or &quot;An intro video for a startup that makes eco-friendly packaging&quot;"
+                className="w-full h-36 bg-muted/50 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                autoFocus
+              />
+              {error && (
+                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive flex items-center gap-1.5">
+                  <X className="w-3.5 h-3.5 shrink-0" />{error}
+                </div>
+              )}
+              <button
+                onClick={handleDescribeEnhance}
+                disabled={!describeText.trim() || aiEnhancing}
+                className="w-full py-3 rounded-xl bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                {aiEnhancing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                {aiEnhancing ? 'Kira is writing your script…' : '✨ Generate Script with AI'}
+              </button>
+              {!isDemoMode && (
+                <button
+                  onClick={handleUseDescriptionAsIs}
+                  disabled={!describeText.trim() || aiEnhancing}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+                >
+                  Or use my description as-is (skip AI)
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Source card */}
+          {source && (
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3" data-tour="video-studio-source">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/15 flex items-center justify-center shrink-0">
+                  {source.type === 'describe' ? <Sparkles className="w-5 h-5 text-purple-500" /> : <FileText className="w-5 h-5 text-purple-500" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold truncate">{source.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {source.wordCount.toLocaleString()} words ·{' '}
+                    {source.type === 'describe' ? 'AI Generated' : source.type === 'paste' ? 'Pasted' : source.type.toUpperCase()}
+                  </p>
+                </div>
+                <button onClick={() => setSource(null)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded-xl p-3 max-h-20 overflow-hidden line-clamp-3">
+                {source.text.slice(0, 300)}…
+              </div>
+              <button
+                onClick={openModal}
+                data-tour="video-studio-generate"
+                className="w-full py-3 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <Film className="w-4 h-4" />
+                Generate Video
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <p className="text-xs text-center text-muted-foreground">All 4 modes available · starts with Video mode</p>
+            </div>
+          )}
+
+          {/* Generated items */}
           {items.length > 0 && (
             <div className="space-y-2 mt-2">
               <div className="flex items-center justify-between px-1">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                  Generated ({items.length})
-                </h2>
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Generated ({items.length})</h2>
                 <button onClick={refreshItems} className="p-1 rounded hover:bg-muted">
                   <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
               </div>
-
               {items.map(item => (
                 <div key={item.id} className="rounded-2xl border border-border bg-card overflow-hidden">
                   {expandedId === item.id ? (
                     <div className="p-1">
-                      <MediaPlayer
-                        item={item}
-                        onDelete={() => handleDelete(item.id)}
-                      />
-                      <button
-                        onClick={() => setExpandedId(null)}
-                        className="w-full py-2 text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1"
-                      >
+                      <MediaPlayer item={item} onDelete={() => handleDelete(item.id)} />
+                      <button onClick={() => setExpandedId(null)} className="w-full py-2 text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1">
                         ↑ Collapse
                       </button>
                     </div>
@@ -321,19 +365,13 @@ export default function VideoStudio() {
                       className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
                     >
                       <div className="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center shrink-0">
-                        {item.mode === 'video'
-                          ? <Play className="w-4 h-4 text-purple-500" />
-                          : <Film className="w-4 h-4 text-purple-500" />
-                        }
+                        {item.mode === 'video' ? <Play className="w-4 h-4 text-purple-500" /> : <Film className="w-4 h-4 text-purple-500" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{item.title}</p>
                         <p className="text-xs text-muted-foreground capitalize">{item.mode} · {item.wordCount} words</p>
                       </div>
-                      <button
-                        onClick={e => { e.stopPropagation(); handleDelete(item.id); }}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                      >
+                      <button onClick={e => { e.stopPropagation(); handleDelete(item.id); }} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </button>

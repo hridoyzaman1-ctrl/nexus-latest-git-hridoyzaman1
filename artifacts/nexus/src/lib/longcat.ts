@@ -195,8 +195,13 @@ Structure:
    - Note their reading patterns — how many articles they've read, which categories they prefer
    - Suggest staying informed but balancing news consumption with productive activities
    - Skip entirely if no news data
-13. **Weather Context** — If weather data is provided, weave it naturally into wellness or productivity advice (e.g., suggest outdoor walks on nice days, indoor focus on rainy days). Keep it brief — 1 sentence max.
-14. **Next Steps** — 3 specific, practical things they can do this week based on their data.
+13. **Media Generation** — Only if media generation data exists (MEDIA GENERATION DATA section provided):
+   - Note how many audio/video items they've created and which modules they're using most
+   - If they've created media from study materials, acknowledge it as excellent multi-modal learning
+   - If they use Audio Studio or Video Studio, recognize their creative use of the platform
+   - Skip entirely if no media data
+14. **Weather Context** — If weather data is provided, weave it naturally into wellness or productivity advice (e.g., suggest outdoor walks on nice days, indoor focus on rainy days). Keep it brief — 1 sentence max.
+15. **Next Steps** — 3 specific, practical things they can do this week based on their data.
 
 Rules:
 - Reference actual numbers from their data, don't make things up

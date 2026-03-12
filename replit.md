@@ -97,7 +97,7 @@ Utility scripts package. Each script is a `.ts` file in `src/` with a correspond
 
 ### `artifacts/nexus` (`@workspace/nexus`)
 
-MindFlow — a React + Vite + TypeScript PWA with 28+ lifestyle, study, and productivity modules. Runs on port 18245. Uses Tailwind CSS v3 + PostCSS. No backend required — all data is persisted locally.
+MindFlow — a React + Vite + TypeScript PWA with 30+ lifestyle, study, and productivity modules. Runs on port 18245. Uses Tailwind CSS v3 + PostCSS. No backend required — all data is persisted locally.
 
 **Local Media Generation (100% free, no backend, no API keys):**
 
@@ -105,9 +105,20 @@ MindFlow — a React + Vite + TypeScript PWA with 28+ lifestyle, study, and prod
 - `src/lib/contentMediaEngine.ts` — Script builders (summary/explainer/podcast/video), `TTSController` class (Web Speech API chunked playback with pause/resume/restart), Canvas scene renderer, `MediaRecorder` WebM video recording.
 - `src/components/MediaGenerationModal.tsx` — Bottom-sheet modal: mode picker (Summary/Explainer/Podcast/Video), page-range selector (paginated sources), voice settings, generation progress, audio playback controls, video scene browser, script preview, download buttons.
 - `src/components/MediaPlayer.tsx` — Compact/full player for saved items: TTS playback, scene animation, title editing, download, delete.
-- `src/pages/MediaLibrary.tsx` — `/media-library` route: browsable/searchable/filterable collection of all saved media items.
+- `src/pages/MediaLibrary.tsx` — `/media-library` route: browsable/searchable/filterable collection of all saved media items (data-tour attributes added).
+- `src/pages/AudioStudio.tsx` — `/audio-studio` route: Upload/Paste/Describe tabs. Describe mode uses `chatWithKira` to AI-generate a full narration script from a user description. Blue theme.
+- `src/pages/VideoStudio.tsx` — `/video-studio` route: Upload/Paste/Describe tabs. Describe mode uses `chatWithKira` to generate a scene-by-scene video script. Purple theme.
 
-**Integrated into:** Books (reader toolbar + library cards), Notes (per note), StudyPlanner (per material), PresentationGenerator (per presentation), PresentationCoach (per coaching report).
+**Integrated into:** Books (reader toolbar + library cards), Notes (per note), StudyPlanner (per material + media items shown in history panel), PresentationGenerator (per presentation), PresentationCoach (per coaching report).
+
+**Analytics integration:** `getAllMediaItems()` imported in `Analytics.tsx` — media stats appear in insights + AI report context. `ANALYTICS_SYSTEM_PROMPT` in `longcat.ts` has section 13 for Media Generation data.
+
+**Tutorial & Onboarding system:**
+- `src/lib/tutorialData.ts` — Added 'media-library', 'audio-studio', 'video-studio' tutorial sections (6 items each).
+- `src/lib/onboardingTooltips.ts` — Added 'audio-studio', 'video-studio', 'media-library' page tooltip configs. Updated 'notes' and 'books' configs to mention headphones/media button.
+- `src/pages/Onboarding.tsx` — New "Audio & Video Studio" slide added (slide 11, before "Beautiful & Private"). Module count updated to 30+.
+- `src/pages/Landing.tsx` — Module count updated to 30+. Audio Studio and Video Studio added to features array. `Headphones` and `Film` icons imported.
 
 **Data flow:** Content text → `buildScriptForMode()` → `TTSController` for audio; Canvas scenes → `MediaRecorder` → IndexedDB blob for video.
 AI: LongCat API (`api.longcat.chat`) for AI features (guarded by `isDemoMode` check).
+Describe mode: `chatWithKira()` → AI-generated script → passed to MediaGenerationModal as source text.

@@ -97,7 +97,7 @@ export default function MediaLibrary() {
     >
       <div className="px-4 pt-12 pb-28 space-y-4 max-w-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" data-tour="media-library-header">
           <button
             onClick={() => navigate(-1)}
             className="p-2 rounded-xl hover:bg-secondary transition-colors text-muted-foreground"
@@ -165,6 +165,7 @@ export default function MediaLibrary() {
             <motion.div
               initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
               className="space-y-2 overflow-hidden"
+              data-tour="media-library-filters"
             >
               <div>
                 <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wide">Mode</p>
@@ -286,7 +287,7 @@ export default function MediaLibrary() {
               {moduleItems.map(item => (
                 <div key={item.id}>
                   {expandedId === item.id ? (
-                    <div className="space-y-1">
+                    <div className="space-y-1" data-tour="media-library-player">
                       <MediaPlayer
                         item={item}
                         onDelete={id => { handleDelete(id); }}
