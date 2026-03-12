@@ -10,8 +10,7 @@ import MediaGenerationModal from '@/components/MediaGenerationModal';
 import MediaPlayer from '@/components/MediaPlayer';
 import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import { extractPdfText } from '@/lib/extractText';
-import { chatWithKira } from '@/lib/longcat';
-import { isDemoMode } from '@/hooks/useLocalStorage';
+import { chatWithStudioAI } from '@/lib/longcat';
 
 interface StudioSource {
   id: string;
@@ -107,15 +106,9 @@ export default function AudioStudio() {
   const handleDescribeEnhance = async () => {
     const desc = describeText.trim();
     if (!desc) return;
-    if (isDemoMode) {
-      setAiHint('AI enhancement not available in preview mode. Your description will be used as the content.');
-      setSource({ id: `as-${Date.now()}`, name: desc.slice(0, 50), type: 'describe', text: desc, wordCount: countWords(desc) });
-      setInputMode('upload');
-      return;
-    }
     setAiEnhancing(true); setAiHint(null); setError(null);
     try {
-      const script = await chatWithKira([
+      const script = await chatWithStudioAI([
         {
           role: 'system',
           content: `You are a professional content writer and scriptwriter. The user will give you a description of what they want to create as an audio script. Write a comprehensive, well-structured, engaging script covering the topic thoroughly. Use clear headings, flowing prose, and an educational yet conversational tone. Aim for 400-700 words. Do NOT include speaker names, stage directions, or meta-commentary — just the script content itself.`,
@@ -293,15 +286,13 @@ export default function AudioStudio() {
                 {aiEnhancing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                 {aiEnhancing ? 'Kira is writing your script…' : '✨ Generate Script with AI'}
               </button>
-              {!isDemoMode && (
-                <button
-                  onClick={handleUseDescriptionAsIs}
-                  disabled={!describeText.trim() || aiEnhancing}
-                  className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-                >
-                  Or use my description as-is (skip AI)
-                </button>
-              )}
+              <button
+                onClick={handleUseDescriptionAsIs}
+                disabled={!describeText.trim() || aiEnhancing}
+                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                Or use my description as-is (skip AI)
+              </button>
             </div>
           )}
 

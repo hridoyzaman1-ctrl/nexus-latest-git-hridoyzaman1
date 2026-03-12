@@ -10,8 +10,7 @@ import MediaGenerationModal from '@/components/MediaGenerationModal';
 import MediaPlayer from '@/components/MediaPlayer';
 import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import { extractPdfText } from '@/lib/extractText';
-import { chatWithKira } from '@/lib/longcat';
-import { isDemoMode } from '@/hooks/useLocalStorage';
+import { chatWithStudioAI } from '@/lib/longcat';
 
 interface StudioSource {
   id: string;
@@ -107,15 +106,9 @@ export default function VideoStudio() {
   const handleDescribeEnhance = async () => {
     const desc = describeText.trim();
     if (!desc) return;
-    if (isDemoMode) {
-      setAiHint('AI enhancement not available in preview mode. Your description will be used as the content.');
-      setSource({ id: `vs-${Date.now()}`, name: desc.slice(0, 50), type: 'describe', text: desc, wordCount: countWords(desc) });
-      setInputMode('upload');
-      return;
-    }
     setAiEnhancing(true); setAiHint(null); setError(null);
     try {
-      const script = await chatWithKira([
+      const script = await chatWithStudioAI([
         {
           role: 'system',
           content: `You are a professional visual content scriptwriter. The user wants to create a video slideshow. Write a structured, scene-by-scene script with clear sections and headings. Each section will become a video scene/slide. Use descriptive headings (3-6 words), followed by 2-4 sentences of content for that scene. Include an introduction and conclusion. Aim for 5-10 scenes, 400-700 words total. Do NOT include speaker names, stage directions, or meta-commentary — just the content itself.`,
@@ -295,15 +288,13 @@ export default function VideoStudio() {
                 {aiEnhancing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                 {aiEnhancing ? 'Kira is writing your script…' : '✨ Generate Script with AI'}
               </button>
-              {!isDemoMode && (
-                <button
-                  onClick={handleUseDescriptionAsIs}
-                  disabled={!describeText.trim() || aiEnhancing}
-                  className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-                >
-                  Or use my description as-is (skip AI)
-                </button>
-              )}
+              <button
+                onClick={handleUseDescriptionAsIs}
+                disabled={!describeText.trim() || aiEnhancing}
+                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                Or use my description as-is (skip AI)
+              </button>
             </div>
           )}
 
