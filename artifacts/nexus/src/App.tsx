@@ -26,6 +26,7 @@ const Todos = lazy(() => import("@/pages/Todos"));
 const TimeTracking = lazy(() => import("@/pages/TimeTracking"));
 const SettingsPage = lazy(() => import("@/pages/Settings"));
 const Reminders = lazy(() => import("@/pages/Reminders"));
+const MediaLibrary = lazy(() => import("@/pages/MediaLibrary"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const Install = lazy(() => import("@/pages/Install"));
 const NotificationHistory = lazy(() => import("@/pages/NotificationHistory"));
@@ -98,6 +99,7 @@ function AnimatedRoutes() {
             <Route path="/fitness" element={<FitnessCoach />} />
             <Route path="/news" element={<NewsPortal />} />
             <Route path="/showcase" element={<Showcase />} />
+            <Route path="/media-library" element={<MediaLibrary />} />
             <Route path="/install" element={<Install />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -2,7 +2,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { Note, NoteVersion, AlarmSoundType } from '@/types';
 import { exampleNotes } from '@/lib/examples';
-import { ArrowLeft, Plus, Trash2, X, Search, FolderOpen, Tag, History, Link2, ChevronDown, ChevronUp, Undo2, CalendarDays, Bell, Clock, StickyNote } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, X, Search, FolderOpen, Tag, History, Link2, ChevronDown, ChevronUp, Undo2, CalendarDays, Bell, Clock, StickyNote, Headphones } from 'lucide-react';
+import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,7 @@ export default function Notes() {
   const [editAlarmSound, setEditAlarmSound] = useState<AlarmSoundType>('chime');
   const [showEditSchedule, setShowEditSchedule] = useState(false);
   const [showVersions, setShowVersions] = useState<string | null>(null);
+  const [mediaModalNoteId, setMediaModalNoteId] = useState<string | null>(null);
   // Scheduling state for new notes
   const [showScheduleNew, setShowScheduleNew] = useState(false);
   const [newScheduledDate, setNewScheduledDate] = useState('');
@@ -397,6 +399,13 @@ export default function Notes() {
                     <History className="w-3.5 h-3.5" />
                   </button>
                 )}
+                <button
+                  onClick={() => setMediaModalNoteId(note.id)}
+                  className="text-muted-foreground hover:text-primary p-1 transition-colors"
+                  title="Generate Audio / Video"
+                >
+                  <Headphones className="w-3.5 h-3.5" />
+                </button>
                 <button onClick={() => deleteNote(note.id)} className="text-muted-foreground hover:text-destructive p-1"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
@@ -522,6 +531,20 @@ export default function Notes() {
           </motion.div>
         ))}
       </div>
+      {mediaModalNoteId && (() => {
+        const mediaNote = notes.find(n => n.id === mediaModalNoteId);
+        if (!mediaNote) return null;
+        return (
+          <MediaGenerationModal
+            open
+            onClose={() => setMediaModalNoteId(null)}
+            sourceModule="notes"
+            sourceId={mediaNote.id}
+            sourceName={mediaNote.title}
+            getSourceText={async (_f: number, _t: number) => mediaNote.content}
+          />
+        );
+      })()}
     </motion.div>
   );
 }

@@ -4,7 +4,8 @@ import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
 import { Book, BookBookmark } from '@/types';
 import { exampleBooks } from '@/lib/examples';
 import { saveBookFile, getBookFile, deleteBookFile, type BookFileData } from '@/lib/bookStorage';
-import { ArrowLeft, Plus, X, Trash2, Upload, BookOpen, Sun, Moon, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Pencil, Check, FileText, Bookmark, BookmarkCheck, List, MessageSquare, ZoomIn, ZoomOut, Sparkles, StickyNote, Download } from 'lucide-react';
+import { ArrowLeft, Plus, X, Trash2, Upload, BookOpen, Sun, Moon, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Pencil, Check, FileText, Bookmark, BookmarkCheck, List, MessageSquare, ZoomIn, ZoomOut, Sparkles, StickyNote, Download, Headphones } from 'lucide-react';
+import MediaGenerationModal from '@/components/MediaGenerationModal';
 import RotateIcon from '@/components/study/RotateIcon';
 import AISummarizer from '@/components/AISummarizer';
 import SavedNotesAndSummaries from '@/components/SavedNotesAndSummaries';
@@ -128,6 +129,7 @@ const bookmarkColors: Record<BookBookmark['color'], string> = {
 
 // ── Book Reader Component ──
 function BookReader({ book, onBack, onUpdate }: { book: Book; onBack: () => void; onUpdate: (b: Book) => void }) {
+  const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(book.currentPage || 1);
   const [darkMode, setDarkMode] = useState(false);
   const [brightness, setBrightness] = useState(100);
@@ -690,6 +692,28 @@ function BookReader({ book, onBack, onUpdate }: { book: Book; onBack: () => void
         />
       </div>
 
+      {/* Media generation button in reader */}
+      <div className="px-3 py-1 shrink-0">
+        <button
+          onClick={() => setMediaModalOpen(true)}
+          className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-primary transition-colors px-2.5 py-1.5 rounded-xl hover:bg-primary/10 w-full justify-center border border-dashed border-border/40"
+        >
+          <Headphones className="w-3.5 h-3.5" />
+          Generate Audio / Video
+        </button>
+      </div>
+      {mediaModalOpen && (
+        <MediaGenerationModal
+          open
+          onClose={() => setMediaModalOpen(false)}
+          sourceModule="books"
+          sourceId={book.id}
+          sourceName={book.title}
+          getSourceText={makeBookPageTextFn(book.id, book.fileType, book.pdfUrl)}
+          totalPages={effectiveTotal}
+        />
+      )}
+
       {/* Controls footer */}
       <AnimatePresence>
         {showFooter && (
@@ -792,6 +816,7 @@ export default function Books() {
   const [books, setBooks] = useLocalStorage<Book[]>('books', hasInit ? [] : exampleBooks);
   const [, setInit] = useLocalStorage('books_init', true);
   const [readingBookId, setReadingBookId] = useState<string | null>(null);
+  const [mediaModalBookId, setMediaModalBookId] = useState<string | null>(null);
 
   // Read saved notes from localStorage for card-view display
   const [bookNotes, setBookNotes] = useState<{ id: string; materialId: string; title: string; content: string; updatedAt: string }[]>(() => {
@@ -1015,6 +1040,13 @@ export default function Books() {
                     totalPages={book.totalPages}
                   />
                 )}
+                <button
+                  onClick={() => setMediaModalBookId(book.id)}
+                  className="text-muted-foreground hover:text-primary transition-colors p-1 rounded-lg"
+                  title="Generate Audio / Video"
+                >
+                  <Headphones className="w-4 h-4" />
+                </button>
                 {(book.fileType || book.pdfUrl) && (
                   <button onClick={() => setReadingBookId(book.id)} className="text-muted-foreground hover:text-primary transition-colors" title="Read">
                     <BookOpen className="w-4 h-4" />
@@ -1053,6 +1085,21 @@ export default function Books() {
           </motion.div>
         ))}
       </div>
+      {mediaModalBookId && (() => {
+        const mb = books.find(b => b.id === mediaModalBookId);
+        if (!mb) return null;
+        return (
+          <MediaGenerationModal
+            open
+            onClose={() => setMediaModalBookId(null)}
+            sourceModule="books"
+            sourceId={mb.id}
+            sourceName={mb.title}
+            getSourceText={makeBookPageTextFn(mb.id, mb.fileType, mb.pdfUrl)}
+            totalPages={mb.totalPages}
+          />
+        );
+      })()}
     </motion.div>
   );
 }

@@ -4,11 +4,12 @@ import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
 import { StudySession, StudyMaterial, StudyNote, StudyTimeLog, StudyHighlight, AlarmSoundType, QuizResult } from '@/types';
 import { exampleStudySessions } from '@/lib/examples';
 import { saveStudyFile, deleteStudyFile, type StudyFileData } from '@/lib/studyStorage';
-import { ArrowLeft, Plus, X, CheckCircle2, Circle, CalendarDays, Bell, Clock, Upload, BookOpen, FileText, Video, Trash2, ChevronDown, ChevronUp, Play, Pause, RotateCcw, StickyNote, Timer, BarChart2, LayoutDashboard, Brain, Sparkles, Download, Presentation, Eye } from 'lucide-react';
+import { ArrowLeft, Plus, X, CheckCircle2, Circle, CalendarDays, Bell, Clock, Upload, BookOpen, FileText, Video, Trash2, ChevronDown, ChevronUp, Play, Pause, RotateCcw, StickyNote, Timer, BarChart2, LayoutDashboard, Brain, Sparkles, Download, Presentation, Eye, Headphones } from 'lucide-react';
 import { getLinksForSession, removeStudyPresentationLink, removeLinksForSession, getPresentation as getPresentationById } from '@/lib/presentationStorage';
 import { generatePptx, downloadPptx } from '@/lib/pptxGenerator';
 import { getTheme } from '@/lib/presentationThemes';
 import AISummarizer from '@/components/AISummarizer';
+import MediaGenerationModal from '@/components/MediaGenerationModal';
 import SavedNotesAndSummaries from '@/components/SavedNotesAndSummaries';
 import { makeStudyPageTextFn } from '@/lib/extractText';
 import { useNavigate } from 'react-router-dom';
@@ -231,6 +232,7 @@ export default function StudyPlanner() {
   const [showEditSchedule, setShowEditSchedule] = useState(false);
   const [readingMaterial, setReadingMaterial] = useState<StudyMaterial | null>(null);
   const [viewingVideo, setViewingVideo] = useState<StudyMaterial | null>(null);
+  const [mediaModalMatId, setMediaModalMatId] = useState<string | null>(null);
   const [showTimerForSession, setShowTimerForSession] = useState<string | null>(null);
   const [miniTimerVisible, setMiniTimerVisible] = useState(true);
   const [showDashboard, setShowDashboard] = useState(false);
@@ -1145,6 +1147,15 @@ export default function StudyPlanner() {
                                         totalPages={mat.totalPages}
                                       />
                                     )}
+                                    {!isVideo && (
+                                      <button
+                                        onClick={() => setMediaModalMatId(mat.id)}
+                                        className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-primary transition-colors px-2.5 py-1.5 rounded-xl hover:bg-primary/10 w-full justify-center border border-dashed border-border/30 mt-1.5"
+                                      >
+                                        <Headphones className="w-3.5 h-3.5" />
+                                        Generate Audio / Video
+                                      </button>
+                                    )}
                                     <SavedNotesAndSummaries
                                       documentId={mat.id}
                                       notes={studyNotes.filter(n => n.materialId === mat.id).map(n => ({ id: n.id, title: n.title, content: n.content, updatedAt: n.updatedAt }))}
@@ -1272,6 +1283,21 @@ export default function StudyPlanner() {
       <div data-tour="study-buddy-fab" className="contents">
         <KiraStudyBuddy />
       </div>
+      {mediaModalMatId && (() => {
+        const mm = materials.find(m => m.id === mediaModalMatId);
+        if (!mm) return null;
+        return (
+          <MediaGenerationModal
+            open
+            onClose={() => setMediaModalMatId(null)}
+            sourceModule="study"
+            sourceId={mm.id}
+            sourceName={mm.name}
+            getSourceText={makeStudyPageTextFn(mm.id, mm.fileType)}
+            totalPages={mm.totalPages || 0}
+          />
+        );
+      })()}
     </motion.div>
   );
 }

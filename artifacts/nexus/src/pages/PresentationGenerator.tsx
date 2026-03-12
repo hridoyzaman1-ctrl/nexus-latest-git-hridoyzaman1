@@ -8,8 +8,9 @@ import {
   CheckCircle2, Loader2, Presentation, ImagePlus, X, Move, Maximize2,
   MessageSquare, BarChart3, Clock, RefreshCw,
   ChevronDown, ChevronUp, AlertTriangle, Type, Bold, Italic, AlignLeft, AlignCenter, AlignRight,
-  BookOpen, Play
+  BookOpen, Play, Headphones
 } from 'lucide-react';
+import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { Button } from '@/components/ui/button';
 import PresentationViewer from '@/components/PresentationViewer';
 import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
@@ -189,6 +190,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [presentingSlideIdx, setPresentingSlideIdx] = useState(0);
   const [presenterScale, setPresenterScale] = useState(1);
   const [studyPlannerTargetId, setStudyPlannerTargetId] = useState<string | null>(null);
+  const [mediaModalPresId, setMediaModalPresId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const getStudySessions = (): StudySession[] => {
@@ -943,6 +945,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                       <Button size="sm" variant="ghost" className="rounded-lg text-xs h-8 w-8 p-0 flex-shrink-0" data-testid={`button-add-study-${pres.id}`}
                         onClick={() => handleAddToStudyPlanner(pres.id)} title="Add to Study Planner">
                         <BookOpen className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="rounded-lg text-xs h-8 w-8 p-0 flex-shrink-0"
+                        onClick={() => setMediaModalPresId(pres.id)} title="Generate Audio / Video">
+                        <Headphones className="w-3.5 h-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" className="rounded-lg text-xs h-8 w-8 p-0 flex-shrink-0" data-testid={`button-duplicate-${pres.id}`}
                         onClick={() => handleDuplicate(pres.id)}>
@@ -2263,6 +2269,22 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       </AnimatePresence>
       {renderStudyPlannerModal()}
       {renderPresentationMode()}
+      {mediaModalPresId && (() => {
+        const mp = presentations.find(p => p.id === mediaModalPresId);
+        if (!mp) return null;
+        const slideText = mp.slides.map((s, i) => `Slide ${i + 1}: ${s.title || ''}. ${s.subtitle || ''} ${s.body || ''} ${(s.bullets || []).join('. ')} ${s.speakerNotes || ''}`).join('\n\n');
+        return (
+          <MediaGenerationModal
+            open
+            onClose={() => setMediaModalPresId(null)}
+            sourceModule="presentations"
+            sourceId={mp.id}
+            sourceName={mp.settings.title || 'Presentation'}
+            getSourceText={async (_f: number, _t: number) => slideText}
+            totalPages={mp.slides.length}
+          />
+        );
+      })()}
     </>
   );
 }

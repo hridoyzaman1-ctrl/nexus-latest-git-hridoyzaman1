@@ -11,8 +11,9 @@ import {
   Eye, EyeOff, FileText, HelpCircle, RotateCcw, Loader2,
   Video, Volume2, Hand, User, Timer, Award, TrendingUp,
   MessageSquare, SplitSquareHorizontal, ChevronDown, ChevronUp,
-  Pause as PauseIcon, X, Printer,
+  Pause as PauseIcon, X, Printer, Headphones,
 } from 'lucide-react';
+import MediaGenerationModal from '@/components/MediaGenerationModal';
 import type {
   CoachView, CoachSessionConfig, CoachReport, SessionType, CoachingCard,
   VisionMetrics, AudioMetrics, TrendDataPoint, TimelineMarker, SectionScore,
@@ -46,6 +47,8 @@ export default function PresentationCoach() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [view, setView] = useState<CoachView>('home');
+  const [mediaModalScript, setMediaModalScript] = useState<string | null>(null);
+  const [mediaModalTitle, setMediaModalTitle] = useState('');
 
   const [sessionType, setSessionType] = useState<SessionType>('presentation');
   const [sessionTitle, setSessionTitle] = useState('');
@@ -945,6 +948,11 @@ export default function PresentationCoach() {
           <Button size="sm" variant="secondary" className="rounded-lg text-[10px] h-7 flex-shrink-0" onClick={() => handlePrintReport(r)} data-testid="button-print-report">
             <Printer className="w-3 h-3 mr-1" /> Print
           </Button>
+          <Button size="sm" variant="secondary" className="rounded-lg text-[10px] h-7 flex-shrink-0"
+            onClick={() => { setMediaModalScript(r.summary || r.script || `Coaching report for ${r.title}. Score: ${r.overallScore}/100. Duration: ${Math.round(r.duration / 60)} minutes.`); setMediaModalTitle(r.title); }}
+          >
+            <Headphones className="w-3 h-3 mr-1" /> Audio
+          </Button>
           <Button size="sm" variant="ghost" className="rounded-lg text-[10px] h-7 flex-shrink-0 text-destructive" onClick={() => { deleteCoachReport(r.id); refreshReports(); setCurrentReport(null); setView('home'); }} data-testid="button-delete-report">
             <Trash2 className="w-3 h-3 mr-1" /> Delete
           </Button>
@@ -1118,6 +1126,16 @@ export default function PresentationCoach() {
         {!sessionActive && view === 'report' && <motion.div key="report">{renderReport()}</motion.div>}
         {!sessionActive && view === 'history' && <motion.div key="history">{renderHistory()}</motion.div>}
       </AnimatePresence>
+      {mediaModalScript && (
+        <MediaGenerationModal
+          open
+          onClose={() => setMediaModalScript(null)}
+          sourceModule="coach"
+          sourceId={`coach_${Date.now()}`}
+          sourceName={mediaModalTitle || 'Coaching Report'}
+          getSourceText={async (_f: number, _t: number) => mediaModalScript ?? ''}
+        />
+      )}
     </>
   );
 }
