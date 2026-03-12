@@ -2,6 +2,7 @@
 const LONGCAT_API_URL = 'https://api.longcat.chat/openai/v1/chat/completions';
 const LONGCAT_API_KEY = import.meta.env.VITE_LONGCAT_API_KEY || '';
 const KIRA_API_KEY = import.meta.env.VITE_KIRA_API_KEY || '';
+const STUDIO_API_KEY = import.meta.env.VITE_STUDIO_API_KEY || '';
 const MODEL = 'LongCat-Flash-Chat';
 
 export interface LongCatMessage {
@@ -109,6 +110,62 @@ export async function chatWithKira(
   }
 
   throw new Error('Failed after retries');
+}
+
+// Dedicated function for Audio Studio & Video Studio AI script generation
+// Uses VITE_STUDIO_API_KEY — separate from general Kira/LongCat keys
+export async function chatWithStudioAI(
+  messages: LongCatMessage[],
+  options?: { maxTokens?: number; temperature?: number }
+): Promise<string> {
+  const apiKey = STUDIO_API_KEY;
+  if (!apiKey) throw new Error('Studio API key not configured. Please set VITE_STUDIO_API_KEY.');
+
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
+      const res = await fetch(LONGCAT_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages,
+          max_tokens: options?.maxTokens ?? 1200,
+          temperature: options?.temperature ?? 0.72,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => 'Unknown error');
+        if (attempt < maxRetries && (res.status >= 500 || res.status === 429)) {
+          await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`Studio AI error ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content?.trim();
+      if (!content) throw new Error('Empty response from Studio AI');
+      return content;
+    } catch (err) {
+      if (attempt < maxRetries && (err instanceof DOMException || (err as Error).name === 'AbortError')) {
+        await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('Studio AI failed after retries');
 }
 
 // Kira system prompt

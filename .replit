@@ -24,3 +24,8 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+VITE_STUDIO_API_KEY = "ak_2oZ2bd34l6am0B97Rd65t1lc4xb4F"
