@@ -1,0 +1,523 @@
+```text
+You are modifying an already-built mobile-first PWA called MindFlow. The app already has offline/local-first behavior, multiple study and productivity modules, document import features, presentation features, and persistent local user data. Your job is to add fully local audio/video generation features without breaking anything that already works.
+
+IMPORTANT:
+- Do NOT use any paid API
+- Do NOT use any backend
+- Do NOT require cloud functions
+- Do NOT require billing
+- Do NOT replace existing working logic unless absolutely necessary
+- Do NOT refactor unrelated modules
+- Do NOT break current local storage / persistence behavior
+- Do NOT change the app’s design language except where needed to add these new features cleanly
+- Everything must work locally in-browser / in-app for mobile first, and also desktop
+- All generated files must be persistently saved per user locally, viewable later, playable later, and downloadable
+
+APP CONTEXT
+This app already contains modules such as:
+- Books
+- Study Planner / LMS
+- Presentations
+- Presentation Coach
+- Notes
+- Kira Chat / AI buddy
+- Analytics / Reports
+- Wellness / OCD tools
+- News
+- Nutrition
+- Fitness
+and other modules.
+
+GOAL
+Add these new capabilities:
+1) Audio Summary
+2) Audio Explainer
+3) Podcast Mode
+4) Video Summary
+5) Video Explainer
+
+These must work both:
+A) as separate reusable media-generation actions where relevant
+B) integrated inside existing modules/features where content already exists and these features make sense
+
+PRIMARY TARGET MODULES FOR INTEGRATION
+Highest priority integration:
+- Books
+- Study Planner / LMS
+- Presentations
+- Presentation Coach
+- Notes
+
+Secondary short-form only integration where suitable:
+- Kira Chat / AI buddy
+- Analytics / Reports
+- Wellness modules
+- News module
+- Nutrition module
+- Fitness module
+
+FINAL TECH STACK TO USE
+Use only these free/local technologies unless the project already contains equivalent free local tooling:
+- PDF.js for PDF parsing/extraction
+- Existing EPUB/TXT reading/parsing logic if already present
+- DOCX parsing with a fully local browser-compatible library
+- PPTX parsing with a fully local browser-compatible library
+- Web Speech API (speechSynthesis / SpeechSynthesisUtterance) for local text-to-speech playback
+- MediaRecorder for local browser recording
+- ffmpeg.wasm only if necessary for local muxing/export/post-processing
+- IndexedDB or the app’s current local persistence layer for generated media storage
+- localForage only if it cleanly fits existing persistence patterns
+
+DO NOT add:
+- OpenAI API
+- ElevenLabs
+- Gemini paid/cloud generation
+- server-side TTS
+- cloud video generation
+- any backend upload flow
+- any paid speech/video/document service
+
+ARCHITECTURE REQUIREMENTS
+
+1) CREATE ONE SHARED ENGINE
+Create one reusable internal engine/module/service/hook for all new media generation features. Name it something clear like:
+- contentToMediaEngine
+or
+- contentMediaGenerationService
+
+This engine must:
+- accept extracted text or existing module text
+- normalize/clean content
+- generate structured output for:
+  - summary script
+  - explainer script
+  - podcast script
+  - scene list for video
+  - subtitle/caption lines
+- expose audio generation/playback helpers
+- expose video composition/export helpers
+- expose persistence helpers for saving metadata + blobs locally
+
+All modules must use this same shared engine. Do not duplicate logic module-by-module.
+
+2) REUSE EXISTING CONTENT FLOWS
+Do not duplicate content storage.
+Reuse existing text/materials already managed by:
+- Books
+- Study Planner / LMS
+- Presentations
+- Presentation Coach
+- Notes
+- other text-capable modules
+
+3) KEEP NEW FEATURES ADDITIVE
+The new features must be layered onto existing modules as new actions/buttons/flows, not as destructive rewrites.
+
+FEATURES TO ADD
+
+A) AUDIO SUMMARY
+Generate a concise spoken summary from:
+- PDFs
+- EPUBs
+- TXT
+- DOCX
+- PPTX
+- notes
+- existing lesson/study/presentation text
+
+Use Web Speech API.
+Support:
+- play
+- pause
+- resume
+- stop
+- restart
+- progress UI
+- sentence/chunk queueing for long text
+- language/voice selection
+- graceful fallback when a voice is unavailable
+
+B) AUDIO EXPLAINER
+Generate a more detailed spoken explanation from source content.
+Use the same engine and same TTS architecture.
+Should sound more instructional than summary mode.
+
+C) PODCAST MODE
+Generate a more natural long-form spoken script with structure:
+- intro
+- topic overview
+- key points
+- examples
+- recap
+
+This is still local TTS, not voice cloning.
+No paid voice tools.
+
+D) VIDEO SUMMARY / VIDEO EXPLAINER
+Generate short templated videos locally from source content.
+Do NOT attempt cinematic AI text-to-video.
+Use a clean scene-based explainer format.
+
+Scene templates should include:
+- title card
+- key point slide
+- definition card
+- quote card
+- example card
+- recap card
+
+Videos should use the app’s existing design system:
+- dark UI style
+- same rounded card feel
+- same accent logic
+- same typography feel
+- same mobile-first layout principles
+
+Add:
+- subtitle/caption support
+- narration audio
+- local export
+- local persistence
+- in-app playback
+
+Use MediaRecorder for scene capture.
+Use ffmpeg.wasm only if truly needed for combining streams/export cleanup.
+
+DOCUMENT / CONTENT EXTRACTION
+Implement/extend content extraction for:
+- PDF
+- EPUB
+- TXT
+- DOCX
+- PPTX
+- existing notes text
+- existing study material text
+- existing presentation text / notes
+- script text from Presentation Coach
+
+Normalize extracted content:
+- remove repeated headers/footers where possible
+- clean broken line wraps
+- preserve page/slide references when possible
+- split into paragraphs/sections
+- keep extraction asynchronous and non-blocking
+
+INTEGRATION REQUIREMENTS BY MODULE
+
+1) BOOKS MODULE
+Add actions near the current AI summarizer area:
+- Listen
+- Explainer
+- Podcast
+- Video
+
+Books must support generation from imported reading material.
+Do NOT allow entire large books to be generated at once.
+Require page range selection before generation.
+Persist generated media per book.
+
+2) STUDY PLANNER / LMS
+Add media actions for imported materials and study items:
+- Audio Summary
+- Audio Explainer
+- Podcast
+- Video Explainer
+
+Allow generation from:
+- imported docs/slides/notes
+- lesson text
+- selected material text
+
+Persist generated media linked to the study item/material.
+
+3) PRESENTATIONS
+Add options to:
+- generate audio summary from deck text/notes
+- generate explainer audio from slides
+- generate podcast from slide/topic content
+- generate short video explainer from selected slides/notes
+
+Persist generated media linked to that presentation.
+
+4) PRESENTATION COACH
+Add:
+- export rehearsal audio
+- generate spoken practice summary
+- generate short recap/explainer audio
+- optional short video recap from the practice script/topic
+
+This module is coaching-oriented, so keep outputs shorter.
+
+5) NOTES
+Add:
+- Listen
+- Explainer
+- Podcast
+- Video
+
+Allow direct generation from note content.
+
+6) SECONDARY MODULES
+For Kira Chat, analytics, wellness, news, nutrition, fitness and similar modules:
+- support only short-form media generation where content exists
+- prioritize short summaries and short recap videos
+- do NOT generate long podcasts by default here
+
+LOCAL PERSISTENCE REQUIREMENTS
+Generated files must:
+- be saved locally per user
+- persist across refreshes and app restarts
+- be playable/viewable later
+- be downloadable later
+- be deletable by the user
+- include metadata such as:
+  - id
+  - title
+  - source module
+  - source item id
+  - mode (summary/explainer/podcast/video)
+  - duration
+  - createdAt
+  - language
+  - file size
+  - blob/storage key
+
+Add a lightweight media library view or equivalent storage access point so users can manage generated media.
+
+STRICT PERFORMANCE + LIMIT RULES
+The app is mobile-first and local-only, so enforce strict generation limits to prevent freezing, excessive processing, oversized blobs, and poor UX.
+
+Implement both:
+1) input limits
+2) output limits
+
+NEVER allow full-book or huge-document generation automatically.
+
+REQUIRED RANGE / SELECTION RULE
+For uploaded documents and slide decks, users must generate from:
+- selected page range
+- selected slides
+- selected section/chapter
+- highlighted text
+- current lesson/material only
+
+Do NOT allow:
+- generating an entire 200/300/400/500+ page book
+- full large ebook generation
+- full oversized presentation generation
+- unbounded long podcast/video generation
+
+DEFAULT SAFE MOBILE LIMITS TO ENFORCE
+These are the starting default limits for proper functionality:
+
+GLOBAL DEFAULTS
+- documents: max 10 pages per generation
+- slides: max 8 slides per generation
+- notes/text: max 4,000 words per generation
+- audio output: max 6 minutes
+- video output: max 3 minutes
+
+ABSOLUTE HARD STOPS
+These are hard caps the system must never exceed:
+- PDF/DOCX: max 30 pages per generation request
+- PPTX/slides: max 20 slides per generation request
+- plain text/notes: max 15,000 words per request
+- audio output: max 10 minutes
+- video output: max 4 minutes
+- saved generated file size: max 50 MB per file
+
+MODULE-SPECIFIC LIMITS
+
+BOOKS MODULE
+Because books can be very large, enforce page-range selection and strict limits.
+
+Audio Summary:
+- max 20 pages processed
+- max 12,000 words extracted
+- max final audio length 4 minutes
+
+Audio Explainer:
+- max 15 pages processed
+- max 9,000 words
+- max final audio length 6 minutes
+
+Podcast:
+- max 12 pages processed
+- max 7,500 words
+- max final audio length 8 minutes
+
+Video Summary / Explainer:
+- max 8 pages processed
+- max 4,500 words
+- max final video length 3 minutes
+
+Hard generation file cap for Books:
+- 25 MB max source file size for media generation
+Users may still read larger books if the app already supports that, but media generation must require selected page ranges.
+
+STUDY PLANNER / LMS
+Audio Summary:
+- max 25 pages or slides
+- max 15,000 words
+- max final audio 5 minutes
+
+Audio Explainer:
+- max 20 pages or slides
+- max 10,000 words
+- max final audio 7 minutes
+
+Podcast:
+- max 15 pages or slides
+- max 8,000 words
+- max final audio 10 minutes
+
+Video Explainer:
+- max 10 pages or slides
+- max 5,000 words
+- max final video 4 minutes
+
+If source is typed notes instead of file:
+- audio summary max 8,000 words
+- podcast max 5,000 words
+- video max 3,500 words
+
+Hard source file cap:
+- 20 MB per DOCX/PDF/PPTX generation request
+
+PRESENTATIONS MODULE
+Audio Summary:
+- max 20 slides
+- max 6,000 total words
+- max final audio 4 minutes
+
+Audio Explainer:
+- max 15 slides
+- max 5,000 words
+- max final audio 6 minutes
+
+Podcast:
+- max 12 slides
+- max 4,000 words
+- max final audio 8 minutes
+
+Video Explainer:
+- max 10 slides
+- max 3,000 words
+- max final video 3 minutes
+
+If deck exceeds the video-friendly limit:
+- prompt user to select slides
+- or offer condensed output mode
+
+PRESENTATION COACH
+- max script/input text 3,000 words
+- max rehearsal audio export 10 minutes
+- max video practice export 5 minutes
+
+NOTES MODULE
+Audio Summary:
+- max 6,000 words
+- max audio 4 minutes
+
+Audio Explainer:
+- max 5,000 words
+- max audio 6 minutes
+
+Podcast:
+- max 4,000 words
+- max audio 8 minutes
+
+Video Explainer:
+- max 2,500 words
+- max video 3 minutes
+
+KIRA CHAT / AI BUDDY / CONVERSATION-STYLE MODULES
+- generate only from current topic/conversation slice
+- max 2,500 words source text
+- max audio 3 minutes
+- no long podcast mode initially
+- only short recap-style video
+
+ANALYTICS / WELLNESS / NEWS / NUTRITION / FITNESS / SIMILAR MODULES
+Short media only:
+- max 2,000 to 3,000 words source text
+- audio summary 2 to 3 minutes
+- video recap 60 to 90 seconds
+- do not enable long podcast mode by default
+
+PERFORMANCE BEHAVIOR RULES
+Implement:
+- chunking for all long text processing
+- async processing with loading/progress states
+- non-blocking UI
+- graceful cancellation
+- fallback from video to audio-only on weak devices or failed export
+- clear user error messages when limits are exceeded
+- local cleanup for oversized blobs
+- optional warning when storage usage is getting high
+
+VIDEO STORAGE SAFETY
+Because video blobs are heavy:
+- compress reasonably
+- cap saved video count per source item if needed
+- warn users when local media storage becomes large
+
+UI / UX REQUIREMENTS
+The app is mobile-first.
+All new controls must be touch-friendly and visually consistent.
+
+Add:
+- simple action buttons on relevant content cards/pages
+- modal or bottom-sheet flow for choosing:
+  - summary / explainer / podcast / video
+  - page range / slides / selection
+  - language / voice
+  - short mode vs detailed mode
+- progress indicator during generation
+- success state with:
+  - Play/View
+  - Save
+  - Download
+  - Go to media library
+
+Do not redesign unrelated app screens.
+
+ERROR PREVENTION REQUIREMENTS
+- Do not allow generation requests above limits
+- Validate page counts, slide counts, words, duration estimates, and file sizes before processing
+- If content is too large, require the user to narrow scope
+- If browser/device voice is unavailable, show a clear fallback message
+- If video generation fails, offer audio-only generation from the same prepared script
+- Ensure all generated media and metadata survive refresh/app restart if saved
+
+TESTING REQUIREMENTS
+After implementation, verify:
+- all existing modules still work
+- local persistence still works
+- Books import/read flow still works
+- Study Planner material import still works
+- Presentations still create and save decks
+- Presentation Coach still works
+- new media actions appear only where relevant
+- generation limits are enforced correctly
+- media playback works
+- saved media reloads correctly from local storage
+- downloads work
+- no console errors
+- no broken routing/state
+- no paid services or backend dependencies introduced
+
+DELIVERABLE FORMAT
+Provide:
+1) exact code changes
+2) all new files created
+3) all existing files modified
+4) exact integration points by module
+5) storage schema for generated media
+6) limit enforcement logic
+7) setup/install instructions for any added free libraries
+8) a short summary of what was implemented and why
+
+IMPORTANT FINAL RULE
+Implement fully. Do not leave pseudo-code. Do not leave TODO placeholders. Do not silently ignore any of the limit rules or persistence requirements.
+```
