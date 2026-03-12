@@ -308,15 +308,30 @@ export default function MediaGenerationModal({
       rate,
       pitch,
       lang: selectedVoice?.lang ?? 'en-US',
-      onChunkStart: (idx, total) => { setTtsChunk(idx + 1); setTtsTotalChunks(total); },
-      onEnd: () => { setPlaying(false); setPaused(false); setTtsChunk(0); setTtsTotalChunks(0); },
+      onChunkStart: (idx, total) => {
+        setTtsChunk(idx + 1);
+        setTtsTotalChunks(total);
+        // Sync video scene to narration position
+        if (mode === 'video' && scenes.length > 0) {
+          const ratio = total > 1 ? idx / (total - 1) : 0;
+          const sceneIdx = Math.min(Math.floor(ratio * scenes.length), scenes.length - 1);
+          setCurrentScene(sceneIdx);
+        }
+      },
+      onEnd: () => {
+        setPlaying(false);
+        setPaused(false);
+        setTtsChunk(0);
+        setTtsTotalChunks(0);
+        if (mode === 'video' && scenes.length > 0) setCurrentScene(scenes.length - 1);
+      },
       onError: (msg) => { toast.error(msg); setPlaying(false); },
     });
     ttsRef.current = ctrl;
     ctrl.start(script);
     setPlaying(true);
     setPaused(false);
-  }, [script, paused, selectedVoice, rate, pitch]);
+  }, [script, paused, selectedVoice, rate, pitch, mode, scenes]);
 
   const handlePause = useCallback(() => {
     ttsRef.current?.pause();

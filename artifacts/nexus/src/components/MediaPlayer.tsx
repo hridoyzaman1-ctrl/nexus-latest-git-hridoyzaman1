@@ -44,12 +44,11 @@ export default function MediaPlayer({ item, onDelete, compact = false }: MediaPl
 
   const [currentScene, setCurrentScene] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const Icon = MODE_ICONS[item.mode];
   const color = MODE_COLORS[item.mode];
 
-  // Draw video scene when currentScene changes
+  // Draw scene whenever currentScene changes
   useEffect(() => {
     if (item.mode === 'video' && item.scenes && canvasRef.current) {
       const scene = item.scenes[currentScene];
@@ -57,17 +56,26 @@ export default function MediaPlayer({ item, onDelete, compact = false }: MediaPl
     }
   }, [currentScene, item.mode, item.scenes]);
 
+  // Map TTS chunk progress → scene index so visuals stay locked to the narration
+  const syncSceneToChunk = (chunkIdx: number, totalChunks: number) => {
+    if (!item.scenes || item.scenes.length === 0) return;
+    const ratio = totalChunks > 1 ? chunkIdx / (totalChunks - 1) : 0;
+    const sceneIdx = Math.min(
+      Math.floor(ratio * item.scenes.length),
+      item.scenes.length - 1
+    );
+    setCurrentScene(sceneIdx);
+  };
+
   const handlePlay = () => {
     if (paused && ttsRef.current) {
       ttsRef.current.resume();
       setPlaying(true);
       setPaused(false);
-      resumeSceneAdvance();
       return;
     }
 
     ttsRef.current?.stop();
-    clearSceneTimer();
 
     const voices = getAvailableVoices();
     const voice = voices.find(v => v.name === item.voiceName || v.voiceURI === item.voiceName)
@@ -79,28 +87,35 @@ export default function MediaPlayer({ item, onDelete, compact = false }: MediaPl
       rate: item.voiceRate ?? 1,
       pitch: item.voicePitch ?? 1,
       lang: item.language ?? 'en-US',
-      onChunkStart: (idx, total) => { setChunk(idx + 1); setTotalChunks(total); },
-      onEnd: () => { setPlaying(false); setPaused(false); setChunk(0); clearSceneTimer(); },
-      onError: (msg) => { toast.error(msg); setPlaying(false); clearSceneTimer(); },
+      onChunkStart: (idx, total) => {
+        setChunk(idx + 1);
+        setTotalChunks(total);
+        // Advance video scene in sync with narration progress
+        if (item.mode === 'video') syncSceneToChunk(idx, total);
+      },
+      onEnd: () => {
+        setPlaying(false);
+        setPaused(false);
+        setChunk(0);
+        // Show last scene when done
+        if (item.mode === 'video' && item.scenes) {
+          setCurrentScene(item.scenes.length - 1);
+        }
+      },
+      onError: (msg) => { toast.error(msg); setPlaying(false); },
     });
     ttsRef.current = ctrl;
     ctrl.start(item.script);
     setPlaying(true);
     setPaused(false);
     setChunk(0);
-
-    // Advance scenes for video mode
-    if (item.mode === 'video' && item.scenes && item.scenes.length > 0) {
-      setCurrentScene(0);
-      startSceneAdvance();
-    }
+    if (item.mode === 'video') setCurrentScene(0);
   };
 
   const handlePause = () => {
     ttsRef.current?.pause();
     setPlaying(false);
     setPaused(true);
-    clearSceneTimer();
   };
 
   const handleStop = () => {
@@ -109,38 +124,10 @@ export default function MediaPlayer({ item, onDelete, compact = false }: MediaPl
     setPaused(false);
     setChunk(0);
     setCurrentScene(0);
-    clearSceneTimer();
-  };
-
-  const startSceneAdvance = () => {
-    if (!item.scenes || item.scenes.length === 0) return;
-    let idx = 0;
-    const advance = () => {
-      idx = (idx + 1) % item.scenes!.length;
-      setCurrentScene(idx);
-    };
-    const totalDur = item.scenes.reduce((acc, s) => acc + s.duration, 0) * 1000;
-    const avgInterval = totalDur / item.scenes.length;
-    sceneTimerRef.current = setInterval(advance, Math.max(3000, avgInterval));
-  };
-
-  const resumeSceneAdvance = () => {
-    if (item.mode === 'video' && item.scenes && item.scenes.length > 0) {
-      clearSceneTimer();
-      startSceneAdvance();
-    }
-  };
-
-  const clearSceneTimer = () => {
-    if (sceneTimerRef.current) {
-      clearInterval(sceneTimerRef.current);
-      sceneTimerRef.current = null;
-    }
   };
 
   useEffect(() => () => {
     ttsRef.current?.stop();
-    clearSceneTimer();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveTitle = () => {
