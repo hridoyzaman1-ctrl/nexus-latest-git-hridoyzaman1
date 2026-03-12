@@ -416,9 +416,12 @@ export class TTSController {
   resume() {
     this.paused = false;
     window.speechSynthesis.resume();
-    if (!window.speechSynthesis.speaking) {
-      this.speakNext();
-    }
+    // Some browsers lose the paused utterance — fall back to re-speaking current chunk
+    setTimeout(() => {
+      if (!this.paused && !this.cancelled && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+        this.speakNext();
+      }
+    }, 250);
   }
 
   stop() {

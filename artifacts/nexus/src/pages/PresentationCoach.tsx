@@ -49,6 +49,7 @@ export default function PresentationCoach() {
   const [view, setView] = useState<CoachView>('home');
   const [mediaModalScript, setMediaModalScript] = useState<string | null>(null);
   const [mediaModalTitle, setMediaModalTitle] = useState('');
+  const [mediaModalSourceId, setMediaModalSourceId] = useState('');
 
   const [sessionType, setSessionType] = useState<SessionType>('presentation');
   const [sessionTitle, setSessionTitle] = useState('');
@@ -949,7 +950,11 @@ export default function PresentationCoach() {
             <Printer className="w-3 h-3 mr-1" /> Print
           </Button>
           <Button size="sm" variant="secondary" className="rounded-lg text-[10px] h-7 flex-shrink-0"
-            onClick={() => { setMediaModalScript(r.summary || r.script || `Coaching report for ${r.title}. Score: ${r.overallScore}/100. Duration: ${Math.round(r.duration / 60)} minutes.`); setMediaModalTitle(r.title); }}
+            onClick={() => {
+              setMediaModalScript(r.summary || r.script || `Coaching report for ${r.title}. Score: ${r.overallScore}/100. Duration: ${Math.round(r.duration / 60)} minutes. Strengths: ${(r.strengths || []).join(', ')}. Areas to improve: ${(r.areasToImprove || []).join(', ')}.`);
+              setMediaModalTitle(r.title);
+              setMediaModalSourceId(r.id);
+            }}
           >
             <Headphones className="w-3 h-3 mr-1" /> Audio
           </Button>
@@ -1131,7 +1136,7 @@ export default function PresentationCoach() {
           open
           onClose={() => setMediaModalScript(null)}
           sourceModule="coach"
-          sourceId={`coach_${Date.now()}`}
+          sourceId={mediaModalSourceId || `coach_${Date.now()}`}
           sourceName={mediaModalTitle || 'Coaching Report'}
           getSourceText={async (_f: number, _t: number) => mediaModalScript ?? ''}
         />

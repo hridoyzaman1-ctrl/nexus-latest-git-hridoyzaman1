@@ -51,21 +51,16 @@ function openMediaDB(): Promise<IDBDatabase> {
 }
 
 export async function saveVideoBlob(id: string, blob: Blob): Promise<void> {
+  // Convert blob to ArrayBuffer BEFORE opening transaction — IDB transactions
+  // must have their stores accessed synchronously after creation.
+  const ab = await blob.arrayBuffer();
   const db = await openMediaDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
-    const arr = blob.arrayBuffer
-      ? blob.arrayBuffer().then(ab => {
-          tx.objectStore(STORE_NAME).put(ab, id);
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        })
-      : new Response(blob).arrayBuffer().then(ab => {
-          tx.objectStore(STORE_NAME).put(ab, id);
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        });
-    arr.catch(reject);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('IDB transaction aborted'));
+    tx.objectStore(STORE_NAME).put(ab, id);
   });
 }
 
@@ -137,6 +132,12 @@ export function deleteMediaItem(id: string): void {
   const all = getAllMediaItems().filter(x => x.id !== id);
   localStorage.setItem(META_KEY, JSON.stringify(all));
   deleteVideoBlob(id).catch(() => {});
+}
+
+export function deleteAllMedia(): void {
+  const all = getAllMediaItems();
+  all.forEach(x => deleteVideoBlob(x.id).catch(() => {}));
+  localStorage.removeItem(META_KEY);
 }
 
 export function deleteAllMediaForSource(sourceId: string): void {

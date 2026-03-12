@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Library, Search, Trash2, Filter, Video, Headphones, Mic, FileText, BookOpen, StickyNote, GraduationCap, Presentation } from 'lucide-react';
+import {
+  ArrowLeft, Library, Search, Trash2, Filter, Video, Headphones,
+  Mic, FileText, BookOpen, StickyNote, GraduationCap, Presentation, RefreshCw,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
+import { toast } from 'sonner';
+import { getAllMediaItems, deleteMediaItem, deleteAllMedia, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import MediaPlayer from '@/components/MediaPlayer';
 
 type FilterMode = 'all' | 'summary' | 'explainer' | 'podcast' | 'video';
@@ -34,19 +38,30 @@ export default function MediaLibrary() {
   const [filterModule, setFilterModule] = useState<FilterModule>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
-  const load = () => setItems(getAllMediaItems());
-  useEffect(load, []);
+  const load = useCallback(() => setItems(getAllMediaItems()), []);
+  useEffect(load, [load]);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = useCallback((id: string) => {
     deleteMediaItem(id);
     setItems(prev => prev.filter(x => x.id !== id));
-  };
+    setExpandedId(prev => prev === id ? null : prev);
+    toast.success('Media deleted');
+  }, []);
 
-  const handleDeleteAll = () => {
-    items.forEach(x => deleteMediaItem(x.id));
+  const handleDeleteAll = useCallback(() => {
+    if (!confirmClearAll) {
+      setConfirmClearAll(true);
+      setTimeout(() => setConfirmClearAll(false), 4000);
+      return;
+    }
+    deleteAllMedia();
     setItems([]);
-  };
+    setExpandedId(null);
+    setConfirmClearAll(false);
+    toast.success('All media cleared');
+  }, [confirmClearAll]);
 
   const filtered = items.filter(item => {
     if (filterMode !== 'all' && item.mode !== filterMode) return false;
@@ -71,6 +86,7 @@ export default function MediaLibrary() {
   }, {});
 
   const totalDuration = items.reduce((acc, x) => acc + (x.estimatedDuration ?? 0), 0);
+  const hasActiveFilters = filterMode !== 'all' || filterModule !== 'all' || search !== '';
 
   return (
     <motion.div
@@ -80,32 +96,52 @@ export default function MediaLibrary() {
       <div className="px-4 pt-12 pb-28 space-y-4 max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-secondary transition-colors text-muted-foreground">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-xl hover:bg-secondary transition-colors text-muted-foreground"
+            aria-label="Go back"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold font-display flex items-center gap-2">
               <Library className="w-5 h-5 text-primary" /> Media Library
             </h1>
             <p className="text-[11px] text-muted-foreground">
-              {items.length} item{items.length !== 1 ? 's' : ''} · ~{Math.round(totalDuration / 60)} min total
+              {items.length} item{items.length !== 1 ? 's' : ''}
+              {totalDuration > 0 && ` · ~${Math.round(totalDuration / 60)} min total`}
             </p>
           </div>
+          <button
+            onClick={load}
+            className="p-2 rounded-xl hover:bg-secondary transition-colors text-muted-foreground"
+            title="Refresh"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
           {items.length > 0 && (
-            <Button variant="ghost" size="sm" className="text-destructive rounded-xl h-8 text-xs" onClick={handleDeleteAll}>
-              <Trash2 className="w-3.5 h-3.5 mr-1" /> Clear All
+            <Button
+              variant="ghost" size="sm"
+              className={cn(
+                'rounded-xl h-8 text-xs transition-all',
+                confirmClearAll ? 'text-white bg-destructive hover:bg-destructive/90' : 'text-destructive'
+              )}
+              onClick={handleDeleteAll}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" />
+              {confirmClearAll ? 'Confirm?' : 'Clear All'}
             </Button>
           )}
         </div>
 
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <input
             type="search"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search media…"
+            placeholder="Search by title, source, or script…"
             className="w-full bg-secondary/40 rounded-2xl pl-9 pr-3 py-2.5 text-sm border border-border/30 outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
@@ -117,7 +153,7 @@ export default function MediaLibrary() {
         >
           <Filter className="w-3.5 h-3.5" />
           Filters
-          {(filterMode !== 'all' || filterModule !== 'all') && (
+          {hasActiveFilters && !search && (
             <span className="text-[9px] bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">active</span>
           )}
         </button>
@@ -129,7 +165,7 @@ export default function MediaLibrary() {
               className="space-y-2 overflow-hidden"
             >
               <div>
-                <p className="text-[10px] text-muted-foreground mb-1.5">Mode</p>
+                <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wide">Mode</p>
                 <div className="flex gap-1.5 flex-wrap">
                   {(['all', 'summary', 'explainer', 'podcast', 'video'] as FilterMode[]).map(m => {
                     const Icon = m === 'all' ? Library : MODE_ICONS[m];
@@ -143,14 +179,14 @@ export default function MediaLibrary() {
                         )}
                       >
                         <Icon className="w-3 h-3" />
-                        {m === 'all' ? 'All' : MODE_LABELS[m]}
+                        {m === 'all' ? 'All modes' : MODE_LABELS[m]}
                       </button>
                     );
                   })}
                 </div>
               </div>
               <div>
-                <p className="text-[10px] text-muted-foreground mb-1.5">Source</p>
+                <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wide">Source</p>
                 <div className="flex gap-1.5 flex-wrap">
                   {(['all', 'books', 'notes', 'study', 'presentations', 'coach'] as FilterModule[]).map(m => {
                     const Icon = m === 'all' ? Library : MODULE_ICONS[m];
@@ -164,12 +200,20 @@ export default function MediaLibrary() {
                         )}
                       >
                         <Icon className="w-3 h-3" />
-                        {m === 'all' ? 'All' : MODULE_LABELS[m]}
+                        {m === 'all' ? 'All sources' : MODULE_LABELS[m]}
                       </button>
                     );
                   })}
                 </div>
               </div>
+              {hasActiveFilters && (
+                <button
+                  onClick={() => { setFilterMode('all'); setFilterModule('all'); setSearch(''); }}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  Clear filters
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -186,7 +230,8 @@ export default function MediaLibrary() {
                   onClick={() => setFilterMode(filterMode === m ? 'all' : m)}
                   className={cn(
                     'flex flex-col items-center gap-0.5 p-2 rounded-2xl border transition-all',
-                    filterMode === m ? 'border-primary bg-primary/10' : 'border-border/30 hover:border-border/60'
+                    filterMode === m ? 'border-primary bg-primary/10' : 'border-border/30 hover:border-border/60',
+                    count === 0 && 'opacity-40'
                   )}
                 >
                   <Icon className="w-3.5 h-3.5" style={{ color: MODE_COLORS[m] }} />
@@ -207,14 +252,14 @@ export default function MediaLibrary() {
             <p className="font-semibold text-lg">
               {items.length === 0 ? 'No media yet' : 'No results'}
             </p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-[260px]">
+            <p className="text-sm text-muted-foreground mt-1 max-w-[280px]">
               {items.length === 0
                 ? 'Generate audio summaries or video slideshows from your Books, Notes, Study materials, or Presentations.'
                 : 'Try adjusting your search or filters.'}
             </p>
             {items.length === 0 && (
               <div className="flex gap-2 mt-4 flex-wrap justify-center">
-                {[['Books', '/books'], ['Notes', '/notes'], ['Study', '/study'], ['Presentations', '/presentations']].map(([label, path]) => (
+                {([['Books', '/books'], ['Notes', '/notes'], ['Study', '/study'], ['Presentations', '/presentations']] as const).map(([label, path]) => (
                   <Button key={path} variant="secondary" size="sm" className="rounded-xl text-xs" onClick={() => navigate(path)}>
                     {label}
                   </Button>
@@ -235,39 +280,58 @@ export default function MediaLibrary() {
                   {MODULE_LABELS[moduleKey] ?? moduleKey} ({moduleItems.length})
                 </span>
               </div>
+
               {moduleItems.map(item => (
                 <div key={item.id}>
                   {expandedId === item.id ? (
-                    <div>
-                      <MediaPlayer item={item} onDelete={id => { handleDelete(id); setExpandedId(null); }} />
+                    <div className="space-y-1">
+                      <MediaPlayer
+                        item={item}
+                        onDelete={id => { handleDelete(id); }}
+                      />
                       <button
                         onClick={() => setExpandedId(null)}
                         className="w-full text-[10px] text-muted-foreground text-center py-1 hover:text-foreground transition-colors"
                       >
-                        Collapse
+                        ↑ Collapse
                       </button>
                     </div>
                   ) : (
-                    <div
-                      className="glass rounded-2xl px-3 py-2 cursor-pointer hover:bg-secondary/40 transition-colors"
+                    <motion.div
+                      layout
+                      className="glass rounded-2xl px-3 py-2.5 cursor-pointer hover:bg-secondary/40 transition-colors"
                       onClick={() => setExpandedId(item.id)}
                     >
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
-                          style={{ background: `${MODE_COLORS[item.mode]}20` }}>
-                          {(() => { const Icon2 = MODE_ICONS[item.mode]; return <Icon2 className="w-3.5 h-3.5" style={{ color: MODE_COLORS[item.mode] }} />; })()}
+                        <div
+                          className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{ background: `${MODE_COLORS[item.mode]}20` }}
+                        >
+                          {(() => {
+                            const Icon2 = MODE_ICONS[item.mode] ?? Headphones;
+                            return <Icon2 className="w-3.5 h-3.5" style={{ color: MODE_COLORS[item.mode] }} />;
+                          })()}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] font-medium truncate">{item.title}</p>
                           <p className="text-[10px] text-muted-foreground">
-                            {MODE_LABELS[item.mode]} · {item.sourceName} · ~{Math.round(item.estimatedDuration / 60)}m
+                            {MODE_LABELS[item.mode] ?? item.mode} · {item.sourceName} · ~{Math.round((item.estimatedDuration ?? 0) / 60)}m · {item.wordCount?.toLocaleString()} words
                           </p>
                         </div>
-                        <span className="text-[9px] text-muted-foreground flex-shrink-0">
-                          {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className="text-[9px] text-muted-foreground">
+                            {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
+                          <button
+                            className="p-1 rounded-lg hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
+                            onClick={e => { e.stopPropagation(); handleDelete(item.id); }}
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               ))}

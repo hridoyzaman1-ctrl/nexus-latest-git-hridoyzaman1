@@ -94,3 +94,20 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+
+### `artifacts/nexus` (`@workspace/nexus`)
+
+MindFlow — a React + Vite + TypeScript PWA with 28+ lifestyle, study, and productivity modules. Runs on port 18245. Uses Tailwind CSS v3 + PostCSS. No backend required — all data is persisted locally.
+
+**Local Media Generation (100% free, no backend, no API keys):**
+
+- `src/lib/mediaStorage.ts` — IndexedDB blob store (`mindflow_media_db`) for video files + localStorage metadata (`mindflow_generatedMedia`).
+- `src/lib/contentMediaEngine.ts` — Script builders (summary/explainer/podcast/video), `TTSController` class (Web Speech API chunked playback with pause/resume/restart), Canvas scene renderer, `MediaRecorder` WebM video recording.
+- `src/components/MediaGenerationModal.tsx` — Bottom-sheet modal: mode picker (Summary/Explainer/Podcast/Video), page-range selector (paginated sources), voice settings, generation progress, audio playback controls, video scene browser, script preview, download buttons.
+- `src/components/MediaPlayer.tsx` — Compact/full player for saved items: TTS playback, scene animation, title editing, download, delete.
+- `src/pages/MediaLibrary.tsx` — `/media-library` route: browsable/searchable/filterable collection of all saved media items.
+
+**Integrated into:** Books (reader toolbar + library cards), Notes (per note), StudyPlanner (per material), PresentationGenerator (per presentation), PresentationCoach (per coaching report).
+
+**Data flow:** Content text → `buildScriptForMode()` → `TTSController` for audio; Canvas scenes → `MediaRecorder` → IndexedDB blob for video.
+AI: LongCat API (`api.longcat.chat`) for AI features (guarded by `isDemoMode` check).

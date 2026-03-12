@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Headphones, Video, FileText, Mic, Play, Square, Pause, RotateCcw, Download, Save, X, Sparkles, ChevronDown, ChevronUp, Settings2, Library, Loader2, BookOpen, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Headphones, Video, FileText, Mic, Play, Square, Pause, RotateCcw,
+  Download, X, Sparkles, ChevronDown, ChevronUp, Settings2, Library,
+  Loader2, BookOpen, CheckCircle2, AlertCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -10,7 +14,10 @@ import {
   recordVideoScenes, renderSceneToCanvas,
   type MediaMode, type SourceModule,
 } from '@/lib/contentMediaEngine';
-import { saveMediaItem, saveVideoBlob, type GeneratedMediaItem, type VideoScene } from '@/lib/mediaStorage';
+import {
+  saveMediaItem, saveVideoBlob, getVideoBlob, getMediaItem,
+  type GeneratedMediaItem, type VideoScene,
+} from '@/lib/mediaStorage';
 import { useNavigate } from 'react-router-dom';
 
 interface MediaGenerationModalProps {
@@ -19,15 +26,17 @@ interface MediaGenerationModalProps {
   sourceModule: SourceModule;
   sourceId: string;
   sourceName: string;
+  /** Returns raw text for the given page range. For non-paginated sources, params are ignored. */
   getSourceText: (fromPage: number, toPage: number) => Promise<string>;
-  totalPages?: number; // for page range selection (books/study)
+  /** Pass > 0 to show page range picker (books / study). Default 0 = no pagination. */
+  totalPages?: number;
 }
 
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
-  summary:  { label: 'Summary',  desc: 'Concise key-point overview',    icon: FileText,   color: 'hsl(199,89%,48%)' },
-  explainer:{ label: 'Explainer',desc: 'Structured concept walkthrough', icon: BookOpen,   color: 'hsl(245,58%,62%)' },
-  podcast:  { label: 'Podcast',  desc: 'Conversational deep-dive',      icon: Mic,        color: 'hsl(340,82%,52%)' },
-  video:    { label: 'Video',    desc: 'Scene-by-scene visual slides',   icon: Video,      color: 'hsl(291,64%,42%)' },
+  summary:  { label: 'Summary',   desc: 'Concise key-point overview',    icon: FileText,  color: 'hsl(199,89%,48%)' },
+  explainer:{ label: 'Explainer', desc: 'Structured concept walkthrough', icon: BookOpen,  color: 'hsl(245,58%,62%)' },
+  podcast:  { label: 'Podcast',   desc: 'Conversational deep-dive',      icon: Mic,       color: 'hsl(340,82%,52%)' },
+  video:    { label: 'Video',     desc: 'Scene-by-scene visual slides',   icon: Video,     color: 'hsl(291,64%,42%)' },
 };
 
 type GenStage = 'idle' | 'extracting' | 'generating' | 'recording' | 'done' | 'error';
@@ -37,9 +46,10 @@ export default function MediaGenerationModal({
   getSourceText, totalPages = 0,
 }: MediaGenerationModalProps) {
   const navigate = useNavigate();
+
   const [mode, setMode] = useState<MediaMode>('summary');
   const [fromPage, setFromPage] = useState(1);
-  const [toPage, setToPage] = useState(Math.min(totalPages, 20));
+  const [toPage, setToPage] = useState(() => totalPages > 0 ? Math.min(totalPages, 20) : 1);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceUri, setSelectedVoiceUri] = useState('');
@@ -48,35 +58,38 @@ export default function MediaGenerationModal({
 
   const [stage, setStage] = useState<GenStage>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [progress, setProgress] = useState(0); // 0-100
+  const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
 
-  // Generated
   const [script, setScript] = useState('');
   const [scenes, setScenes] = useState<VideoScene[]>([]);
   const [savedItemId, setSavedItemId] = useState<string | null>(null);
   const [hasVideoBlob, setHasVideoBlob] = useState(false);
 
-  // TTS playback
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
   const [ttsChunk, setTtsChunk] = useState(0);
   const [ttsTotalChunks, setTtsTotalChunks] = useState(0);
   const ttsRef = useRef<TTSController | null>(null);
 
-  // Video recording
+  // Single recording canvas — always in DOM, shown/hidden by stage
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Preview canvas for done-state scene browsing
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const cancelSignal = useRef({ cancelled: false });
   const [currentScene, setCurrentScene] = useState(0);
 
+  // Load voices on open
   useEffect(() => {
     if (!open) return;
     const loadVoices = () => {
       const v = getAvailableVoices();
       if (v.length > 0) {
         setVoices(v);
-        const def = getDefaultVoice('en');
-        if (def && !selectedVoiceUri) setSelectedVoiceUri(def.voiceURI);
+        if (!selectedVoiceUri) {
+          const def = getDefaultVoice('en');
+          if (def) setSelectedVoiceUri(def.voiceURI);
+        }
       }
     };
     loadVoices();
@@ -84,16 +97,38 @@ export default function MediaGenerationModal({
     return () => { window.speechSynthesis.onvoiceschanged = null; };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Re-cap page range when mode or totalPages changes
   useEffect(() => {
     if (totalPages > 0) {
+      const maxPg = getLimits(sourceModule, mode).maxPages;
       setFromPage(1);
-      setToPage(Math.min(totalPages, getLimits(sourceModule, mode).maxPages));
+      setToPage(Math.min(totalPages, maxPg));
     }
   }, [mode, totalPages, sourceModule]);
 
-  const resetState = () => {
+  // Keyboard close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-draw preview canvas when currentScene changes (done + video mode)
+  useEffect(() => {
+    if (stage === 'done' && scenes.length > 0 && previewCanvasRef.current) {
+      const scene = scenes[currentScene] ?? scenes[0];
+      previewCanvasRef.current.width = 480;
+      previewCanvasRef.current.height = 270;
+      renderSceneToCanvas(previewCanvasRef.current, scene);
+    }
+  }, [stage, currentScene, scenes]);
+
+  const isBusy = stage === 'extracting' || stage === 'generating' || stage === 'recording';
+
+  const resetState = useCallback(() => {
     ttsRef.current?.stop();
-    cancelSignal.current.cancelled = true;
+    cancelSignal.current = { cancelled: true };
     setStage('idle');
     setScript('');
     setScenes([]);
@@ -107,17 +142,23 @@ export default function MediaGenerationModal({
     setProgress(0);
     setProgressLabel('');
     setErrorMsg('');
-  };
+  }, []);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     resetState();
     onClose();
-  };
+  }, [resetState, onClose]);
 
   const selectedVoice = voices.find(v => v.voiceURI === selectedVoiceUri) ?? null;
 
   const handleGenerate = useCallback(async () => {
+    // Reset generation state, create fresh cancel signal
     cancelSignal.current = { cancelled: false };
+    ttsRef.current?.stop();
+    setPlaying(false);
+    setPaused(false);
+    setTtsChunk(0);
+    setTtsTotalChunks(0);
     setStage('extracting');
     setProgress(10);
     setProgressLabel('Extracting content…');
@@ -125,6 +166,7 @@ export default function MediaGenerationModal({
     setScenes([]);
     setSavedItemId(null);
     setHasVideoBlob(false);
+    setErrorMsg('');
 
     try {
       const limits = getLimits(sourceModule, mode);
@@ -132,16 +174,18 @@ export default function MediaGenerationModal({
       // Extract text
       let rawText = '';
       if (totalPages > 0) {
-        rawText = await getSourceText(fromPage, Math.min(toPage, fromPage + limits.maxPages - 1));
+        const effectiveTo = Math.min(toPage, fromPage + limits.maxPages - 1);
+        rawText = await getSourceText(fromPage, effectiveTo);
       } else {
         rawText = await getSourceText(1, 1);
       }
 
+      if (cancelSignal.current.cancelled) return;
+
       if (!rawText || rawText.trim().length < 20) {
-        throw new Error('Not enough content found in the selected range. Try selecting more pages.');
+        throw new Error('Not enough content found. Try selecting more pages or adding more content.');
       }
 
-      // Truncate to word limit
       const truncated = truncateToWordLimit(rawText, limits.maxWords);
       const words = countWords(truncated);
 
@@ -149,11 +193,14 @@ export default function MediaGenerationModal({
       setProgress(40);
       setProgressLabel(`Building ${mode} script (${words.toLocaleString()} words)…`);
 
-      // Build script
+      // Yield to let React render the progress update before the sync script build
+      await new Promise(r => setTimeout(r, 0));
+      if (cancelSignal.current.cancelled) return;
+
       const { script: generatedScript, scenes: generatedScenes } = buildScriptForMode(truncated, sourceName, mode);
 
-      if (!generatedScript || generatedScript.length < 20) {
-        throw new Error('Could not generate a script from the content. Please try a different range.');
+      if (!generatedScript || generatedScript.trim().length < 20) {
+        throw new Error('Could not generate a script. Please try a different page range or mode.');
       }
 
       setScript(generatedScript);
@@ -182,14 +229,15 @@ export default function MediaGenerationModal({
         hasVideoBlob: false,
       };
 
-      // For video mode, record
+      // Video recording
       if (mode === 'video' && generatedScenes && generatedScenes.length > 0 && isVideoSupported()) {
         setStage('recording');
         setProgress(60);
         setProgressLabel('Recording video scenes…');
+        await new Promise(r => setTimeout(r, 50)); // let React commit stage=recording so canvas appears
 
         const canvas = canvasRef.current;
-        if (canvas) {
+        if (canvas && !cancelSignal.current.cancelled) {
           canvas.width = 480;
           canvas.height = 270;
           try {
@@ -210,26 +258,32 @@ export default function MediaGenerationModal({
               setHasVideoBlob(true);
             }
           } catch (e) {
-            console.warn('Video recording failed, saving audio-only:', e);
+            // Video failed — still save as audio
+            console.warn('Video recording failed, saving as audio-only:', e);
           }
         }
       }
 
+      if (cancelSignal.current.cancelled) return;
+
       saveMediaItem(item);
       setSavedItemId(id);
+      setCurrentScene(0);
       setStage('done');
       setProgress(100);
       setProgressLabel('Ready!');
-      toast.success(`${MODE_INFO[mode].label} generated and saved`);
+      toast.success(`${MODE_INFO[mode].label} generated & saved to Media Library`);
 
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Generation failed';
+      if (cancelSignal.current.cancelled) return;
+      const msg = e instanceof Error ? e.message : 'Generation failed. Please try again.';
       setErrorMsg(msg);
       setStage('error');
     }
   }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch]);
 
-  const handlePlay = () => {
+  // TTS controls
+  const handlePlay = useCallback(() => {
     if (!script) return;
     if (paused && ttsRef.current) {
       ttsRef.current.resume();
@@ -244,52 +298,52 @@ export default function MediaGenerationModal({
       pitch,
       lang: selectedVoice?.lang ?? 'en-US',
       onChunkStart: (idx, total) => { setTtsChunk(idx + 1); setTtsTotalChunks(total); },
-      onEnd: () => { setPlaying(false); setPaused(false); setTtsChunk(0); },
+      onEnd: () => { setPlaying(false); setPaused(false); setTtsChunk(0); setTtsTotalChunks(0); },
       onError: (msg) => { toast.error(msg); setPlaying(false); },
     });
     ttsRef.current = ctrl;
     ctrl.start(script);
     setPlaying(true);
     setPaused(false);
-  };
+  }, [script, paused, selectedVoice, rate, pitch]);
 
-  const handlePause = () => {
+  const handlePause = useCallback(() => {
     ttsRef.current?.pause();
     setPaused(true);
     setPlaying(false);
-  };
+  }, []);
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     ttsRef.current?.stop();
     setPlaying(false);
     setPaused(false);
     setTtsChunk(0);
-  };
+    setTtsTotalChunks(0);
+  }, []);
 
-  const handleDownloadScript = () => {
+  const handleDownloadScript = useCallback(() => {
     if (!script) return;
-    const blob = new Blob([`${MODE_INFO[mode].label}: ${sourceName}\n\n${script}`], { type: 'text/plain' });
+    const blob = new Blob([`${MODE_INFO[mode].label}: ${sourceName}\n${'='.repeat(60)}\n\n${script}`], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${sourceName.replace(/\s+/g, '_')}_${mode}_script.txt`;
+    a.download = `${sourceName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}_${mode}_script.txt`;
     a.click();
-    URL.revokeObjectURL(url);
-  };
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [script, mode, sourceName]);
 
-  const handleDownloadVideo = async () => {
+  const handleDownloadVideo = useCallback(async () => {
     if (!savedItemId) return;
-    const { getVideoBlob } = await import('@/lib/mediaStorage');
-    const item = (await import('@/lib/mediaStorage')).getMediaItem(savedItemId);
-    const blob = await getVideoBlob(savedItemId, item?.videoMimeType ?? 'video/webm');
-    if (!blob) { toast.error('Video not found'); return; }
+    const meta = getMediaItem(savedItemId);
+    const blob = await getVideoBlob(savedItemId, meta?.videoMimeType ?? 'video/webm');
+    if (!blob) { toast.error('Video file not found in storage'); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${sourceName.replace(/\s+/g, '_')}_video.webm`;
+    a.download = `${sourceName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}_video.webm`;
     a.click();
-    URL.revokeObjectURL(url);
-  };
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [savedItemId, sourceName]);
 
   const limits = getLimits(sourceModule, mode);
 
@@ -303,26 +357,35 @@ export default function MediaGenerationModal({
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 z-50"
-            onClick={handleClose}
+            onClick={isBusy ? undefined : handleClose}
           />
 
-          {/* Sheet */}
+          {/* Bottom sheet */}
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', stiffness: 280, damping: 32 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 34 }}
             className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border rounded-t-3xl max-h-[92vh] overflow-y-auto"
           >
-            {/* Hidden canvas for video recording */}
-            <canvas ref={canvasRef} className="hidden" width={480} height={270} />
+            {/* Recording canvas — always in DOM so captureStream works */}
+            <canvas
+              ref={canvasRef}
+              width={480} height={270}
+              style={{ display: stage === 'recording' ? 'block' : 'none' }}
+              className="w-full rounded-xl"
+            />
 
-            <div className="p-4 space-y-4 pb-10">
+            <div className="p-4 space-y-4 pb-12">
               {/* Header */}
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1 min-w-0 mr-3">
                   <h2 className="font-bold text-base font-display">Generate Media</h2>
-                  <p className="text-[11px] text-muted-foreground truncate max-w-[240px]">{sourceName}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{sourceName}</p>
                 </div>
-                <button onClick={handleClose} className="p-1.5 rounded-xl hover:bg-secondary transition-colors">
+                <button
+                  onClick={handleClose}
+                  className="p-1.5 rounded-xl hover:bg-secondary transition-colors flex-shrink-0"
+                  aria-label="Close"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -336,14 +399,12 @@ export default function MediaGenerationModal({
                   return (
                     <button
                       key={m}
-                      onClick={() => { if (stage === 'idle' || stage === 'done' || stage === 'error') setMode(m); }}
-                      disabled={stage === 'extracting' || stage === 'generating' || stage === 'recording'}
+                      onClick={() => { if (!isBusy) setMode(m); }}
+                      disabled={isBusy}
                       className={cn(
                         'flex flex-col items-center gap-1 p-2.5 rounded-2xl border transition-all text-center',
-                        active
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border/50 hover:border-border hover:bg-secondary/50',
-                        'disabled:opacity-50 disabled:cursor-not-allowed'
+                        active ? 'border-primary bg-primary/10' : 'border-border/50 hover:border-border hover:bg-secondary/50',
+                        'disabled:opacity-40 disabled:cursor-not-allowed'
                       )}
                     >
                       <Icon className="w-4 h-4" style={{ color: active ? info.color : undefined }} />
@@ -358,25 +419,32 @@ export default function MediaGenerationModal({
               {/* Mode description */}
               <p className="text-[11px] text-muted-foreground bg-secondary/30 rounded-xl px-3 py-2">
                 {MODE_INFO[mode].desc} · up to {limits.maxPages === 999 ? 'all' : limits.maxPages} pages ·{' '}
-                ~{Math.round(limits.maxAudioSeconds / 60)} min audio{mode === 'video' ? ` · ${limits.maxVideoSeconds}s video` : ''}
+                ~{Math.round(limits.maxAudioSeconds / 60)} min audio
+                {mode === 'video' ? ` · ${limits.maxVideoSeconds}s video` : ''}
               </p>
 
-              {/* Page range (only if document has pages) */}
+              {/* Page range picker (paginated sources only) */}
               {totalPages > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground">Pages</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-muted-foreground font-medium">Pages</span>
                   <input
                     type="number" min={1} max={totalPages} value={fromPage}
-                    onChange={e => setFromPage(Math.max(1, Math.min(Number(e.target.value), toPage)))}
-                    disabled={stage !== 'idle' && stage !== 'done' && stage !== 'error'}
-                    className="w-16 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center"
+                    onChange={e => {
+                      const v = Math.max(1, Math.min(Number(e.target.value), toPage));
+                      setFromPage(v);
+                    }}
+                    disabled={isBusy}
+                    className="w-16 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
                   />
                   <span className="text-[11px] text-muted-foreground">to</span>
                   <input
                     type="number" min={fromPage} max={totalPages} value={toPage}
-                    onChange={e => setToPage(Math.max(fromPage, Math.min(Number(e.target.value), totalPages)))}
-                    disabled={stage !== 'idle' && stage !== 'done' && stage !== 'error'}
-                    className="w-16 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center"
+                    onChange={e => {
+                      const v = Math.max(fromPage, Math.min(Number(e.target.value), totalPages));
+                      setToPage(v);
+                    }}
+                    disabled={isBusy}
+                    className="w-16 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
                   />
                   <span className="text-[11px] text-muted-foreground">/ {totalPages}</span>
                 </div>
@@ -385,7 +453,7 @@ export default function MediaGenerationModal({
               {/* Voice settings toggle */}
               <button
                 onClick={() => setShowVoiceSettings(v => !v)}
-                className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors select-none"
               >
                 <Settings2 className="w-3.5 h-3.5" />
                 Voice settings
@@ -398,32 +466,40 @@ export default function MediaGenerationModal({
                     initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                     className="space-y-2 overflow-hidden"
                   >
-                    {/* Voice picker */}
                     <div>
-                      <label className="text-[10px] text-muted-foreground block mb-0.5">Voice</label>
-                      <select
-                        value={selectedVoiceUri}
-                        onChange={e => setSelectedVoiceUri(e.target.value)}
-                        className="w-full text-[11px] bg-secondary/40 rounded-xl px-2 py-1.5 border border-border/40"
-                      >
-                        {voices.filter(v => v.lang.startsWith('en')).map(v => (
-                          <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
-                        ))}
-                        {voices.filter(v => !v.lang.startsWith('en')).slice(0, 20).map(v => (
-                          <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
-                        ))}
-                      </select>
+                      <label className="text-[10px] text-muted-foreground block mb-1">Voice</label>
+                      {voices.length === 0 ? (
+                        <p className="text-[10px] text-muted-foreground italic">Loading voices… (your browser may need a moment)</p>
+                      ) : (
+                        <select
+                          value={selectedVoiceUri}
+                          onChange={e => setSelectedVoiceUri(e.target.value)}
+                          className="w-full text-[11px] bg-secondary/40 rounded-xl px-2 py-1.5 border border-border/40"
+                        >
+                          <optgroup label="English">
+                            {voices.filter(v => v.lang.startsWith('en')).map(v => (
+                              <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+                            ))}
+                          </optgroup>
+                          {voices.filter(v => !v.lang.startsWith('en')).length > 0 && (
+                            <optgroup label="Other Languages">
+                              {voices.filter(v => !v.lang.startsWith('en')).slice(0, 30).map(v => (
+                                <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      )}
                     </div>
-
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Speed: {rate.toFixed(1)}×</label>
+                        <label className="text-[10px] text-muted-foreground block mb-1">Speed: {rate.toFixed(1)}×</label>
                         <input type="range" min={0.5} max={2} step={0.1} value={rate}
                           onChange={e => setRate(Number(e.target.value))}
                           className="w-full accent-primary" />
                       </div>
                       <div>
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Pitch: {pitch.toFixed(1)}</label>
+                        <label className="text-[10px] text-muted-foreground block mb-1">Pitch: {pitch.toFixed(1)}</label>
                         <input type="range" min={0.5} max={2} step={0.1} value={pitch}
                           onChange={e => setPitch(Number(e.target.value))}
                           className="w-full accent-primary" />
@@ -433,7 +509,7 @@ export default function MediaGenerationModal({
                 )}
               </AnimatePresence>
 
-              {/* Generate button */}
+              {/* Generate button (idle / error state) */}
               {(stage === 'idle' || stage === 'error') && (
                 <Button onClick={handleGenerate} className="w-full rounded-2xl h-11 font-semibold gap-2">
                   <Sparkles className="w-4 h-4" />
@@ -441,31 +517,40 @@ export default function MediaGenerationModal({
                 </Button>
               )}
 
-              {/* Progress */}
-              {(stage === 'extracting' || stage === 'generating' || stage === 'recording') && (
+              {/* Error message */}
+              {stage === 'error' && errorMsg && (
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-xs">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {/* Progress (extracting / generating / recording) */}
+              {isBusy && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
                     <span className="text-sm text-muted-foreground">{progressLabel}</span>
                   </div>
-                  <div className="w-full bg-secondary rounded-full h-2">
+                  <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
                     <motion.div
                       className="bg-primary h-2 rounded-full"
                       animate={{ width: `${progress}%` }}
-                      transition={{ duration: 0.3 }}
+                      transition={{ duration: 0.4 }}
                     />
                   </div>
-                  {stage === 'recording' && scenes.length > 0 && canvasRef.current && (
-                    <div className="rounded-xl overflow-hidden border border-border/30 bg-black">
-                      <canvas ref={canvasRef} width={480} height={270} className="w-full" style={{ display: 'block' }} />
-                    </div>
+                  {stage === 'recording' && (
+                    <p className="text-[10px] text-muted-foreground text-center">Recording video to your device…</p>
                   )}
                   <Button
                     variant="ghost" size="sm" className="w-full rounded-xl text-xs text-muted-foreground"
                     onClick={() => {
                       cancelSignal.current.cancelled = true;
+                      ttsRef.current?.stop();
                       window.speechSynthesis.cancel();
                       setStage('idle');
+                      setProgressLabel('');
+                      setProgress(0);
                     }}
                   >
                     Cancel
@@ -473,35 +558,45 @@ export default function MediaGenerationModal({
                 </div>
               )}
 
-              {/* Error */}
-              {stage === 'error' && (
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-xs">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>{errorMsg}</span>
-                </div>
-              )}
-
-              {/* Done — playback and actions */}
+              {/* Done — playback + actions */}
               {stage === 'done' && script && (
                 <div className="space-y-3">
                   {/* Success banner */}
-                  <div className="flex items-center gap-2 p-3 rounded-xl bg-success/10 text-success text-xs">
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs">
                     <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                    <span>{MODE_INFO[mode].label} ready · ~{Math.round(estimateSpeechSeconds(script) / 60)} min · {countWords(script).toLocaleString()} words</span>
+                    <span>
+                      {MODE_INFO[mode].label} ready ·{' '}
+                      ~{Math.round(estimateSpeechSeconds(script) / 60)} min ·{' '}
+                      {countWords(script).toLocaleString()} words
+                    </span>
                   </div>
 
-                  {/* Audio player controls (all modes) */}
+                  {/* Audio narration controls (all modes) */}
                   <div className="glass rounded-2xl p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-muted-foreground">
-                        {playing ? `Playing… ${ttsChunk > 0 ? `(${ttsChunk}/${ttsTotalChunks})` : ''}` : paused ? 'Paused' : 'Audio Narration'}
+                        {playing
+                          ? `Playing… ${ttsChunk > 0 && ttsTotalChunks > 0 ? `(${ttsChunk}/${ttsTotalChunks})` : ''}`
+                          : paused ? 'Paused' : 'Audio Narration'}
                       </span>
-                      {mode !== 'video' && <span className="text-[10px] text-muted-foreground">Web Speech TTS</span>}
+                      <span className="text-[10px] text-muted-foreground">Web Speech TTS</span>
                     </div>
+
+                    {/* Progress track */}
+                    {(playing || paused) && ttsTotalChunks > 0 && (
+                      <div className="w-full bg-secondary rounded-full h-1">
+                        <div
+                          className="bg-primary h-1 rounded-full transition-all"
+                          style={{ width: `${(ttsChunk / ttsTotalChunks) * 100}%` }}
+                        />
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       {!playing ? (
                         <Button size="sm" onClick={handlePlay} className="flex-1 rounded-xl h-9 gap-1.5">
-                          <Play className="w-3.5 h-3.5" /> {paused ? 'Resume' : 'Play Audio'}
+                          <Play className="w-3.5 h-3.5" />
+                          {paused ? 'Resume' : 'Play Audio'}
                         </Button>
                       ) : (
                         <Button size="sm" variant="secondary" onClick={handlePause} className="flex-1 rounded-xl h-9 gap-1.5">
@@ -509,32 +604,31 @@ export default function MediaGenerationModal({
                         </Button>
                       )}
                       {(playing || paused) && (
-                        <Button size="sm" variant="ghost" onClick={handleStop} className="rounded-xl h-9 w-9 p-0">
+                        <Button size="sm" variant="ghost" onClick={handleStop} className="rounded-xl h-9 w-9 p-0" title="Stop">
                           <Square className="w-3.5 h-3.5" />
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => { handleStop(); setTimeout(handlePlay, 100); }} className="rounded-xl h-9 w-9 p-0" title="Restart">
+                      <Button size="sm" variant="ghost"
+                        onClick={() => { handleStop(); setTimeout(handlePlay, 120); }}
+                        className="rounded-xl h-9 w-9 p-0" title="Restart from beginning"
+                      >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   </div>
 
-                  {/* Video preview + download (video mode) */}
+                  {/* Video preview (video mode) */}
                   {mode === 'video' && scenes.length > 0 && (
                     <div className="space-y-2">
-                      {/* Mini scene preview */}
                       <div className="rounded-xl overflow-hidden border border-border/30 bg-black" style={{ aspectRatio: '16/9' }}>
                         <canvas
-                          ref={el => {
-                            if (el) {
-                              el.width = 480; el.height = 270;
-                              renderSceneToCanvas(el, scenes[currentScene] ?? scenes[0]);
-                            }
-                          }}
+                          ref={previewCanvasRef}
+                          width={480} height={270}
                           className="w-full"
                           style={{ display: 'block' }}
                         />
                       </div>
+                      {/* Scene thumbnails */}
                       <div className="flex gap-1 overflow-x-auto pb-1">
                         {scenes.map((s, i) => (
                           <button
@@ -542,8 +636,11 @@ export default function MediaGenerationModal({
                             onClick={() => setCurrentScene(i)}
                             className={cn(
                               'flex-shrink-0 text-[9px] px-2 py-1 rounded-lg border transition-all',
-                              i === currentScene ? 'border-primary bg-primary/10 text-primary' : 'border-border/30 text-muted-foreground hover:border-border'
+                              i === currentScene
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border/30 text-muted-foreground hover:border-border'
                             )}
+                            title={s.heading}
                           >
                             {i + 1}
                           </button>
@@ -558,7 +655,7 @@ export default function MediaGenerationModal({
                       <ChevronDown className="w-3 h-3 group-open:rotate-180 transition-transform" />
                       View script ({countWords(script).toLocaleString()} words)
                     </summary>
-                    <div className="mt-2 max-h-40 overflow-y-auto text-[11px] text-muted-foreground leading-relaxed bg-secondary/30 rounded-xl p-3">
+                    <div className="mt-2 max-h-40 overflow-y-auto text-[11px] text-muted-foreground leading-relaxed bg-secondary/30 rounded-xl p-3 whitespace-pre-wrap">
                       {script}
                     </div>
                   </details>
@@ -580,7 +677,7 @@ export default function MediaGenerationModal({
                       <Library className="w-3.5 h-3.5" /> Media Library
                     </Button>
                     <Button variant="ghost" size="sm" className="rounded-xl h-9 text-xs gap-1.5" onClick={resetState}>
-                      <RotateCcw className="w-3.5 h-3.5" /> New
+                      <RotateCcw className="w-3.5 h-3.5" /> Generate New
                     </Button>
                   </div>
                 </div>
