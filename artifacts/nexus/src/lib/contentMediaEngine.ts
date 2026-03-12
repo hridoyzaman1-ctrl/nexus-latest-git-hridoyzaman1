@@ -89,11 +89,37 @@ export function truncateToWordLimit(text: string, maxWords: number): string {
   return words.slice(0, maxWords).join(' ') + '…';
 }
 
+/**
+ * Strip everything from an AI response that is not meant to be spoken aloud.
+ * - Markdown bold/italic/headers
+ * - Stage directions in brackets: [music], [pause], [cut to]
+ * - Production notes in parens that contain music/sound/sfx keywords
+ * - Preamble lines like "Here is your script:", "Audio Script:", "Video Script:"
+ * - Metadata lines: (Duration: ...), *540 words*, etc.
+ * - Trailing/leading whitespace and collapsed blank lines
+ */
+export function sanitiseAIScript(raw: string): string {
+  return raw
+    .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[([^\]\n]*)\]/g, '')
+    .replace(/\(([^)\n]*(music|sound|sfx|pause|cue|fade|beat|ambien)[^)\n]*)\)/gi, '')
+    .replace(/^[^\n.!?]*?(here'?s?|below is|this is|audio script|video script|narration script|script for)[^\n]*[\n:]/gim, '')
+    .replace(/^\*?\(?(duration|word count|~?\d+\s*min|~?\d+\s*words?)[^)\n]*\)?\*?\n?/gim, '')
+    .replace(/^\s*[-–—_*#]{3,}\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function cleanText(text: string): string {
   return text
     .replace(/\[Page \d+\]/g, '')
     .replace(/\[Slide \d+\]/g, '')
     .replace(/\[Info\].*$/gm, '')
+    .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/__([^_\n]+)__/g, '$1')
+    .replace(/_([^_\n]+)_/g, '$1')
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
@@ -327,7 +353,13 @@ export function buildScriptForMode(
       return { script: buildPodcastScript(rawText, title) };
     case 'video': {
       const scenes = buildVideoScenes(rawText, title);
-      const script = scenes.map(s => `${s.heading}. ${s.body}`).join('. ');
+      const script = scenes.map(s => {
+        const spokenBody = s.body
+          .replace(/^[•\-\*]\s*/gm, '')
+          .replace(/\n+/g, ' ')
+          .trim();
+        return `${s.heading}. ${spokenBody}`;
+      }).join('. ');
       return { script, scenes };
     }
   }

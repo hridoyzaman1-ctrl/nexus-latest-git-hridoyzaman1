@@ -11,6 +11,7 @@ import MediaPlayer from '@/components/MediaPlayer';
 import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import { extractPdfText } from '@/lib/extractText';
 import { chatWithStudioAI } from '@/lib/longcat';
+import { sanitiseAIScript } from '@/lib/contentMediaEngine';
 
 interface StudioSource {
   id: string;
@@ -108,16 +109,30 @@ export default function VideoStudio() {
     if (!desc) return;
     setAiEnhancing(true); setAiHint(null); setError(null);
     try {
-      const script = await chatWithStudioAI([
+      const raw = await chatWithStudioAI([
         {
           role: 'system',
-          content: `You are a professional visual content scriptwriter. The user wants to create a video slideshow. Write a structured, scene-by-scene script with clear sections and headings. Each section will become a video scene/slide. Use descriptive headings (3-6 words), followed by 2-4 sentences of content for that scene. Include an introduction and conclusion. Aim for 5-10 scenes, 400-700 words total. Do NOT include speaker names, stage directions, or meta-commentary — just the content itself.`,
+          content: `You are a text-to-speech narrator for a visual slideshow. Output ONLY the exact words that will be spoken aloud — nothing else whatsoever.
+
+STRICT RULES — violations will break the audio:
+- Pure natural spoken prose only, exactly as a narrator would say it
+- NO markdown of any kind: no **, *, #, _, -, bullet points
+- NO stage directions, visual directions, or production notes
+- NO brackets [] or parentheses () containing instructions or metadata
+- NO title card, preamble, or intro like "Here is your script", "Video Script:", "Script for..."
+- NO metadata: no duration, word count, or labels
+- NO quotes around the title when you mention it
+- Begin immediately with the first spoken sentence of the narration
+- Organise naturally into 5–8 clear topic sections with smooth spoken transitions
+- Each section should be 2–4 sentences long
+- Aim for 400–600 words total`,
         },
         {
           role: 'user',
-          content: `Write a visual slideshow script for: ${desc}`,
+          content: `Write a narration about: ${desc}`,
         },
-      ], { maxTokens: 1200, temperature: 0.72 });
+      ], { maxTokens: 1200, temperature: 0.7 });
+      const script = sanitiseAIScript(raw);
       const title = desc.length > 55 ? desc.slice(0, 55) + '…' : desc;
       setSource({ id: `vs-${Date.now()}`, name: title, type: 'describe', text: script, wordCount: countWords(script) });
       setDescribeText('');

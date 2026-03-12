@@ -11,6 +11,7 @@ import MediaPlayer from '@/components/MediaPlayer';
 import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import { extractPdfText } from '@/lib/extractText';
 import { chatWithStudioAI } from '@/lib/longcat';
+import { sanitiseAIScript } from '@/lib/contentMediaEngine';
 
 interface StudioSource {
   id: string;
@@ -108,16 +109,29 @@ export default function AudioStudio() {
     if (!desc) return;
     setAiEnhancing(true); setAiHint(null); setError(null);
     try {
-      const script = await chatWithStudioAI([
+      const raw = await chatWithStudioAI([
         {
           role: 'system',
-          content: `You are a professional content writer and scriptwriter. The user will give you a description of what they want to create as an audio script. Write a comprehensive, well-structured, engaging script covering the topic thoroughly. Use clear headings, flowing prose, and an educational yet conversational tone. Aim for 400-700 words. Do NOT include speaker names, stage directions, or meta-commentary — just the script content itself.`,
+          content: `You are a text-to-speech narrator. Output ONLY the exact words that will be spoken aloud — nothing else whatsoever.
+
+STRICT RULES — violations will break the audio:
+- Pure natural spoken prose only, exactly as a narrator would say it
+- NO markdown of any kind: no **, *, #, _, -, bullet points
+- NO stage directions, music cues, sound effects, or production notes
+- NO brackets [] or parentheses () containing instructions or metadata
+- NO title card, preamble, or intro like "Here is your script", "Audio Script:", "Script for..."
+- NO metadata: no duration, word count, or labels
+- NO quotes around the title when you mention it
+- Begin immediately with the first spoken sentence of the narration
+- Conversational, engaging tone — write as if speaking directly to a listener
+- Aim for 400–600 words`,
         },
         {
           role: 'user',
-          content: `Write a full audio script for: ${desc}`,
+          content: `Write a narration about: ${desc}`,
         },
-      ], { maxTokens: 1200, temperature: 0.72 });
+      ], { maxTokens: 1200, temperature: 0.7 });
+      const script = sanitiseAIScript(raw);
       const title = desc.length > 55 ? desc.slice(0, 55) + '…' : desc;
       setSource({ id: `as-${Date.now()}`, name: title, type: 'describe', text: script, wordCount: countWords(script) });
       setDescribeText('');
