@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Library, Search, Trash2, Filter, Video, Headphones,
-  Mic, FileText, BookOpen, StickyNote, GraduationCap, Presentation, RefreshCw,
+  Mic, FileText, BookOpen, StickyNote, GraduationCap, Presentation, RefreshCw, Film,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -12,16 +12,18 @@ import { getAllMediaItems, deleteMediaItem, deleteAllMedia, type GeneratedMediaI
 import MediaPlayer from '@/components/MediaPlayer';
 
 type FilterMode = 'all' | 'summary' | 'explainer' | 'podcast' | 'video';
-type FilterModule = 'all' | 'books' | 'notes' | 'study' | 'presentations' | 'coach';
+type FilterModule = 'all' | 'books' | 'notes' | 'study' | 'presentations' | 'coach' | 'audio-studio' | 'video-studio';
 
 const MODE_LABELS: Record<string, string> = {
   summary: 'Summary', explainer: 'Explainer', podcast: 'Podcast', video: 'Video',
 };
 const MODULE_LABELS: Record<string, string> = {
   books: 'Books', notes: 'Notes', study: 'Study', presentations: 'Presentations', coach: 'Coach',
+  'audio-studio': 'Audio Studio', 'video-studio': 'Video Studio',
 };
 const MODULE_ICONS: Record<string, typeof BookOpen> = {
   books: BookOpen, notes: StickyNote, study: GraduationCap, presentations: Presentation, coach: Video,
+  'audio-studio': Headphones, 'video-studio': Film,
 };
 const MODE_ICONS: Record<string, typeof Headphones> = {
   summary: FileText, explainer: Headphones, podcast: Mic, video: Video,
@@ -188,7 +190,7 @@ export default function MediaLibrary() {
               <div>
                 <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wide">Source</p>
                 <div className="flex gap-1.5 flex-wrap">
-                  {(['all', 'books', 'notes', 'study', 'presentations', 'coach'] as FilterModule[]).map(m => {
+                  {(['all', 'books', 'notes', 'study', 'presentations', 'coach', 'audio-studio', 'video-studio'] as FilterModule[]).map(m => {
                     const Icon = m === 'all' ? Library : MODULE_ICONS[m];
                     return (
                       <button
@@ -254,12 +256,12 @@ export default function MediaLibrary() {
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-[280px]">
               {items.length === 0
-                ? 'Generate audio summaries or video slideshows from your Books, Notes, Study materials, or Presentations.'
+                ? 'Generate audio or video from Books, Notes, Study, Presentations — or upload any file in Audio Studio or Video Studio.'
                 : 'Try adjusting your search or filters.'}
             </p>
             {items.length === 0 && (
               <div className="flex gap-2 mt-4 flex-wrap justify-center">
-                {([['Books', '/books'], ['Notes', '/notes'], ['Study', '/study'], ['Presentations', '/presentations']] as const).map(([label, path]) => (
+                {([['Books', '/books'], ['Notes', '/notes'], ['Study', '/study'], ['Presentations', '/presentations'], ['Audio Studio', '/audio-studio'], ['Video Studio', '/video-studio']] as const).map(([label, path]) => (
                   <Button key={path} variant="secondary" size="sm" className="rounded-xl text-xs" onClick={() => navigate(path)}>
                     {label}
                   </Button>

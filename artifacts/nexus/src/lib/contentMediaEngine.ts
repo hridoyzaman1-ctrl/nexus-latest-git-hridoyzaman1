@@ -8,7 +8,7 @@ import type { VideoScene } from './mediaStorage';
 // ── Limits config ─────────────────────────────────────────────────────────────
 
 export type MediaMode = 'summary' | 'explainer' | 'podcast' | 'video';
-export type SourceModule = 'books' | 'study' | 'notes' | 'presentations' | 'coach' | 'other';
+export type SourceModule = 'books' | 'study' | 'notes' | 'presentations' | 'coach' | 'audio-studio' | 'video-studio' | 'other';
 
 export interface ModeLimits {
   maxWords: number;
@@ -47,6 +47,18 @@ const LIMITS: Record<SourceModule, Record<MediaMode, ModeLimits>> = {
     explainer:{ maxWords: 3000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
     podcast:  { maxWords: 3000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
     video:    { maxWords: 3000,  maxPages: 999, maxAudioSeconds: 180, maxVideoSeconds: 180 },
+  },
+  'audio-studio': {
+    summary:  { maxWords: 12000, maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
+    explainer:{ maxWords: 10000, maxPages: 999, maxAudioSeconds: 420, maxVideoSeconds: 180 },
+    podcast:  { maxWords: 8000,  maxPages: 999, maxAudioSeconds: 600, maxVideoSeconds: 180 },
+    video:    { maxWords: 5000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
+  },
+  'video-studio': {
+    summary:  { maxWords: 8000,  maxPages: 999, maxAudioSeconds: 240, maxVideoSeconds: 240 },
+    explainer:{ maxWords: 7000,  maxPages: 999, maxAudioSeconds: 360, maxVideoSeconds: 240 },
+    podcast:  { maxWords: 6000,  maxPages: 999, maxAudioSeconds: 480, maxVideoSeconds: 240 },
+    video:    { maxWords: 5000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 300 },
   },
   other: {
     summary:  { maxWords: 3000,  maxPages: 10,  maxAudioSeconds: 180, maxVideoSeconds: 90 },

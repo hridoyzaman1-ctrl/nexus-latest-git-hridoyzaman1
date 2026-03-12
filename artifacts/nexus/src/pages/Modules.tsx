@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Target, Flame, CheckSquare, Timer, StickyNote, BookOpen, ListTodo, GraduationCap, DollarSign, Clock, Brain, Heart, Bell, ShieldAlert, BarChart3, MessageCircle, Sun, Moon, Eclipse, Monitor, Search, Presentation, Video, CloudSun, UtensilsCrossed, Dumbbell, Newspaper, ArrowLeft, Library } from 'lucide-react';
+import { Target, Flame, CheckSquare, Timer, StickyNote, BookOpen, ListTodo, GraduationCap, DollarSign, Clock, Brain, Heart, Bell, ShieldAlert, BarChart3, MessageCircle, Sun, Moon, Eclipse, Monitor, Search, Presentation, Video, CloudSun, UtensilsCrossed, Dumbbell, Newspaper, ArrowLeft, Library, Headphones, Film } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
@@ -26,6 +26,8 @@ const modules = [
   { title: 'Body & Fitness', desc: 'BMI, workouts & exercise coach', icon: Dumbbell, path: '/fitness', color: 'hsl(150, 70%, 45%)' },
   { title: 'News Portal', desc: 'Headlines & world news', icon: Newspaper, path: '/news', color: 'hsl(210, 75%, 50%)' },
   { title: 'Media Library', desc: 'Audio & video from your content', icon: Library, path: '/media-library', color: 'hsl(245, 58%, 62%)' },
+  { title: 'Audio Studio', desc: 'Upload files → generate narrated audio', icon: Headphones, path: '/audio-studio', color: 'hsl(199, 89%, 48%)' },
+  { title: 'Video Studio', desc: 'Upload files → generate visual slideshows', icon: Film, path: '/video-studio', color: 'hsl(291, 64%, 42%)' },
   { title: 'Meditation', desc: 'Mindful moments', icon: Brain, path: '/wellness#meditation', color: 'hsl(280, 60%, 55%)' },
   { title: 'Wellness & OCD Support', desc: 'ERP & coping tools', icon: Heart, path: '/wellness#ocd', color: 'hsl(340, 82%, 52%)' },
 ];

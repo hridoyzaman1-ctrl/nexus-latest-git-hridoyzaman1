@@ -30,6 +30,8 @@ interface MediaGenerationModalProps {
   getSourceText: (fromPage: number, toPage: number) => Promise<string>;
   /** Pass > 0 to show page range picker (books / study). Default 0 = no pagination. */
   totalPages?: number;
+  /** Starting mode. Defaults to 'summary'. */
+  initialMode?: MediaMode;
 }
 
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
@@ -43,11 +45,11 @@ type GenStage = 'idle' | 'extracting' | 'generating' | 'recording' | 'done' | 'e
 
 export default function MediaGenerationModal({
   open, onClose, sourceModule, sourceId, sourceName,
-  getSourceText, totalPages = 0,
+  getSourceText, totalPages = 0, initialMode = 'summary',
 }: MediaGenerationModalProps) {
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState<MediaMode>('summary');
+  const [mode, setMode] = useState<MediaMode>(initialMode);
   const [fromPage, setFromPage] = useState(1);
   const [toPage, setToPage] = useState(() => totalPages > 0 ? Math.min(totalPages, 20) : 1);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
