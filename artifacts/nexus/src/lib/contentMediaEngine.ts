@@ -219,12 +219,11 @@ export function buildSummaryScript(rawText: string, title: string, lang = 'en'):
     : '';
 
   return [
-    bn ? BN.summaryOf(title) : `Summary of "${title}".`,
     topicLine,
     bn ? BN.hereAreMain : 'Here are the main points.',
     topSentences,
     keyPoints ? `${bn ? BN.importantHighlights : 'Important highlights:'} ${keyPoints}` : '',
-    bn ? BN.concludes(title) : `That concludes the summary of "${title}".`,
+    bn ? 'এটি সারসংক্ষেপের সমাপ্তি।' : 'That concludes the summary.',
   ].filter(Boolean).join(' ');
 }
 
@@ -249,12 +248,11 @@ export function buildExplainerScript(rawText: string, title: string, lang = 'en'
     : '';
 
   return [
-    bn ? BN.welcomeExplainer(title) : `Welcome to this explainer on "${title}".`,
     topicIntro,
     mainExplain,
     keyHighlights,
     `${bn ? BN.letsReview : "Let's review."} ${sentences.slice(-4).join(' ')}`,
-    bn ? BN.fullExplainer(title) : `That's the full explainer for "${title}". Thanks for listening.`,
+    bn ? 'এটি সম্পূর্ণ ব্যাখ্যার সমাপ্তি। শুনার জন্য ধন্যবাদ।' : `That's the full explainer. Thanks for listening.`,
   ].filter(Boolean).join(' ');
 }
 
@@ -267,8 +265,8 @@ export function buildPodcastScript(rawText: string, title: string, lang = 'en'):
   const paragraphs = extractTopParagraphs(text, 8);
 
   const intro = bn
-    ? BN.podcastIntro(title)
-    : `Hey there! Welcome back. Today we're diving into "${title}". This is going to be a great episode, so let's get started.`;
+    ? 'নমস্কার! আবারও স্বাগতম। আজকের পর্বে আমরা একটি চমৎকার বিষয় নিয়ে আলোচনা করব। চলুন শুরু করি।'
+    : `Hey there! Welcome back. Today we're exploring something fascinating. This is going to be a great episode, so let's get started.`;
 
   const overview = headings.length > 0
     ? (bn ? BN.coveringToday(headings.slice(0, 5).join(', ')) : `Here's what we're covering today: ${headings.slice(0, 5).join(', ')}. Exciting stuff!`)
@@ -287,8 +285,8 @@ export function buildPodcastScript(rawText: string, title: string, lang = 'en'):
     : `${bn ? BN.sumUp : 'Let me sum up the most important things.'} ${sentences.slice(-8).join(' ')}`;
 
   const recap = bn
-    ? BN.wrapUp(title, headings.slice(0, 3).join(', '))
-    : `Alright, let's wrap up. We covered "${title}" today. ${headings.slice(0, 3).length > 0 ? `The main topics were: ${headings.slice(0, 3).join(', ')}.` : ''} I hope you found this valuable!`;
+    ? `ঠিক আছে, শেষ করা যাক। ${headings.slice(0, 3).length > 0 ? `মূল বিষয়গুলি ছিল: ${headings.slice(0, 3).join(', ')}।` : ''} আশা করি আপনি এটি মূল্যবান মনে করেছেন!`
+    : `Alright, let's wrap up. ${headings.slice(0, 3).length > 0 ? `The main topics were: ${headings.slice(0, 3).join(', ')}.` : ''} I hope you found this valuable!`;
   const outro = bn ? BN.outro : `Thanks for listening! See you next time.`;
 
   return [intro, overview, mainContent, keyTakeaways, recap, outro].filter(Boolean).join(' ');
@@ -393,11 +391,13 @@ export function buildScriptForMode(
       return { script: buildPodcastScript(rawText, title, lang) };
     case 'video': {
       const scenes = buildVideoScenes(rawText, title, lang);
-      const script = scenes.map(s => {
+      const script = scenes.map((s, i) => {
         const spokenBody = s.body
           .replace(/^[•\-\*]\s*/gm, '')
           .replace(/\n+/g, ' ')
           .trim();
+        // Title card (index 0) — skip heading (filename) in narration, speak only body
+        if (i === 0) return spokenBody;
         return `${s.heading}. ${spokenBody}`;
       }).join('. ');
       return { script, scenes };

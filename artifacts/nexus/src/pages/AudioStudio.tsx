@@ -5,7 +5,6 @@ import {
   X, Mic, BookOpen, ChevronRight, Trash2, RefreshCw,
   Sparkles, Loader2, Wand2,
 } from 'lucide-react';
-import Layout from '@/components/Layout';
 import MediaGenerationModal from '@/components/MediaGenerationModal';
 import MediaPlayer from '@/components/MediaPlayer';
 import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
@@ -174,7 +173,7 @@ STRICT RULES — violations will break the audio:
   ];
 
   return (
-    <Layout>
+    <>
       <div className="min-h-screen bg-background pb-24" data-tour="audio-studio-page">
         <div className="px-4 pt-4 pb-2 flex items-center gap-3" data-tour="audio-studio-header">
           <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-muted transition-colors">
@@ -409,6 +408,6 @@ STRICT RULES — violations will break the audio:
           language={language}
         />
       )}
-    </Layout>
+    </>
   );
 }

@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  getLimits, buildScriptForMode, estimateSpeechSeconds, countWords, truncateToWordLimit,
+  getLimits, buildScriptForMode, sanitiseAIScript, estimateSpeechSeconds, countWords, truncateToWordLimit,
   TTSController, getAvailableVoices, getDefaultVoice, isVideoSupported,
   recordVideoScenes, renderSceneToCanvas,
   type MediaMode, type SourceModule,
 } from '@/lib/contentMediaEngine';
+import { chatWithStudioAI } from '@/lib/longcat';
 import {
   saveMediaItem, saveVideoBlob, getVideoBlob, getMediaItem,
   type GeneratedMediaItem, type VideoScene,
@@ -85,6 +86,18 @@ export default function MediaGenerationModal({
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const cancelSignal = useRef({ cancelled: false });
   const [currentScene, setCurrentScene] = useState(0);
+
+  // Studio tip banner — dismissed once via close button or swipe
+  const TIP_KEY = 'mindflow_studio_gen_tip_dismissed';
+  const isStudioModule = sourceModule === 'audio-studio' || sourceModule === 'video-studio';
+  const [showTip, setShowTip] = useState(() =>
+    isStudioModule && localStorage.getItem(TIP_KEY) !== '1'
+  );
+  const tipTouchStart = useRef<number | null>(null);
+  const dismissTip = useCallback(() => {
+    localStorage.setItem(TIP_KEY, '1');
+    setShowTip(false);
+  }, []);
 
   // Load voices on open
   useEffect(() => {
@@ -199,14 +212,61 @@ export default function MediaGenerationModal({
       const words = countWords(truncated);
 
       setStage('generating');
-      setProgress(40);
-      setProgressLabel(`Building ${mode} script (${words.toLocaleString()} words)…`);
+      setProgress(35);
+      setProgressLabel(`Preparing ${mode} script…`);
 
-      // Yield to let React render the progress update before the sync script build
       await new Promise(r => setTimeout(r, 0));
       if (cancelSignal.current.cancelled) return;
 
-      const { script: generatedScript, scenes: generatedScenes } = buildScriptForMode(truncated, sourceName, mode, language);
+      let generatedScript = '';
+      let generatedScenes: VideoScene[] | undefined;
+
+      if (isStudioModule) {
+        // AI-first: use LongCat to generate a clean, title-free spoken script
+        const modePrompts: Record<MediaMode, string> = {
+          summary:  'Write a concise spoken summary covering all key points. 2-3 minutes when read aloud.',
+          explainer:'Write a clear spoken explainer walking through the main concepts. 4-5 minutes when read aloud.',
+          podcast:  'Write an engaging conversational podcast episode about this content. Sound natural and enthusiastic. 6-8 minutes when read aloud.',
+          video:    'Write flowing spoken narration for a video presentation covering the main ideas. 3-4 minutes when read aloud.',
+        };
+        const langInstruction = language === 'bn'
+          ? '\nIMPORTANT: Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.'
+          : '';
+        const prompt = `You are a professional audio script writer.\n\nSTRICT RULES:\n- Write ONLY the exact words that will be spoken aloud\n- Do NOT include any titles, file names, document names, or subject headings\n- Do NOT write "Here is your script", "Script:", or any preamble whatsoever\n- Do NOT use markdown, asterisks, bullet symbols, or any formatting characters\n- Do NOT include stage directions like [music], [pause], or [applause]\n- Start immediately with the spoken content — no introduction about what you are about to write\n- ${modePrompts[mode]}${langInstruction}\n\nCONTENT TO PROCESS:\n${truncated}`;
+
+        try {
+          setProgress(45);
+          setProgressLabel('AI is reading and scripting your content…');
+          const aiRaw = await chatWithStudioAI(
+            [{ role: 'user', content: prompt }],
+            { maxTokens: 2000 }
+          );
+          if (cancelSignal.current.cancelled) return;
+          generatedScript = sanitiseAIScript(aiRaw);
+          setProgress(72);
+          setProgressLabel('AI script ready — finalising…');
+        } catch {
+          // Fallback to local builder if AI call fails
+          setProgressLabel('Building script locally…');
+          const result = buildScriptForMode(truncated, sourceName, mode, language);
+          generatedScript = result.script;
+          generatedScenes = result.scenes;
+        }
+        // For video mode: always build visual scenes from raw text (separate from narration)
+        if (mode === 'video') {
+          const { scenes: localScenes } = buildScriptForMode(truncated, sourceName, mode, language);
+          generatedScenes = localScenes;
+        }
+      } else {
+        // Non-studio: use local script builder
+        setProgressLabel(`Building ${mode} script (${words.toLocaleString()} words)…`);
+        setProgress(40);
+        await new Promise(r => setTimeout(r, 0));
+        if (cancelSignal.current.cancelled) return;
+        const result = buildScriptForMode(truncated, sourceName, mode, language);
+        generatedScript = result.script;
+        generatedScenes = result.scenes;
+      }
 
       if (!generatedScript || generatedScript.trim().length < 20) {
         throw new Error('Could not generate a script. Please try a different page range or mode.');
@@ -294,7 +354,7 @@ export default function MediaGenerationModal({
       setErrorMsg(msg);
       setStage('error');
     }
-  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch]);
+  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule]);
 
   // TTS controls
   const handlePlay = useCallback(() => {
@@ -562,6 +622,41 @@ export default function MediaGenerationModal({
                           className="w-full accent-primary" />
                       </div>
                     </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Studio tip banner — closeable by button or swipe */}
+              <AnimatePresence>
+                {showTip && (stage === 'idle' || stage === 'error') && (
+                  <motion.div
+                    key="studio-tip"
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    onTouchStart={e => { tipTouchStart.current = e.touches[0].clientY; }}
+                    onTouchEnd={e => {
+                      if (tipTouchStart.current !== null && Math.abs(tipTouchStart.current - e.changedTouches[0].clientY) > 40) {
+                        dismissTip();
+                      }
+                      tipTouchStart.current = null;
+                    }}
+                    className="flex items-start gap-2.5 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25"
+                  >
+                    <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+                    <p className="text-[11px] leading-relaxed flex-1 text-amber-300">
+                      <span className="font-semibold">Best results tip:</span> For uploaded files, generating an AI{' '}
+                      <span className="font-semibold">Summary</span>, <span className="font-semibold">Explainer</span>, or{' '}
+                      <span className="font-semibold">Podcast</span> first — then creating audio from that output — gives the most accurate and natural-sounding audio.
+                      Swipe or tap ✕ to dismiss.
+                    </p>
+                    <button
+                      onClick={dismissTip}
+                      className="p-0.5 rounded-lg hover:bg-amber-500/20 transition-colors flex-shrink-0 text-amber-400"
+                      aria-label="Dismiss tip"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
