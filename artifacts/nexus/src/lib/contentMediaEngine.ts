@@ -839,6 +839,9 @@ export async function recordVideoScenes(
     const canvasStream = canvas.captureStream(25); // 25 fps
     let recordStream: MediaStream = canvasStream;
 
+    // Hoist bgmGain so it can be accessed for deferred automation after recorder starts
+    let bgmGain: GainNode | null = null;
+
     if (bgmTrackId && bgmTrackId !== 'none') {
       bgmAudioCtx = new AudioContext();
       if (bgmAudioCtx.state === 'suspended') await bgmAudioCtx.resume();
@@ -847,16 +850,8 @@ export async function recordVideoScenes(
       if (bgmBuffer) {
         const bgmDest = bgmAudioCtx.createMediaStreamDestination();
 
-        const bgmGain = bgmAudioCtx.createGain();
-        const now = bgmAudioCtx.currentTime;
-        const fadeSecs = Math.min(BGM_FADE_SECS, totalSceneSecs * 0.15);
-        // Fade-in: silence → BGM_VOLUME over 0.1 s
-        bgmGain.gain.setValueAtTime(0, now);
-        bgmGain.gain.linearRampToValueAtTime(BGM_VOLUME, now + 0.1);
-        // Hold at BGM_VOLUME until fade-out starts
-        bgmGain.gain.setValueAtTime(BGM_VOLUME, now + totalSceneSecs - fadeSecs);
-        // Fade-out: BGM_VOLUME → 0 over fadeSecs (natural end)
-        bgmGain.gain.linearRampToValueAtTime(0, now + totalSceneSecs);
+        bgmGain = bgmAudioCtx.createGain();
+        bgmGain.gain.value = 0; // silent until automation is scheduled after recorder starts
 
         bgmSrc = bgmAudioCtx.createBufferSource();
         bgmSrc.buffer = bgmBuffer;
@@ -864,9 +859,9 @@ export async function recordVideoScenes(
         bgmSrc.loopEnd = bgmBuffer.duration;
         bgmSrc.connect(bgmGain);
         bgmGain.connect(bgmDest);
-        bgmSrc.start();
+        // bgmSrc.start() is deferred — see below
 
-        // Merge canvas video + BGM audio into one stream
+        // Merge canvas video + BGM audio into one combined stream for recording
         recordStream = new MediaStream([
           ...canvasStream.getVideoTracks(),
           ...bgmDest.stream.getAudioTracks(),
@@ -878,6 +873,20 @@ export async function recordVideoScenes(
     const chunks: BlobPart[] = [];
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.start(200); // collect every 200ms
+
+    // Anchor all BGM timing to the AudioContext clock at the moment recorder goes live.
+    // This is the same pattern used in recordVideoWithUserAudio: gain automation and
+    // source.start() are scheduled AFTER recorder.start() so that currentTime is the
+    // precise reference for the fade-in, hold, and fade-out events.
+    if (bgmAudioCtx && bgmSrc && bgmGain) {
+      const fadeSecs = Math.min(BGM_FADE_SECS, totalSceneSecs * 0.15);
+      const now = bgmAudioCtx.currentTime;
+      bgmGain.gain.setValueAtTime(0, now);
+      bgmGain.gain.linearRampToValueAtTime(BGM_VOLUME, now + 0.1);
+      bgmGain.gain.setValueAtTime(BGM_VOLUME, now + totalSceneSecs - fadeSecs);
+      bgmGain.gain.linearRampToValueAtTime(0, now + totalSceneSecs);
+      bgmSrc.start(now);
+    }
 
     const startTime = Date.now();
 
@@ -1013,8 +1022,16 @@ export async function recordVideoWithUserAudio(
     // ── Build audio mix ───────────────────────────────────────────────────
     // Both narration and BGM (if selected) route through the same
     // MediaStreamDestination so MediaRecorder captures a single mixed track.
-    // Narration: gain = 1.0 (full volume, always clearly audible)
-    // BGM:       gain = BGM_VOLUME (≈ 22 %, looping, fades out 3 s before end)
+    // Narration: gain = 1.0 (full volume, always clearly audible and on top)
+    // BGM:       gain = BGM_VOLUME (≈ 22 %, looping, automatic fade-in + fade-out)
+    //
+    // CRITICAL TIMING NOTE: All GainNode automation and source.start() calls are
+    // intentionally deferred until AFTER recorder.start(). By the time we reach
+    // that point, audioCtx.currentTime has already advanced past 0 (due to resume,
+    // decodeAudioData, and renderBgmBuffer). Scheduling against time-0 would cause
+    // the fade-in to be skipped and the fade-out to fire too early by the same
+    // offset. Capturing currentTime right after recorder.start() gives the exact
+    // authoritative anchor for every gain event and source.start() call.
     const audioDest = audioCtx.createMediaStreamDestination();
 
     audioSrc = audioCtx.createBufferSource();
@@ -1024,24 +1041,19 @@ export async function recordVideoWithUserAudio(
     audioSrc.connect(narrationGain);
     narrationGain.connect(audioDest);
 
-    // Optional BGM layer
+    // Build BGM routing graph (connected but NOT started — deferred below)
+    let bgmGainNode: GainNode | null = null;
     if (bgmTrackId && bgmTrackId !== 'none') {
       const bgmBuffer = await renderBgmBuffer(bgmTrackId, audioCtx.sampleRate);
       if (bgmBuffer) {
-        const bgmGain = audioCtx.createGain();
-        const fadeSecs = Math.min(BGM_FADE_SECS, audioDurationSecs * 0.15);
-        // Tiny fade-in to avoid click, hold at BGM_VOLUME, then fade to 0
-        bgmGain.gain.setValueAtTime(0, 0);
-        bgmGain.gain.linearRampToValueAtTime(BGM_VOLUME, 0.1);
-        bgmGain.gain.setValueAtTime(BGM_VOLUME, audioDurationSecs - fadeSecs);
-        bgmGain.gain.linearRampToValueAtTime(0, audioDurationSecs);
-
+        bgmGainNode = audioCtx.createGain();
+        bgmGainNode.gain.value = 0; // silent until we schedule automation after recorder starts
         bgmSrc = audioCtx.createBufferSource();
         bgmSrc.buffer = bgmBuffer;
         bgmSrc.loop = true;
         bgmSrc.loopEnd = bgmBuffer.duration;
-        bgmSrc.connect(bgmGain);
-        bgmGain.connect(audioDest);
+        bgmSrc.connect(bgmGainNode);
+        bgmGainNode.connect(audioDest);
       }
     }
 
@@ -1060,10 +1072,25 @@ export async function recordVideoWithUserAudio(
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.start(200);
 
-    // Start audio — must happen AFTER recorder.start() so streams are live.
-    // Both narration and BGM start at the same moment so they stay in sync.
-    audioSrc.start(0);
-    bgmSrc?.start(0);
+    // ── Start all sources anchored to the same AudioContext clock position ─
+    // Capture currentTime AFTER recorder.start() — this is the precise moment
+    // at which the MediaRecorder stream is live. All source start times and all
+    // gain automation events are expressed relative to this single reference.
+    const playStart = audioCtx.currentTime;
+    audioSrc.start(playStart);
+
+    if (bgmSrc && bgmGainNode) {
+      const fadeSecs = Math.min(BGM_FADE_SECS, audioDurationSecs * 0.15);
+      // 100 ms fade-in → no click at the start even if BGM starts on a non-zero sample
+      bgmGainNode.gain.setValueAtTime(0, playStart);
+      bgmGainNode.gain.linearRampToValueAtTime(BGM_VOLUME, playStart + 0.1);
+      // Hold at BGM_VOLUME for the body of the video
+      bgmGainNode.gain.setValueAtTime(BGM_VOLUME, playStart + audioDurationSecs - fadeSecs);
+      // Smooth fade-out: naturally tails off before the video ends — not abrupt
+      bgmGainNode.gain.linearRampToValueAtTime(0, playStart + audioDurationSecs);
+      bgmSrc.start(playStart);
+    }
+
     const startTime = Date.now();
 
     const HALF_TRANS_MS = 200;
