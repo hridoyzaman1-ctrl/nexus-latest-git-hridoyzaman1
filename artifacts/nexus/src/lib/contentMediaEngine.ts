@@ -925,20 +925,41 @@ export async function recordVideoWithUserAudio(
   onProgress: (sceneIdx: number, total: number) => void,
   cancelSignal: { cancelled: boolean }
 ): Promise<VideoRecordResult> {
+  if (scenes.length === 0) throw new Error('No scenes to render');
+  if (!audioBlob || audioBlob.size === 0) throw new Error('Audio recording is empty');
+
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
     : MediaRecorder.isTypeSupported('video/webm')
     ? 'video/webm'
     : 'video/mp4';
 
-  // ── Set up AudioContext to pipe recorded audio blob into a MediaStream ─────
+  // ── Decode audio to measure exact duration ────────────────────────────────
   const audioCtx = new AudioContext();
   const arrayBuf = await audioBlob.arrayBuffer();
-  const audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+  let audioBuffer: AudioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+  } catch (err) {
+    await audioCtx.close();
+    throw new Error('Could not decode audio recording. The format may not be supported.');
+  }
+  const audioDurationSecs = audioBuffer.duration;
+
+  // ── Scale scene durations to match audio exactly (critical sync fix) ──────
+  const totalSceneDurSecs = scenes.reduce((sum, s) => sum + s.duration, 0);
+  const syncedScenes = totalSceneDurSecs > 0
+    ? scenes.map(s => ({ ...s, duration: s.duration * (audioDurationSecs / totalSceneDurSecs) }))
+    : scenes.map(s => ({ ...s, duration: audioDurationSecs / scenes.length }));
+
+  // ── Pipe audio into a MediaStream ─────────────────────────────────────────
   const audioSrc = audioCtx.createBufferSource();
   audioSrc.buffer = audioBuffer;
   const audioDest = audioCtx.createMediaStreamDestination();
   audioSrc.connect(audioDest);
+
+  // Promise that resolves when audio playback ends naturally
+  const audioEndedPromise = new Promise<void>(res => { audioSrc.onended = () => res(); });
 
   // ── Merge canvas video track + audio track ────────────────────────────────
   const canvasStream = canvas.captureStream(25);
@@ -952,7 +973,7 @@ export async function recordVideoWithUserAudio(
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
   recorder.start(200);
 
-  // Start playing the audio
+  // Start audio playback
   audioSrc.start(0);
   const startTime = Date.now();
 
@@ -970,10 +991,10 @@ export async function recordVideoWithUserAudio(
     ctx.restore();
   };
 
-  for (let i = 0; i < scenes.length; i++) {
+  for (let i = 0; i < syncedScenes.length; i++) {
     if (cancelSignal.cancelled) break;
-    const scene = scenes[i];
-    onProgress(i, scenes.length);
+    const scene = syncedScenes[i];
+    onProgress(i, syncedScenes.length);
     const sceneDurMs = scene.duration * 1000;
 
     // Fade in (skip first scene)
@@ -985,15 +1006,18 @@ export async function recordVideoWithUserAudio(
         await new Promise(r => setTimeout(r, 40));
       }
       renderSceneToCanvas(canvas, scene, 0);
+    } else {
+      // First scene: render immediately so canvas isn't blank
+      renderSceneToCanvas(canvas, scene, 0);
     }
 
     // Main scene hold
-    const hasOut = i < scenes.length - 1;
+    const hasOut = i < syncedScenes.length - 1;
     const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
     const sceneStart = Date.now();
     while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
       const elapsed = Date.now() - sceneStart;
-      renderSceneToCanvas(canvas, scene, elapsed / sceneDurMs);
+      renderSceneToCanvas(canvas, scene, elapsed / Math.max(sceneDurMs, 1));
       await new Promise(r => setTimeout(r, 40));
     }
 
@@ -1010,6 +1034,20 @@ export async function recordVideoWithUserAudio(
     } else {
       renderSceneToCanvas(canvas, scene, 1);
     }
+  }
+
+  // Mark progress complete
+  onProgress(syncedScenes.length, syncedScenes.length);
+
+  if (!cancelSignal.cancelled) {
+    // After canvas loop, hold last frame and wait for audio to finish naturally
+    // (audio playback is driven by AudioContext clock, canvas by setTimeout — they may finish
+    // at slightly different real times even though we scaled them to be equal; this grace wait
+    // ensures MediaRecorder captures all audio data before we stop it)
+    const gracePromise = new Promise<void>(res => setTimeout(res, 3000));
+    await Promise.race([audioEndedPromise, gracePromise]);
+    // Small extra flush window for MediaRecorder
+    await new Promise(r => setTimeout(r, 300));
   }
 
   // Stop audio playback

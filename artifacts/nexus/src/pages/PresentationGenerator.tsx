@@ -422,18 +422,34 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
 
   /** Convert slide content → VideoScene objects with custom ms-based timings */
   const buildScenesFromSlides = (pres: PresentationType, timingsMs: number[]) => {
+    // Map slide layout → VideoScene type for visual variety
+    const layoutToType = (layout: string): 'title' | 'keypoint' | 'definition' | 'quote' | 'example' | 'recap' => {
+      switch (layout) {
+        case 'cover': return 'title';
+        case 'closing': case 'summary': return 'recap';
+        case 'big-statement': return 'quote';
+        case 'comparison': case 'two-column': return 'example';
+        case 'kpi': case 'chart': return 'definition';
+        default: return 'keypoint';
+      }
+    };
     return pres.slides.map((slide, i) => {
       const bodyParts: string[] = [];
-      if (slide.body) bodyParts.push(slide.body);
       if (slide.bullets?.length) bodyParts.push(slide.bullets.join('\n'));
+      if (slide.body) bodyParts.push(slide.body);
       if (slide.statement) bodyParts.push(slide.statement);
       if (slide.summaryPoints?.length) bodyParts.push(slide.summaryPoints.join('\n'));
-      if (slide.speakerNotes) bodyParts.push(slide.speakerNotes);
+      if (slide.leftColumn?.length) bodyParts.push(slide.leftColumn.join('\n'));
+      if (slide.rightColumn?.length) bodyParts.push(slide.rightColumn.join('\n'));
+      // Use speaker notes as the primary body when available (richest text)
+      const body = slide.speakerNotes?.trim()
+        ? slide.speakerNotes
+        : (bodyParts.join('\n').trim() || slide.subtitle || '');
       return {
-        type: 'keypoint' as const,
+        type: layoutToType(slide.layout),
         heading: slide.title || `Slide ${i + 1}`,
-        body: bodyParts.join('\n').trim() || slide.subtitle || '',
-        duration: Math.max(0.5, (timingsMs[i] ?? 3000) / 1000),
+        body,
+        duration: Math.max(1, (timingsMs[i] ?? 5000) / 1000),
       };
     });
   };
@@ -441,8 +457,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   /** Generate a video using the presentation's saved narration audio */
   const handleGenerateVideoWithRecording = async () => {
     const pres = presentations.find(p => p.id === videoPresId);
-    if (!pres) return;
-    const timingsMs = pres.slideTimings && pres.slideTimings.length === pres.slides.length
+    if (!pres || pres.slides.length === 0) return;
+
+    // Use recorded timings if available and matching, otherwise equal distribution
+    const timingsMs = (pres.slideTimings && pres.slideTimings.length === pres.slides.length)
       ? pres.slideTimings
       : pres.slides.map(() => 5000);
 
@@ -450,41 +468,53 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     setPresGenProgress(0);
     presGenCancelRef.current = { cancelled: false };
 
+    let scenes: ReturnType<typeof buildScenesFromSlides> = [];
     try {
+      // Load audio blob
       const audioBlob = await getPresentationAudio(pres.id, pres.recordedAudioMime || 'audio/webm');
-      if (!audioBlob) {
-        toast({ title: 'No recording found', description: 'Please record narration first.', variant: 'destructive' });
+      if (!audioBlob || audioBlob.size === 0) {
+        toast({ title: 'No recording found', description: 'Open the presentation in Viewer → tap Record to narrate first.', variant: 'destructive' });
         setPresGenWithAudio(false);
         return;
       }
 
+      // Build canvas scenes from slide content with layout-aware types
+      scenes = buildScenesFromSlides(pres, timingsMs);
+
+      // Offscreen canvas — same size used by AI video generation
       const canvas = document.createElement('canvas');
-      canvas.width = 480; canvas.height = 270;
-      const scenes = buildScenesFromSlides(pres, timingsMs);
+      canvas.width = 480;
+      canvas.height = 270;
 
       const result = await recordVideoWithUserAudio(
-        canvas, scenes, audioBlob,
-        (idx, total) => setPresGenProgress(idx / total),
+        canvas,
+        scenes,
+        audioBlob,
+        (idx, total) => setPresGenProgress(total > 0 ? idx / total : 0),
         presGenCancelRef.current,
       );
 
       if (presGenCancelRef.current.cancelled) {
-        setPresGenWithAudio(false);
+        toast({ title: 'Cancelled', description: 'Video generation was cancelled.' });
         return;
       }
 
+      // Progress: 100%
+      setPresGenProgress(1);
+
+      // Save to media library
       const id = crypto.randomUUID();
       await saveVideoBlob(id, result.blob);
       saveMediaItem({
         id,
-        title: `${pres.settings.title} — Narration Video`,
+        title: `${pres.settings.title} — My Narration`,
         sourceModule: 'video-studio',
         sourceId: pres.id,
         sourceName: pres.settings.title || 'Presentation',
         mode: 'video',
         script: pres.slides.map(s => s.speakerNotes || s.title).join('\n\n'),
         language: 'en-US',
-        voiceName: '',
+        voiceName: 'User Recording',
         voiceRate: 1,
         voicePitch: 1,
         scenes,
@@ -496,10 +526,11 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
         videoMimeType: result.mimeType,
       });
 
-      toast({ title: '🎬 Video ready!', description: 'Your narration video has been saved to Video Studio.' });
+      toast({ title: '🎬 Video ready!', description: 'Your narration video has been saved. Open Video Studio to watch it.' });
       setVideoPresId(null);
     } catch (e: any) {
-      toast({ title: 'Generation failed', description: e?.message || 'Could not generate video.', variant: 'destructive' });
+      const msg = e?.message || 'Could not generate video.';
+      toast({ title: 'Generation failed', description: msg, variant: 'destructive' });
     } finally {
       setPresGenWithAudio(false);
       setPresGenProgress(0);

@@ -192,12 +192,28 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
     const totalMs = Date.now() - recordStartRef.current;
     const starts = slideStartTimesRef.current;
 
-    // Compute how long each slide was shown
-    const timings: number[] = slides.map((_, i) => {
-      if (starts[i] < 0) return 3000; // slide was never visited — default 3s
-      const nextStart = starts.slice(i + 1).find(t => t >= 0);
-      return nextStart !== undefined ? nextStart - starts[i] : totalMs - starts[i];
+    // Compute raw per-slide durations based on captured timestamps
+    const rawTimings: number[] = slides.map((_, i) => {
+      if (starts[i] < 0) return 0; // slide was never visited → will be distributed proportionally
+      // Find the start time of the next VISITED slide (in slide order)
+      const nextVisitedStart = starts.slice(i + 1).find(t => t >= 0);
+      return nextVisitedStart !== undefined ? nextVisitedStart - starts[i] : totalMs - starts[i];
     });
+
+    // Give unvisited slides an equal share of any remaining time
+    const visitedCount = rawTimings.filter(t => t > 0).length;
+    const visitedTotal = rawTimings.reduce((a, b) => a + b, 0);
+    const unvisitedShare = visitedCount < slides.length && visitedTotal < totalMs
+      ? (totalMs - visitedTotal) / (slides.length - visitedCount)
+      : Math.max(1000, totalMs / slides.length); // fallback if all visited but sum differs
+
+    const withDefaults = rawTimings.map(t => t > 0 ? t : unvisitedShare);
+
+    // Normalize so the sum equals totalMs exactly (ensures 1:1 sync with the audio blob)
+    const sum = withDefaults.reduce((a, b) => a + b, 0);
+    const timings = sum > 0
+      ? withDefaults.map(t => Math.round(t * totalMs / sum))
+      : slides.map(() => Math.round(totalMs / slides.length));
 
     mediaRecorderRef.current.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: micMimeRef.current });
