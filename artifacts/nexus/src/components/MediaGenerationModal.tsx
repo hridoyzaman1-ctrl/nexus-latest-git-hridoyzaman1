@@ -644,37 +644,103 @@ ${truncated}`;
               {/* Mode description */}
               <p className="text-[11px] text-muted-foreground bg-secondary/30 rounded-xl px-3 py-2 leading-relaxed">
                 {MODE_INFO[mode].desc}
-                {' · '}up to {limits.maxPages === 999 ? 'all' : limits.maxPages} pages
                 {' · '}~{Math.round(limits.maxAudioSeconds / 60)} min audio
-                {mode === 'video' ? ` · ${limits.maxVideoSeconds}s video` : ''}
+                {mode === 'video' ? ` · up to ${limits.maxVideoSeconds}s video` : ''}
               </p>
 
               {/* Page range picker (paginated sources only) */}
-              {totalPages > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] text-muted-foreground font-medium">Pages</span>
-                  <input
-                    type="number" min={1} max={totalPages} value={fromPage}
-                    onChange={e => {
-                      const v = Math.max(1, Math.min(Number(e.target.value), toPage));
-                      setFromPage(v);
-                    }}
-                    disabled={isBusy}
-                    className="w-16 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
-                  />
-                  <span className="text-[11px] text-muted-foreground">to</span>
-                  <input
-                    type="number" min={fromPage} max={totalPages} value={toPage}
-                    onChange={e => {
-                      const v = Math.max(fromPage, Math.min(Number(e.target.value), totalPages));
-                      setToPage(v);
-                    }}
-                    disabled={isBusy}
-                    className="w-16 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
-                  />
-                  <span className="text-[11px] text-muted-foreground">/ {totalPages}</span>
-                </div>
-              )}
+              {totalPages > 0 && (() => {
+                const maxPg = limits.maxPages === 999 ? totalPages : limits.maxPages;
+                const spanPages = toPage - fromPage + 1;
+                const needsBlocks = totalPages > maxPg;
+                const blockCount = Math.ceil(totalPages / maxPg);
+                const shownBlocks = Math.min(blockCount, 10);
+                const presetBlocks = Array.from({ length: shownBlocks }, (_, bi) => {
+                  const start = bi * maxPg + 1;
+                  const end = Math.min(start + maxPg - 1, totalPages);
+                  return { start, end, label: `${start}–${end}` };
+                });
+                const activePreset = presetBlocks.find(b => b.start === fromPage && b.end === toPage);
+                return (
+                  <div className="space-y-2.5 bg-secondary/20 rounded-2xl p-3 border border-border/30">
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold">Page Range</span>
+                      <span className="text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded-full shrink-0">
+                        Max {maxPg} pages · {limits.maxWords.toLocaleString()} words
+                      </span>
+                    </div>
+
+                    {/* Preset block buttons */}
+                    {needsBlocks && (
+                      <div className="flex gap-1 flex-wrap">
+                        {presetBlocks.map(({ start, end, label }) => {
+                          const isActive = fromPage === start && toPage === end;
+                          return (
+                            <button
+                              key={start}
+                              disabled={isBusy}
+                              onClick={() => { setFromPage(start); setToPage(end); }}
+                              className={cn(
+                                'text-[10px] px-2 py-0.5 rounded-full border transition-all',
+                                isActive
+                                  ? 'bg-primary border-primary text-primary-foreground font-semibold'
+                                  : 'border-border/60 bg-secondary/40 text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                                'disabled:opacity-40 disabled:cursor-not-allowed'
+                              )}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                        {blockCount > 10 && (
+                          <span className="text-[10px] text-muted-foreground self-center">+{blockCount - 10} more (use inputs below)</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Manual from / to inputs */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] text-muted-foreground">From pg</span>
+                      <input
+                        type="number" min={1} max={totalPages} value={fromPage}
+                        onChange={e => {
+                          const v = Math.max(1, Math.min(Number(e.target.value), totalPages));
+                          setFromPage(v);
+                          setToPage(prev => Math.max(v, Math.min(prev, v + maxPg - 1, totalPages)));
+                        }}
+                        disabled={isBusy}
+                        className="w-14 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
+                      />
+                      <span className="text-[10px] text-muted-foreground">to</span>
+                      <input
+                        type="number" min={fromPage} max={Math.min(totalPages, fromPage + maxPg - 1)} value={toPage}
+                        onChange={e => {
+                          const maxTo = Math.min(totalPages, fromPage + maxPg - 1);
+                          const v = Math.max(fromPage, Math.min(Number(e.target.value), maxTo));
+                          setToPage(v);
+                        }}
+                        disabled={isBusy}
+                        className="w-14 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
+                      />
+                      <span className="text-[10px] text-muted-foreground">/ {totalPages}</span>
+                      <span className={cn(
+                        'text-[10px] ml-auto font-medium',
+                        spanPages >= maxPg ? 'text-amber-400' : 'text-muted-foreground'
+                      )}>
+                        {spanPages} pg{spanPages !== 1 ? 's' : ''}{spanPages >= maxPg ? ' (max)' : ''}
+                      </span>
+                    </div>
+
+                    {/* Info line */}
+                    <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+                      Pages {fromPage}–{toPage} will be processed
+                      {!activePreset && needsBlocks ? ' · tap a range above for quick selection' : ''}
+                      {spanPages >= maxPg ? ` · at the limit for ${MODE_INFO[mode].label} mode` : ''}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Voice settings toggle */}
               <button
