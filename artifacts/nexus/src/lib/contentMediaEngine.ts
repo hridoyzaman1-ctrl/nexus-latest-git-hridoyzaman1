@@ -955,6 +955,7 @@ export async function recordVideoScenes(
   bgmTrackId?: string,
   sceneScripts?: string[],
   customRenderFn?: (canvas: HTMLCanvasElement, sceneIdx: number, progress: number) => void,
+  bgmVolume?: number,
 ): Promise<VideoRecordResult> {
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
@@ -1015,11 +1016,12 @@ export async function recordVideoScenes(
     // source.start() are scheduled AFTER recorder.start() so that currentTime is the
     // precise reference for the fade-in, hold, and fade-out events.
     if (bgmAudioCtx && bgmSrc && bgmGain) {
+      const effectiveBgmVol = bgmVolume ?? BGM_VOLUME;
       const fadeSecs = Math.min(BGM_FADE_SECS, totalSceneSecs * 0.15);
       const now = bgmAudioCtx.currentTime;
       bgmGain.gain.setValueAtTime(0, now);
-      bgmGain.gain.linearRampToValueAtTime(BGM_VOLUME, now + 0.1);
-      bgmGain.gain.setValueAtTime(BGM_VOLUME, now + totalSceneSecs - fadeSecs);
+      bgmGain.gain.linearRampToValueAtTime(effectiveBgmVol, now + 0.1);
+      bgmGain.gain.setValueAtTime(effectiveBgmVol, now + totalSceneSecs - fadeSecs);
       bgmGain.gain.linearRampToValueAtTime(0, now + totalSceneSecs);
       bgmSrc.start(now);
     }
@@ -1150,6 +1152,8 @@ export async function recordVideoWithUserAudio(
   cancelSignal: { cancelled: boolean },
   bgmTrackId?: string,
   customRenderFn?: (canvas: HTMLCanvasElement, sceneIdx: number, progress: number) => void,
+  bgmVolume?: number,
+  narrationVolume?: number,
 ): Promise<VideoRecordResult> {
   if (scenes.length === 0) throw new Error('No scenes to render');
   if (!audioBlob || audioBlob.size === 0) throw new Error('Audio recording is empty');
@@ -1208,7 +1212,7 @@ export async function recordVideoWithUserAudio(
     audioSrc = audioCtx.createBufferSource();
     audioSrc.buffer = audioBuffer;
     const narrationGain = audioCtx.createGain();
-    narrationGain.gain.value = 1.0;
+    narrationGain.gain.value = narrationVolume ?? 1.0;
     audioSrc.connect(narrationGain);
     narrationGain.connect(audioDest);
 
@@ -1251,13 +1255,11 @@ export async function recordVideoWithUserAudio(
     audioSrc.start(playStart);
 
     if (bgmSrc && bgmGainNode) {
+      const effectiveBgmVol = bgmVolume ?? BGM_VOLUME;
       const fadeSecs = Math.min(BGM_FADE_SECS, audioDurationSecs * 0.15);
-      // 100 ms fade-in → no click at the start even if BGM starts on a non-zero sample
       bgmGainNode.gain.setValueAtTime(0, playStart);
-      bgmGainNode.gain.linearRampToValueAtTime(BGM_VOLUME, playStart + 0.1);
-      // Hold at BGM_VOLUME for the body of the video
-      bgmGainNode.gain.setValueAtTime(BGM_VOLUME, playStart + audioDurationSecs - fadeSecs);
-      // Smooth fade-out: naturally tails off before the video ends — not abrupt
+      bgmGainNode.gain.linearRampToValueAtTime(effectiveBgmVol, playStart + 0.1);
+      bgmGainNode.gain.setValueAtTime(effectiveBgmVol, playStart + audioDurationSecs - fadeSecs);
       bgmGainNode.gain.linearRampToValueAtTime(0, playStart + audioDurationSecs);
       bgmSrc.start(playStart);
     }

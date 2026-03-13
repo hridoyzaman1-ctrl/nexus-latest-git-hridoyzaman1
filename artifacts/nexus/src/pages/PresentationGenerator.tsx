@@ -557,7 +557,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       saveMediaItem({
         id,
         title: `${pres.settings.title} — My Narration`,
-        sourceModule: 'video-studio',
+        sourceModule: 'presentations',
         sourceId: pres.id,
         sourceName: pres.settings.title || 'Presentation',
         mode: 'video',
@@ -2858,7 +2858,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
           <MediaGenerationModal
             open
             onClose={() => { setPresVideoModalOpen(false); closeFn(); }}
-            sourceModule="video-studio"
+            sourceModule="presentations"
             sourceId={pres.id}
             sourceName={pres.settings.title || 'Presentation'}
             getSourceText={async () => slideText}

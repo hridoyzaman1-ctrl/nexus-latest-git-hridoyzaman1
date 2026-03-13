@@ -14,7 +14,7 @@ import {
   recordVideoScenes, renderSceneToCanvas,
   type MediaMode, type SourceModule,
 } from '@/lib/contentMediaEngine';
-import { BGM_TRACKS } from '@/lib/bgmEngine';
+import { BGM_TRACKS, previewBgmTrack, BGM_VOLUME } from '@/lib/bgmEngine';
 import { chatWithMediaGenAI } from '@/lib/longcat';
 import {
   saveMediaItem, saveVideoBlob, getVideoBlob, getMediaItem,
@@ -50,6 +50,28 @@ interface MediaGenerationModalProps {
   customVideoRenderFn?: (canvas: HTMLCanvasElement, sceneIdx: number, progress: number) => void;
 }
 
+/**
+ * Split a narration script into N equal text segments (one per slide/scene).
+ * Sentences are distributed evenly so each slide gets a proportional portion
+ * of the full narration — preserving sentence boundaries throughout.
+ */
+function splitScriptIntoNParts(script: string, n: number): string[] {
+  if (n <= 0) return [script];
+  if (n === 1) return [script];
+  const sentences = script
+    .replace(/\n+/g, ' ')
+    .split(/(?<=[.!?।])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  if (sentences.length === 0) return Array.from({ length: n }, () => '');
+  const perPart = Math.max(1, Math.ceil(sentences.length / n));
+  return Array.from({ length: n }, (_, i) => {
+    const start = i * perPart;
+    const end = Math.min(start + perPart, sentences.length);
+    return sentences.slice(start, end).join(' ');
+  });
+}
+
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
   summary:  { label: 'Summary',   desc: 'Concise key-point overview',    icon: FileText,  color: 'hsl(199,89%,48%)' },
   explainer:{ label: 'Explainer', desc: 'Structured concept walkthrough', icon: BookOpen,  color: 'hsl(245,58%,62%)' },
@@ -68,6 +90,10 @@ export default function MediaGenerationModal({
 
   const [mode, setMode] = useState<MediaMode>(initialMode);
   const [selectedBgm, setSelectedBgm] = useState<string>(initialBgmId);
+  const [bgmVolume, setBgmVolume] = useState(BGM_VOLUME);
+  const [narrationVolume, setNarrationVolume] = useState(1.0);
+  const [bgmPreviewing, setBgmPreviewing] = useState<string | null>(null);
+  const bgmPreviewRef = useRef<{ stop: () => void } | null>(null);
   const [fromPage, setFromPage] = useState(1);
   const [toPage, setToPage] = useState(() => totalPages > 0 ? Math.min(totalPages, 20) : 1);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
@@ -160,18 +186,29 @@ export default function MediaGenerationModal({
   // Re-draw preview canvas when currentScene changes (done + video mode)
   useEffect(() => {
     if (stage === 'done' && scenes.length > 0 && previewCanvasRef.current) {
-      const scene = scenes[currentScene] ?? scenes[0];
       previewCanvasRef.current.width = 480;
       previewCanvasRef.current.height = 270;
-      renderSceneToCanvas(previewCanvasRef.current, scene);
+      if (customVideoRenderFn) {
+        customVideoRenderFn(previewCanvasRef.current, currentScene, 1);
+      } else {
+        const scene = scenes[currentScene] ?? scenes[0];
+        renderSceneToCanvas(previewCanvasRef.current, scene);
+      }
     }
-  }, [stage, currentScene, scenes]);
+  }, [stage, currentScene, scenes, customVideoRenderFn]);
 
   const isBusy = stage === 'extracting' || stage === 'generating' || stage === 'recording';
+
+  const stopBgmPreview = useCallback(() => {
+    bgmPreviewRef.current?.stop();
+    bgmPreviewRef.current = null;
+    setBgmPreviewing(null);
+  }, []);
 
   const resetState = useCallback(() => {
     ttsRef.current?.stop();
     cancelSignal.current = { cancelled: true };
+    stopBgmPreview();
     setStage('idle');
     setScript('');
     setScenes([]);
@@ -190,7 +227,7 @@ export default function MediaGenerationModal({
     setVfsProgress(0);
     setVfsLabel('');
     setVfsDone(false);
-  }, []);
+  }, [stopBgmPreview]);
 
   const handleClose = useCallback(() => {
     resetState();
@@ -204,14 +241,19 @@ export default function MediaGenerationModal({
     return () => {
       ttsRef.current?.stop();
       cancelSignal.current = { cancelled: true };
+      bgmPreviewRef.current?.stop();
+      bgmPreviewRef.current = null;
       try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
     };
   }, []);
 
-  // Also stop TTS whenever the modal is closed (open → false)
+  // Also stop TTS + BGM preview whenever the modal is closed (open → false)
   useEffect(() => {
     if (!open) {
       ttsRef.current?.stop();
+      bgmPreviewRef.current?.stop();
+      bgmPreviewRef.current = null;
+      setBgmPreviewing(null);
       try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
     }
   }, [open]);
@@ -377,6 +419,22 @@ ${truncated}`;
         throw new Error('Could not generate a script. Please try a different page range or mode.');
       }
 
+      // ── Presentation video: match scenes exactly to slides ───────────────
+      // When a custom canvas renderer is provided (presentation video mode),
+      // the scene count MUST equal the slide count so idx → slide[idx] is 1-to-1.
+      // Split the full narration script evenly — one segment per slide.
+      if (mode === 'video' && customVideoRenderFn && totalPages > 0) {
+        const slideCount = totalPages;
+        const parts = splitScriptIntoNParts(generatedScript, slideCount);
+        generatedScenes = parts.map((part, i) => ({
+          type: 'keypoint' as VideoScene['type'],
+          heading: `Slide ${i + 1}`,
+          body: part.slice(0, 220),
+          duration: Math.max(4, Math.ceil(part.split(/\s+/).filter(Boolean).length / 130 * 60)),
+        }));
+        generatedSceneScripts = parts;
+      }
+
       setScript(generatedScript);
       if (generatedScenes) {
         setScenes(generatedScenes);
@@ -432,6 +490,7 @@ ${truncated}`;
               selectedBgm,
               generatedSceneScripts,
               customVideoRenderFn,
+              bgmVolume,
             );
             if (!cancelSignal.current.cancelled) {
               await saveVideoBlob(id, result.blob);
@@ -462,7 +521,7 @@ ${truncated}`;
       setErrorMsg(msg);
       setStage('error');
     }
-  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript, selectedBgm]);
+  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript, selectedBgm, bgmVolume, customVideoRenderFn]);
 
   // ── Generate video from an already-produced script (VFS path) ────────────────────────────────
   const handleGenerateVideoFromScript = useCallback(async () => {
@@ -474,7 +533,24 @@ ${truncated}`;
     setCurrentScene(0);
 
     try {
-      const { scenes: vScenes, sceneScripts: vSS } = buildScriptForMode(script, sourceName, 'video', language);
+      let vScenes: VideoScene[];
+      let vSS: string[] | undefined;
+
+      if (customVideoRenderFn && totalPages > 0) {
+        // Presentation video: one scene per slide, script split evenly
+        const parts = splitScriptIntoNParts(script, totalPages);
+        vScenes = parts.map((part, i) => ({
+          type: 'keypoint' as VideoScene['type'],
+          heading: `Slide ${i + 1}`,
+          body: part.slice(0, 220),
+          duration: Math.max(4, Math.ceil(part.split(/\s+/).filter(Boolean).length / 130 * 60)),
+        }));
+        vSS = parts;
+      } else {
+        const result2 = buildScriptForMode(script, sourceName, 'video', language);
+        vScenes = result2.scenes ?? [];
+        vSS = result2.sceneScripts;
+      }
 
       if (!vScenes || vScenes.length === 0) throw new Error('Could not build scenes from this script.');
 
@@ -503,6 +579,7 @@ ${truncated}`;
         vfsBgm,
         vSS,
         customVideoRenderFn,
+        bgmVolume,
       );
 
       if (!cancelSignal.current.cancelled) {
@@ -526,7 +603,7 @@ ${truncated}`;
     } finally {
       setVfsBusy(false);
     }
-  }, [script, savedItemId, sourceName, language, vfsBgm]);
+  }, [script, savedItemId, sourceName, language, vfsBgm, bgmVolume, customVideoRenderFn, totalPages]);
 
   // TTS controls
   const handlePlay = useCallback(() => {
@@ -901,31 +978,80 @@ ${truncated}`;
 
               {/* Background Music picker — Video mode only */}
               {mode === 'video' && (stage === 'idle' || stage === 'error') && (
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <div className="space-y-2.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                     <Music2 className="w-3 h-3" /> Background Music
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    {BGM_TRACKS.map(track => (
-                      <button
-                        key={track.id}
-                        onClick={() => setSelectedBgm(track.id)}
-                        className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
-                          selectedBgm === track.id
-                            ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200'
-                            : 'border-white/10 text-muted-foreground hover:border-white/20'
-                        }`}
-                      >
-                        <div>
-                          <p className="text-xs font-medium leading-none">{track.name}</p>
-                          <p className="text-[9px] mt-0.5 opacity-70">{track.description}</p>
-                        </div>
-                      </button>
-                    ))}
+                    {BGM_TRACKS.map(track => {
+                      const isSelected = selectedBgm === track.id;
+                      const isPreviewing = bgmPreviewing === track.id;
+                      return (
+                        <button
+                          key={track.id}
+                          onClick={async () => {
+                            setSelectedBgm(track.id);
+                            stopBgmPreview();
+                            if (track.id !== 'none') {
+                              setBgmPreviewing(track.id);
+                              const handle = await previewBgmTrack(track.id, 7, bgmVolume);
+                              bgmPreviewRef.current = handle;
+                              setTimeout(() => setBgmPreviewing(null), 7500);
+                            }
+                          }}
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                            isSelected
+                              ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200'
+                              : 'border-white/10 text-muted-foreground hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium leading-none flex items-center gap-1">
+                              {track.name}
+                              {isPreviewing && <span className="text-[8px] text-indigo-300 animate-pulse">♪</span>}
+                            </p>
+                            <p className="text-[9px] mt-0.5 opacity-70">{track.description}</p>
+                          </div>
+                          {track.id !== 'none' && (
+                            <Play className="w-3 h-3 opacity-40 flex-shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
+
+                  {/* Volume controls */}
+                  <div className="space-y-2 bg-secondary/20 rounded-xl p-3 border border-border/20">
+                    <p className="text-[10px] font-semibold text-muted-foreground">Volume Mix</p>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] text-muted-foreground">Narration</label>
+                        <span className="text-[10px] text-foreground font-medium">{Math.round(narrationVolume * 100)}%</span>
+                      </div>
+                      <input
+                        type="range" min={0.1} max={1} step={0.05} value={narrationVolume}
+                        onChange={e => setNarrationVolume(Number(e.target.value))}
+                        className="w-full accent-primary h-1.5"
+                      />
+                    </div>
+                    {selectedBgm !== 'none' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] text-muted-foreground">BGM</label>
+                          <span className="text-[10px] text-foreground font-medium">{Math.round(bgmVolume * 100)}%</span>
+                        </div>
+                        <input
+                          type="range" min={0.05} max={0.9} step={0.05} value={bgmVolume}
+                          onChange={e => setBgmVolume(Number(e.target.value))}
+                          className="w-full accent-indigo-400 h-1.5"
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   {selectedBgm !== 'none' && (
-                    <p className="text-[9px] text-indigo-400/60 mt-1.5 px-0.5">
-                      BGM fades in at start and out 3 s before end — narration stays on top
+                    <p className="text-[9px] text-indigo-400/60 px-0.5">
+                      Click any track to hear a 7-second preview · BGM fades in at start and out before end
                     </p>
                   )}
                 </div>

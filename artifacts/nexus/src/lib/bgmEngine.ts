@@ -220,7 +220,61 @@ export async function renderBgmBuffer(
   return ctx.startRendering();
 }
 
-/** BGM_VOLUME: narration sits at 1.0; BGM at this level — present but never overpowering */
-export const BGM_VOLUME = 0.22;
+/** BGM_VOLUME: default BGM level — raised so it is clearly audible alongside narration */
+export const BGM_VOLUME = 0.45;
 /** Fade-out duration in seconds applied at the end of the video */
 export const BGM_FADE_SECS = 3.0;
+
+/**
+ * Plays a short preview of a BGM track (default 7 s) so the user can hear
+ * what each track sounds like before generating video.
+ * Returns a { stop } handle so the caller can cancel it early.
+ */
+export async function previewBgmTrack(
+  trackId: string,
+  durationSecs = 7,
+  volume = BGM_VOLUME,
+): Promise<{ stop: () => void }> {
+  if (!trackId || trackId === 'none') return { stop: () => {} };
+
+  let ctx: AudioContext | null = null;
+  let src: AudioBufferSourceNode | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const cleanup = () => {
+    if (timer) clearTimeout(timer);
+    try { src?.stop(); } catch {}
+    ctx?.close().catch(() => {});
+  };
+
+  try {
+    ctx = new AudioContext();
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    const buffer = await renderBgmBuffer(trackId, ctx.sampleRate);
+    if (!buffer) { cleanup(); return { stop: () => {} }; }
+
+    src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    src.loopEnd = buffer.duration;
+
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(volume, now + 0.1);
+    gain.gain.setValueAtTime(volume, now + Math.max(0.1, durationSecs - 0.8));
+    gain.gain.linearRampToValueAtTime(0, now + durationSecs);
+
+    src.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(now);
+
+    timer = setTimeout(cleanup, (durationSecs + 0.3) * 1000);
+
+    return { stop: cleanup };
+  } catch {
+    cleanup();
+    return { stop: () => {} };
+  }
+}
