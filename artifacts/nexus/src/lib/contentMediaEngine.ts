@@ -687,23 +687,36 @@ export function renderSceneToCanvas(
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   const bodyFontSize = scene.body.length > 200 ? Math.round(H * 0.047) : Math.round(H * 0.054);
   ctx.font = `400 ${bodyFontSize}px Inter, system-ui, sans-serif`;
-  const maxBodyLines = Math.floor((H - bodyStartY - 16) / (bodyFontSize + 5));
+  const maxBodyLines = Math.floor((H - bodyStartY - 20) / (bodyFontSize + 6));
   const bodyLines = scene.body
     .split('\n')
     .flatMap(line => {
       const stripped = line.replace(/^[•\-\*]\s*/, '');
       return wrapText(ctx, stripped ? '• ' + stripped : line, 14, bodyStartY, W - 28);
     });
-  bodyLines.slice(0, maxBodyLines).forEach((line, i) => {
+
+  // When truncated, append '…' to the last visible line so it never cuts mid-word
+  const visibleLines = bodyLines.slice(0, maxBodyLines);
+  if (bodyLines.length > maxBodyLines && visibleLines.length > 0) {
+    const last = visibleLines[visibleLines.length - 1];
+    // Trim the last line char-by-char until 'last…' fits inside maxWidth
+    let trimmed = last.replace(/[•\s]+$/, ''); // strip trailing bullet/space
+    while (trimmed.length > 0 && ctx.measureText(trimmed + '…').width > W - 28) {
+      trimmed = trimmed.slice(0, -1);
+    }
+    visibleLines[visibleLines.length - 1] = trimmed + '…';
+  }
+
+  visibleLines.forEach((line, i) => {
     // Highlight bullet dots in accent color
     if (line.startsWith('•')) {
       ctx.fillStyle = accent;
-      ctx.fillText('•', 14, bodyStartY + i * (bodyFontSize + 5));
+      ctx.fillText('•', 14, bodyStartY + i * (bodyFontSize + 6));
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText(line.slice(1), 14 + bodyFontSize * 0.7, bodyStartY + i * (bodyFontSize + 5));
+      ctx.fillText(line.slice(1), 14 + bodyFontSize * 0.7, bodyStartY + i * (bodyFontSize + 6));
     } else {
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText(line, 14, bodyStartY + i * (bodyFontSize + 5));
+      ctx.fillText(line, 14, bodyStartY + i * (bodyFontSize + 6));
     }
   });
 
@@ -730,11 +743,44 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, _x: number, _y: n
   const words = text.split(' ');
   const lines: string[] = [];
   let current = '';
+
   for (const word of words) {
     const test = current ? `${current} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && current) {
-      lines.push(current);
-      current = word;
+    if (ctx.measureText(test).width > maxWidth) {
+      if (current) {
+        lines.push(current);
+        // If the word itself is wider than maxWidth, break it at character level
+        if (ctx.measureText(word).width > maxWidth) {
+          let chunk = '';
+          for (const ch of word) {
+            if (ctx.measureText(chunk + ch).width > maxWidth) {
+              if (chunk) lines.push(chunk);
+              chunk = ch;
+            } else {
+              chunk += ch;
+            }
+          }
+          current = chunk;
+        } else {
+          current = word;
+        }
+      } else {
+        // No current content yet and word is too wide — character-break it
+        if (ctx.measureText(word).width > maxWidth) {
+          let chunk = '';
+          for (const ch of word) {
+            if (ctx.measureText(chunk + ch).width > maxWidth) {
+              if (chunk) lines.push(chunk);
+              chunk = ch;
+            } else {
+              chunk += ch;
+            }
+          }
+          current = chunk;
+        } else {
+          current = word;
+        }
+      }
     } else {
       current = test;
     }
