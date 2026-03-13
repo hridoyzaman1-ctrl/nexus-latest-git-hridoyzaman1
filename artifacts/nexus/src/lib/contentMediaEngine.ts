@@ -87,7 +87,29 @@ export function estimateSpeechSeconds(text: string): number {
 export function truncateToWordLimit(text: string, maxWords: number): string {
   const words = text.trim().split(/\s+/);
   if (words.length <= maxWords) return text;
-  return words.slice(0, maxWords).join(' ') + '…';
+  // Trim at word boundary first, then snap back to the last sentence end
+  return trimToLastSentence(words.slice(0, maxWords).join(' '));
+}
+
+/**
+ * Trim text so it ends at the last complete sentence boundary (. ! ?).
+ * Prevents scripts from ending mid-sentence after word-count truncation
+ * or AI token cutoffs. Exported so the modal can apply it post-AI too.
+ */
+export function trimToLastSentence(text: string): string {
+  if (!text) return text;
+  // Already ends with sentence-ending punctuation
+  if (/[.!?]["'\u2019\u201d]?\s*$/.test(text)) return text.trim();
+  // Collect all positions where a sentence ends
+  const endings = [...text.matchAll(/[.!?]["'\u2019\u201d]?(?=\s|$)/g)];
+  if (endings.length === 0) return text.trim(); // no sentence end found — return as-is
+  const last = endings[endings.length - 1];
+  const cutPos = (last.index ?? 0) + last[0].length;
+  // Only trim if we're keeping at least 35 % of the text (avoid over-trimming short inputs)
+  if (cutPos >= text.length * 0.35) {
+    return text.slice(0, cutPos).trim();
+  }
+  return text.trim();
 }
 
 /**
@@ -100,7 +122,7 @@ export function truncateToWordLimit(text: string, maxWords: number): string {
  * - Trailing/leading whitespace and collapsed blank lines
  */
 export function sanitiseAIScript(raw: string): string {
-  return raw
+  const cleaned = raw
     // Strip markdown bold/italic
     .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
     // Strip markdown headings (## Heading)
@@ -126,6 +148,8 @@ export function sanitiseAIScript(raw: string): string {
     // Collapse multiple blank lines
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  // Ensure output ends at a complete sentence boundary
+  return trimToLastSentence(cleaned);
 }
 
 function cleanText(text: string): string {
@@ -233,17 +257,16 @@ const BN = {
 } as const;
 
 export function buildSummaryScript(rawText: string, _title: string, lang = 'en'): string {
-  const _bn = lang === 'bn';
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
 
   const topSentences = sentences.slice(0, 8).join(' ');
   const keyPoints = bullets.length > 0
-    ? bullets.slice(0, 6).join('. ')
+    ? bullets.slice(0, 6).map(b => /[.!?]$/.test(b.trim()) ? b : b + '.').join(' ')
     : sentences.slice(8, 14).join(' ');
 
-  return [topSentences, keyPoints].filter(Boolean).join(' ');
+  return trimToLastSentence([topSentences, keyPoints].filter(Boolean).join(' '));
 }
 
 export function buildExplainerScript(rawText: string, title: string, lang = 'en'): string {
@@ -258,14 +281,14 @@ export function buildExplainerScript(rawText: string, title: string, lang = 'en'
     : sentences.slice(0, 20).join(' ');
 
   const keyHighlights = bullets.length > 0
-    ? bullets.slice(0, 8).join('. ')
+    ? bullets.slice(0, 8).map(b => /[.!?]$/.test(b.trim()) ? b : b + '.').join(' ')
     : '';
 
-  return [
+  return trimToLastSentence([
     mainExplain,
     keyHighlights,
     sentences.slice(-4).join(' '),
-  ].filter(Boolean).join(' ');
+  ].filter(Boolean).join(' '));
 }
 
 export function buildPodcastScript(rawText: string, title: string, lang = 'en'): string {
@@ -284,10 +307,10 @@ export function buildPodcastScript(rawText: string, title: string, lang = 'en'):
     : sentences.slice(0, 25).join(' ');
 
   const keyTakeaways = bullets.length > 0
-    ? bullets.slice(0, 6).join('. ')
+    ? bullets.slice(0, 6).map(b => /[.!?]$/.test(b.trim()) ? b : b + '.').join(' ')
     : sentences.slice(-8).join(' ');
 
-  return [mainContent, keyTakeaways].filter(Boolean).join(' ');
+  return trimToLastSentence([mainContent, keyTakeaways].filter(Boolean).join(' '));
 }
 
 export function buildVideoScenes(rawText: string, title: string, lang = 'en'): VideoScene[] {
@@ -401,12 +424,15 @@ export function buildScriptForMode(
     case 'video': {
       const scenes = buildVideoScenes(rawText, title, lang);
       const sceneScripts = scenes.map((s, i) => {
-        const spokenBody = s.body
-          .replace(/^[•\-\*]\s*/gm, '')
-          .replace(/\n+/g, ' ')
-          .trim();
-        if (i === 0) return spokenBody;
-        return `${s.heading}. ${spokenBody}`;
+        const spokenBody = trimToLastSentence(
+          s.body
+            .replace(/^[•\-\*]\s*/gm, '')
+            .replace(/\n+/g, ' ')
+            .trim()
+        );
+        const text = i === 0 ? spokenBody : `${s.heading}. ${spokenBody}`;
+        // Ensure each scene script ends with a period
+        return /[.!?]$/.test(text.trim()) ? text : text + '.';
       });
       const script = sceneScripts.join('. ');
       return { script, scenes, sceneScripts };

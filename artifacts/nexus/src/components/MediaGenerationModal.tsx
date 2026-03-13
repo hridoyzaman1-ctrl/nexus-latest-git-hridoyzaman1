@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  getLimits, buildScriptForMode, sanitiseAIScript, estimateSpeechSeconds, countWords, truncateToWordLimit,
+  getLimits, buildScriptForMode, sanitiseAIScript, estimateSpeechSeconds, countWords, truncateToWordLimit, trimToLastSentence,
   TTSController, getAvailableVoices, getDefaultVoice, isVideoSupported,
   recordVideoScenes, renderSceneToCanvas,
   type MediaMode, type SourceModule,
@@ -298,17 +298,22 @@ ABSOLUTE RULES — violating any of these will make the output unusable:
 - Do NOT include stage directions, sound cues, or parenthetical notes ([music], [pause], (upbeat tone), etc.).
 - Do NOT repeat or echo the source title or filename anywhere in the output.
 - The very first word of your output must be substantive spoken content — a fact, concept, or sentence from the material itself.
+- Your output MUST end with a complete, properly punctuated sentence. The very last character before any whitespace must be a period, exclamation mark, or question mark. Never cut off mid-sentence or mid-thought.
 - ${modePrompts[mode]}${langInstruction}
 
 CONTENT TO PROCESS:
 ${truncated}`;
+
+          const maxTokensByMode: Record<MediaMode, number> = {
+            summary: 1500, explainer: 2500, podcast: 3000, video: 2000,
+          };
 
           try {
             setProgress(45);
             setProgressLabel('AI is reading and scripting your content…');
             const aiRaw = await chatWithStudioAI(
               [{ role: 'user', content: prompt }],
-              { maxTokens: 2000 }
+              { maxTokens: maxTokensByMode[mode] }
             );
             if (cancelSignal.current.cancelled) return;
             generatedScript = sanitiseAIScript(aiRaw);
