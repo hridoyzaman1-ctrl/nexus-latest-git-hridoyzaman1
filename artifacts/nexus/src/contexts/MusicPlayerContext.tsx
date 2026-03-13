@@ -21,7 +21,21 @@ export const DEFAULT_AUDIO_PREFS: AudioPreferences = {
   autoplay: false,
 };
 
-export const BUILTIN_TRACKS: MusicTrack[] = [];
+export const BUILTIN_TRACKS: MusicTrack[] = [
+  { id: 'melody',        name: '🎶 Melody',                url: '/audio/Melody.mp3',                    isCustom: false },
+  { id: 'chill',         name: '🍃 Chill',                 url: '/audio/Chill.mp3',                     isCustom: false },
+  { id: 'cafe',          name: '☕ Cafe',                   url: '/audio/Cafe.mp3',                      isCustom: false },
+  { id: 'piano',         name: '🎹 Peaceful Piano',        url: '/audio/Peaceful%20Piano.mp3',          isCustom: false },
+  { id: 'flute',         name: '🎐 Flute',                 url: '/audio/Flute.mp3',                     isCustom: false },
+  { id: 'rain',          name: '🌧️ Gentle Rain',           url: '/audio/Gentle%20Rain.mp3',             isCustom: false },
+  { id: 'ocean',         name: '🌊 Ocean Waves',           url: '/audio/Ocean%20Waves.mp3',             isCustom: false },
+  { id: 'meditation',    name: '🧘 Meditation',            url: '/audio/Meditation.mp3',                isCustom: false },
+  { id: 'yoga',          name: '🧘‍♀️ Yoga',                url: '/audio/Yoga.mp3',                      isCustom: false },
+  { id: 'quietphase',   name: '✨ Quietphase Meditation', url: '/audio/Quietphase%20Meditation.mp3',   isCustom: false },
+  { id: 'ambient',       name: '🌌 Ambient Background',   url: '/audio/Ambient%20Background.mp3',      isCustom: false },
+  { id: 'believer',      name: '🔥 Believer',              url: '/audio/Believer.mp3',                  isCustom: false },
+  { id: 'stronger',      name: '💪 Stronger Every Day',   url: '/audio/Stronger%20Every%20Day.mp3',    isCustom: false },
+];
 
 interface MusicPlayerState {
   isPlaying: boolean;
