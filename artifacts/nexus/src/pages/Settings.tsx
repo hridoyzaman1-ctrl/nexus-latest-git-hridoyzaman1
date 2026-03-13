@@ -597,14 +597,39 @@ export default function SettingsPage() {
       </div>
 
       {/* App Tutorial */}
-      <div className="glass rounded-2xl p-4 space-y-2">
+      <div className="glass rounded-2xl p-4 space-y-3">
         <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
           <HelpCircle className="w-4 h-4" /> Help & Tutorial
         </h2>
-        <p className="text-xs text-muted-foreground">Learn how every feature and module works.</p>
+        <p className="text-xs text-muted-foreground">Learn how every feature and module works, including the new voice narration recording system for Presentations.</p>
         <Button variant="secondary" size="sm" className="w-full gap-1.5" onClick={() => setShowTutorial(true)}>
-          <BookOpen className="w-4 h-4" /> View App Tutorial
+          <BookOpen className="w-4 h-4" /> View Full App Tutorial
         </Button>
+
+        {/* Presentation Recording quick help */}
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎙️</span>
+            <p className="text-xs font-semibold text-emerald-300">Presentation Voice Narration</p>
+          </div>
+          <div className="space-y-1.5">
+            {[
+              { step: '1', text: 'Open any presentation → tap the red Record button in the viewer toolbar' },
+              { step: '2', text: 'Use the split-screen: slides on top, teleprompter speaker notes below' },
+              { step: '3', text: 'Tap Record in the header → navigate slides while speaking — timings are captured automatically' },
+              { step: '4', text: 'Stop → Save Narration to store your audio on this device' },
+              { step: '5', text: 'Open Video Creator (film icon) → choose "My Voice" under Narration Source → Generate with My Voice' },
+            ].map(({ step, text }) => (
+              <div key={step} className="flex items-start gap-2">
+                <span className="shrink-0 w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 text-[9px] font-bold flex items-center justify-center mt-0.5">{step}</span>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{text}</p>
+              </div>
+            ))}
+          </div>
+          <div className="pt-1 border-t border-white/5">
+            <p className="text-[10px] text-muted-foreground/60">💡 Tip: Use the Slide Timing tab to manually set durations without recording a voice — great for silent video slideshows.</p>
+          </div>
+        </div>
       </div>
 
       {/* Help Us Grow */}

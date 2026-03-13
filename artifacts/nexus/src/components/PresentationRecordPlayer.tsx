@@ -16,6 +16,7 @@ import {
 import type { Presentation } from '@/types/presentation';
 import { getTheme } from '@/lib/presentationThemes';
 import { renderTextWithBreaks } from '@/lib/presentationRenderer';
+import PageOnboardingTooltips from '@/components/PageOnboardingTooltips';
 import { getTextAreaWidth } from '@/lib/slideEngine';
 import { savePresentation } from '@/lib/presentationStorage';
 import { savePresentationAudio, getPresentationAudio, deletePresentationAudio } from '@/lib/presentationAudioStorage';
@@ -302,7 +303,7 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
       className="fixed inset-0 z-[110] flex flex-col bg-black overflow-hidden"
     >
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-black/90 border-b border-white/10 z-20 shrink-0">
+      <div data-tour="record-header" className="flex items-center gap-2 px-3 py-2 bg-black/90 border-b border-white/10 z-20 shrink-0">
         <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 text-white transition-colors">
           <ArrowLeft className="w-4 h-4" />
         </button>
@@ -326,6 +327,7 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
         {/* Mic / Stop button */}
         {!isRecording ? (
           <button
+            data-tour="record-btn"
             onClick={startRecording}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors text-xs font-medium"
           >
@@ -400,6 +402,7 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
 
         {/* Side nav arrows */}
         <button
+          data-tour="record-slide-nav"
           onClick={goToPrev}
           disabled={slideIdx === 0}
           className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center disabled:opacity-20 transition-all z-10"
@@ -422,12 +425,14 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
         {/* Tab bar */}
         <div className="flex items-center gap-1 px-3 pt-2 pb-1 shrink-0">
           <button
+            data-tour="record-teleprompter-tab"
             onClick={() => setActiveTab('teleprompter')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors ${activeTab === 'teleprompter' ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30' : 'text-white/40 hover:text-white/70'}`}
           >
             <ScrollText className="w-3 h-3" /> Teleprompter
           </button>
           <button
+            data-tour="record-timing-tab"
             onClick={() => setActiveTab('timing')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors ${activeTab === 'timing' ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30' : 'text-white/40 hover:text-white/70'}`}
           >
@@ -436,7 +441,7 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
 
           {/* Auto-scroll controls (teleprompter tab only) */}
           {activeTab === 'teleprompter' && (
-            <div className="ml-auto flex items-center gap-2">
+            <div data-tour="record-autoscroll" className="ml-auto flex items-center gap-2">
               {autoScroll && (
                 <input
                   type="range" min={0.5} max={4} step={0.25}
@@ -599,6 +604,9 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* First-visit spotlight tutorial for the record player */}
+      <PageOnboardingTooltips pageId="pres-record-player" />
     </motion.div>
   );
 }

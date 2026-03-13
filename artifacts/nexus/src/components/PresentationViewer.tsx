@@ -199,6 +199,7 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                 <div className="flex items-center gap-1.5">
                     {/* Record & Teleprompter button */}
                     <button
+                        data-tour="viewer-record-btn"
                         onClick={() => setShowRecordPlayer(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-red-500/20 text-red-300 text-xs font-medium backdrop-blur-md hover:bg-red-500/30 transition-colors border border-red-500/30 shadow-lg"
                         title="Record narration & teleprompter"
