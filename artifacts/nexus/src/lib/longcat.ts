@@ -162,11 +162,13 @@ export async function chatWithStudioAI(
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
   if (AV_POOL.length === 0) throw new Error('No Studio API keys configured.');
-  return callWithKeyPool('av', AV_POOL, {
+  const content = await callWithKeyPool('av', AV_POOL, {
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 1200,
     temperature: options?.temperature ?? 0.72,
   }, 30000, '');
+  if (!content) throw new Error('Empty response from Studio AI. Please try again.');
+  return content;
 }
 
 /** Media Generation modal (Summary / Explainer / Podcast / Video modes).
@@ -176,11 +178,13 @@ export async function chatWithMediaGenAI(
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
   if (MEDIA_GEN_POOL.length === 0) throw new Error('No Media Gen API keys configured.');
-  return callWithKeyPool('mediaGen', MEDIA_GEN_POOL, {
+  const content = await callWithKeyPool('mediaGen', MEDIA_GEN_POOL, {
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 1200,
     temperature: options?.temperature ?? 0.72,
   }, 30000, '');
+  if (!content) throw new Error('Empty response from AI. Please try again.');
+  return content;
 }
 
 /** Presentation video script generation.
@@ -190,11 +194,13 @@ export async function chatWithPresentationAI(
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
   if (PRESENTATION_POOL.length === 0) throw new Error('No Presentation API keys configured.');
-  return callWithKeyPool('presentation', PRESENTATION_POOL, {
+  const content = await callWithKeyPool('presentation', PRESENTATION_POOL, {
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 1200,
     temperature: options?.temperature ?? 0.72,
   }, 30000, '');
+  if (!content) throw new Error('Empty response from AI. Please try again.');
+  return content;
 }
 
 // ── System prompts ─────────────────────────────────────────────────────────────
