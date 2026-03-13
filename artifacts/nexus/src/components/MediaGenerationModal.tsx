@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Headphones, Video, FileText, Mic, Play, Square, Pause, RotateCcw,
   Download, X, Sparkles, ChevronDown, ChevronUp, Settings2, Library,
-  Loader2, BookOpen, CheckCircle2, AlertCircle, Clock,
+  Loader2, BookOpen, CheckCircle2, AlertCircle, Clock, Music2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,7 @@ import {
   recordVideoScenes, renderSceneToCanvas,
   type MediaMode, type SourceModule,
 } from '@/lib/contentMediaEngine';
+import { BGM_TRACKS } from '@/lib/bgmEngine';
 import { chatWithStudioAI } from '@/lib/longcat';
 import {
   saveMediaItem, saveVideoBlob, getVideoBlob, getMediaItem,
@@ -37,6 +38,8 @@ interface MediaGenerationModalProps {
   language?: string;
   /** Pre-generated AI script — skips extraction + generation, goes straight to recording/done. */
   preGeneratedScript?: string;
+  /** Pre-selected BGM track id (from parent video creator). Defaults to 'none'. */
+  initialBgmId?: string;
 }
 
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
@@ -51,11 +54,12 @@ type GenStage = 'idle' | 'extracting' | 'generating' | 'recording' | 'done' | 'e
 export default function MediaGenerationModal({
   open, onClose, sourceModule, sourceId, sourceName,
   getSourceText, totalPages = 0, initialMode = 'summary', language = 'en',
-  preGeneratedScript,
+  preGeneratedScript, initialBgmId = 'none',
 }: MediaGenerationModalProps) {
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<MediaMode>(initialMode);
+  const [selectedBgm, setSelectedBgm] = useState<string>(initialBgmId);
   const [fromPage, setFromPage] = useState(1);
   const [toPage, setToPage] = useState(() => totalPages > 0 ? Math.min(totalPages, 20) : 1);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
@@ -359,7 +363,8 @@ export default function MediaGenerationModal({
                 setProgress(60 + Math.round((sceneIdx / total) * 35));
                 setProgressLabel(`Recording scene ${sceneIdx + 1} of ${total}…`);
               },
-              cancelSignal.current
+              cancelSignal.current,
+              selectedBgm,
             );
             if (!cancelSignal.current.cancelled) {
               await saveVideoBlob(id, result.blob);
@@ -696,6 +701,38 @@ export default function MediaGenerationModal({
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* Background Music picker — Video mode only */}
+              {mode === 'video' && (stage === 'idle' || stage === 'error') && (
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Music2 className="w-3 h-3" /> Background Music
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {BGM_TRACKS.map(track => (
+                      <button
+                        key={track.id}
+                        onClick={() => setSelectedBgm(track.id)}
+                        className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                          selectedBgm === track.id
+                            ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200'
+                            : 'border-white/10 text-muted-foreground hover:border-white/20'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-xs font-medium leading-none">{track.name}</p>
+                          <p className="text-[9px] mt-0.5 opacity-70">{track.description}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedBgm !== 'none' && (
+                    <p className="text-[9px] text-indigo-400/60 mt-1.5 px-0.5">
+                      BGM fades in at start and out 3 s before end — narration stays on top
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Generate button (idle / error state) */}
               {(stage === 'idle' || stage === 'error') && (

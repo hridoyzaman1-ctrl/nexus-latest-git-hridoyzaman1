@@ -4,6 +4,7 @@
 // Video: Canvas API + MediaRecorder
 
 import type { VideoScene } from './mediaStorage';
+import { renderBgmBuffer, BGM_VOLUME, BGM_FADE_SECS } from './bgmEngine';
 
 // ── Limits config ─────────────────────────────────────────────────────────────
 
@@ -816,100 +817,144 @@ export async function recordVideoScenes(
   canvas: HTMLCanvasElement,
   scenes: VideoScene[],
   onProgress: (sceneIdx: number, total: number) => void,
-  cancelSignal: { cancelled: boolean }
+  cancelSignal: { cancelled: boolean },
+  bgmTrackId?: string,
 ): Promise<VideoRecordResult> {
-  const stream = canvas.captureStream(25); // 25 fps
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
     : MediaRecorder.isTypeSupported('video/webm')
     ? 'video/webm'
     : 'video/mp4';
 
-  const recorder = new MediaRecorder(stream, { mimeType });
-  const chunks: BlobPart[] = [];
-  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  // ── Optional BGM setup ────────────────────────────────────────────────────
+  // The AI-TTS path records canvas-only by default. When BGM is selected we
+  // create a separate AudioContext, synthesise the loop, pipe it to a
+  // MediaStreamAudioDestinationNode and merge its audio track with the canvas
+  // video track before handing everything to MediaRecorder.
+  let bgmAudioCtx: AudioContext | null = null;
+  let bgmSrc: AudioBufferSourceNode | null = null;
 
-  recorder.start(200); // collect every 200ms
+  try {
+    const totalSceneSecs = scenes.reduce((s, sc) => s + sc.duration, 0);
+    const canvasStream = canvas.captureStream(25); // 25 fps
+    let recordStream: MediaStream = canvasStream;
 
-  const startTime = Date.now();
-  let totalDuration = 0;
+    if (bgmTrackId && bgmTrackId !== 'none') {
+      bgmAudioCtx = new AudioContext();
+      if (bgmAudioCtx.state === 'suspended') await bgmAudioCtx.resume();
 
-  // Transition constants: 200ms fade-out + 200ms fade-in = 400ms total per cut
-  const HALF_TRANS_MS = 200;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
+      const bgmBuffer = await renderBgmBuffer(bgmTrackId, bgmAudioCtx.sampleRate);
+      if (bgmBuffer) {
+        const bgmDest = bgmAudioCtx.createMediaStreamDestination();
 
-  /** Overlay a black rectangle at the given alpha (0 = invisible, 1 = fully black) */
-  const overlayBlack = (alpha: number) => {
-    if (!ctx) return;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-  };
+        const bgmGain = bgmAudioCtx.createGain();
+        const now = bgmAudioCtx.currentTime;
+        const fadeSecs = Math.min(BGM_FADE_SECS, totalSceneSecs * 0.15);
+        // Fade-in: silence → BGM_VOLUME over 0.1 s
+        bgmGain.gain.setValueAtTime(0, now);
+        bgmGain.gain.linearRampToValueAtTime(BGM_VOLUME, now + 0.1);
+        // Hold at BGM_VOLUME until fade-out starts
+        bgmGain.gain.setValueAtTime(BGM_VOLUME, now + totalSceneSecs - fadeSecs);
+        // Fade-out: BGM_VOLUME → 0 over fadeSecs (natural end)
+        bgmGain.gain.linearRampToValueAtTime(0, now + totalSceneSecs);
 
-  for (let i = 0; i < scenes.length; i++) {
-    if (cancelSignal.cancelled) break;
-    const scene = scenes[i];
-    onProgress(i, scenes.length);
-    const sceneDurMs = scene.duration * 1000;
-    totalDuration += scene.duration;
+        bgmSrc = bgmAudioCtx.createBufferSource();
+        bgmSrc.buffer = bgmBuffer;
+        bgmSrc.loop = true;
+        bgmSrc.loopEnd = bgmBuffer.duration;
+        bgmSrc.connect(bgmGain);
+        bgmGain.connect(bgmDest);
+        bgmSrc.start();
 
-    // ── Fade in from black (skip for first scene) ──────────────────────────
-    if (i > 0) {
-      const t0 = Date.now();
-      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
-        const t = (Date.now() - t0) / HALF_TRANS_MS; // 0 → 1
-        renderSceneToCanvas(canvas, scene, 0);
-        overlayBlack(1 - t); // fully black → fully transparent (scene reveals)
-        await new Promise(r => setTimeout(r, 40));
+        // Merge canvas video + BGM audio into one stream
+        recordStream = new MediaStream([
+          ...canvasStream.getVideoTracks(),
+          ...bgmDest.stream.getAudioTracks(),
+        ]);
       }
-      // Guarantee clean visible frame
-      renderSceneToCanvas(canvas, scene, 0);
     }
 
-    // ── Main scene content ─────────────────────────────────────────────────
-    // Reserve last HALF_TRANS_MS for the fade-out (except on the last scene)
-    const hasOut = i < scenes.length - 1;
-    const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
-    const sceneStart = Date.now();
-    while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
-      const elapsed = Date.now() - sceneStart;
-      const progress = elapsed / sceneDurMs;
-      renderSceneToCanvas(canvas, scene, progress);
-      await new Promise(r => setTimeout(r, 40));
-    }
+    const recorder = new MediaRecorder(recordStream, { mimeType });
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.start(200); // collect every 200ms
 
-    // ── Fade out to black (skip for last scene) ────────────────────────────
-    if (hasOut && !cancelSignal.cancelled) {
-      const t0 = Date.now();
-      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
-        const t = (Date.now() - t0) / HALF_TRANS_MS; // 0 → 1
-        renderSceneToCanvas(canvas, scene, 1);
-        overlayBlack(t); // transparent → fully black
-        await new Promise(r => setTimeout(r, 40));
-      }
-      // Hold one fully-black frame at the cut point
-      if (ctx) {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, W, H);
-      }
-      await new Promise(r => setTimeout(r, 40));
-    } else {
-      renderSceneToCanvas(canvas, scene, 1);
-    }
-  }
+    const startTime = Date.now();
 
-  return new Promise((resolve, reject) => {
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      resolve({ blob, mimeType, durationSecs: (Date.now() - startTime) / 1000 });
+    // Transition constants: 200ms fade-out + 200ms fade-in = 400ms total per cut
+    const HALF_TRANS_MS = 200;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const overlayBlack = (alpha: number) => {
+      if (!ctx) return;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
     };
-    recorder.onerror = () => reject(new Error('MediaRecorder error'));
-    recorder.stop();
-  });
+
+    for (let i = 0; i < scenes.length; i++) {
+      if (cancelSignal.cancelled) break;
+      const scene = scenes[i];
+      onProgress(i, scenes.length);
+      const sceneDurMs = scene.duration * 1000;
+
+      // ── Fade in from black (skip for first scene) ────────────────────────
+      if (i > 0) {
+        const t0 = Date.now();
+        while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+          const t = (Date.now() - t0) / HALF_TRANS_MS;
+          renderSceneToCanvas(canvas, scene, 0);
+          overlayBlack(1 - t);
+          await new Promise(r => setTimeout(r, 40));
+        }
+        renderSceneToCanvas(canvas, scene, 0);
+      }
+
+      // ── Main scene content ───────────────────────────────────────────────
+      const hasOut = i < scenes.length - 1;
+      const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
+      const sceneStart = Date.now();
+      while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
+        const elapsed = Date.now() - sceneStart;
+        renderSceneToCanvas(canvas, scene, elapsed / sceneDurMs);
+        await new Promise(r => setTimeout(r, 40));
+      }
+
+      // ── Fade out to black (skip for last scene) ──────────────────────────
+      if (hasOut && !cancelSignal.cancelled) {
+        const t0 = Date.now();
+        while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+          const t = (Date.now() - t0) / HALF_TRANS_MS;
+          renderSceneToCanvas(canvas, scene, 1);
+          overlayBlack(t);
+          await new Promise(r => setTimeout(r, 40));
+        }
+        if (ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
+        await new Promise(r => setTimeout(r, 40));
+      } else {
+        renderSceneToCanvas(canvas, scene, 1);
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType });
+        resolve({ blob, mimeType, durationSecs: (Date.now() - startTime) / 1000 });
+      };
+      recorder.onerror = () => reject(new Error('MediaRecorder error'));
+      if (recorder.state !== 'inactive') recorder.stop();
+      else recorder.onstop?.(new Event('stop'));
+    });
+
+  } finally {
+    // Always release BGM resources regardless of success, error, or cancellation
+    try { bgmSrc?.stop(); } catch {}
+    try { await bgmAudioCtx?.close(); } catch {}
+  }
 }
 
 /**
@@ -923,7 +968,8 @@ export async function recordVideoWithUserAudio(
   scenes: VideoScene[],
   audioBlob: Blob,
   onProgress: (sceneIdx: number, total: number) => void,
-  cancelSignal: { cancelled: boolean }
+  cancelSignal: { cancelled: boolean },
+  bgmTrackId?: string,
 ): Promise<VideoRecordResult> {
   if (scenes.length === 0) throw new Error('No scenes to render');
   if (!audioBlob || audioBlob.size === 0) throw new Error('Audio recording is empty');
@@ -938,6 +984,7 @@ export async function recordVideoWithUserAudio(
   // AudioContext is created outside try/finally so we can close it in all paths.
   const audioCtx = new AudioContext();
   let audioSrc: AudioBufferSourceNode | null = null;
+  let bgmSrc: AudioBufferSourceNode | null = null;
   let recorder: MediaRecorder | null = null;
 
   try {
@@ -963,16 +1010,45 @@ export async function recordVideoWithUserAudio(
       ? scenes.map(s => ({ ...s, duration: s.duration * (audioDurationSecs / totalSceneDurSecs) }))
       : scenes.map(s => ({ ...s, duration: audioDurationSecs / scenes.length }));
 
-    // ── Pipe audio into MediaStream ───────────────────────────────────────
+    // ── Build audio mix ───────────────────────────────────────────────────
+    // Both narration and BGM (if selected) route through the same
+    // MediaStreamDestination so MediaRecorder captures a single mixed track.
+    // Narration: gain = 1.0 (full volume, always clearly audible)
+    // BGM:       gain = BGM_VOLUME (≈ 22 %, looping, fades out 3 s before end)
+    const audioDest = audioCtx.createMediaStreamDestination();
+
     audioSrc = audioCtx.createBufferSource();
     audioSrc.buffer = audioBuffer;
-    const audioDest = audioCtx.createMediaStreamDestination();
-    audioSrc.connect(audioDest);
+    const narrationGain = audioCtx.createGain();
+    narrationGain.gain.value = 1.0;
+    audioSrc.connect(narrationGain);
+    narrationGain.connect(audioDest);
 
-    // Resolves when audio playback ends naturally
+    // Optional BGM layer
+    if (bgmTrackId && bgmTrackId !== 'none') {
+      const bgmBuffer = await renderBgmBuffer(bgmTrackId, audioCtx.sampleRate);
+      if (bgmBuffer) {
+        const bgmGain = audioCtx.createGain();
+        const fadeSecs = Math.min(BGM_FADE_SECS, audioDurationSecs * 0.15);
+        // Tiny fade-in to avoid click, hold at BGM_VOLUME, then fade to 0
+        bgmGain.gain.setValueAtTime(0, 0);
+        bgmGain.gain.linearRampToValueAtTime(BGM_VOLUME, 0.1);
+        bgmGain.gain.setValueAtTime(BGM_VOLUME, audioDurationSecs - fadeSecs);
+        bgmGain.gain.linearRampToValueAtTime(0, audioDurationSecs);
+
+        bgmSrc = audioCtx.createBufferSource();
+        bgmSrc.buffer = bgmBuffer;
+        bgmSrc.loop = true;
+        bgmSrc.loopEnd = bgmBuffer.duration;
+        bgmSrc.connect(bgmGain);
+        bgmGain.connect(audioDest);
+      }
+    }
+
+    // Resolves when narration playback ends naturally
     const audioEndedPromise = new Promise<void>(res => { audioSrc!.onended = () => res(); });
 
-    // ── Merge canvas + audio tracks ───────────────────────────────────────
+    // ── Merge canvas + mixed audio tracks ────────────────────────────────
     const canvasStream = canvas.captureStream(25);
     const combined = new MediaStream([
       ...canvasStream.getVideoTracks(),
@@ -984,8 +1060,10 @@ export async function recordVideoWithUserAudio(
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.start(200);
 
-    // Start audio — must happen AFTER recorder.start() so streams are live
+    // Start audio — must happen AFTER recorder.start() so streams are live.
+    // Both narration and BGM start at the same moment so they stay in sync.
     audioSrc.start(0);
+    bgmSrc?.start(0);
     const startTime = Date.now();
 
     const HALF_TRANS_MS = 200;
@@ -1073,6 +1151,7 @@ export async function recordVideoWithUserAudio(
 
   } finally {
     // Always clean up audio resources regardless of success, error, or cancellation
+    try { bgmSrc?.stop(); } catch {}
     try { audioSrc?.stop(); } catch {}
     try { await audioCtx.close(); } catch {}
   }

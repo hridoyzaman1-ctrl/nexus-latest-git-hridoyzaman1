@@ -8,11 +8,12 @@ import {
   CheckCircle2, Loader2, Presentation, ImagePlus, X, Move, Maximize2,
   MessageSquare, BarChart3, Clock, RefreshCw,
   ChevronDown, ChevronUp, AlertTriangle, Type, Bold, Italic, AlignLeft, AlignCenter, AlignRight,
-  BookOpen, Play, Headphones, Film, Video, Mic
+  BookOpen, Play, Headphones, Film, Video, Mic, Music2
 } from 'lucide-react';
 import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { chatWithStudioAI } from '@/lib/longcat';
 import { sanitiseAIScript, buildVideoScenes, recordVideoWithUserAudio, isVideoSupported } from '@/lib/contentMediaEngine';
+import { BGM_TRACKS } from '@/lib/bgmEngine';
 import { saveVideoBlob, saveMediaItem } from '@/lib/mediaStorage';
 import { getPresentationAudio, hasPresentationAudio } from '@/lib/presentationAudioStorage';
 import { Button } from '@/components/ui/button';
@@ -211,6 +212,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   /** Per-slide timing (seconds) editable inline in the video creator — null = use stored slideTimings */
   const [presTimingOverride, setPresTimingOverride] = useState<number[] | null>(null);
   const [presTimingSource, setPresTimingSource] = useState<'recording' | 'custom' | 'default'>('default');
+  const [presSelectedBgm, setPresSelectedBgm] = useState<string>('none');
   const { toast } = useToast();
 
   const getStudySessions = (): StudySession[] => {
@@ -511,6 +513,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
         audioBlob,
         (idx, total) => setPresGenProgress(total > 0 ? idx / total : 0),
         presGenCancelRef.current,
+        presSelectedBgm,
       );
 
       if (presGenCancelRef.current.cancelled) {
@@ -2546,6 +2549,36 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                 </div>
               </div>
 
+              {/* Background Music picker — applies to both narration paths */}
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Music2 className="w-3 h-3" /> Background Music
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {BGM_TRACKS.map(track => (
+                    <button
+                      key={track.id}
+                      onClick={() => setPresSelectedBgm(track.id)}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                        presSelectedBgm === track.id
+                          ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200'
+                          : 'border-white/10 text-muted-foreground hover:border-white/20'
+                      }`}
+                    >
+                      <div>
+                        <p className="text-xs font-medium leading-none">{track.name}</p>
+                        <p className="text-[9px] mt-0.5 opacity-70">{track.description}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {presSelectedBgm !== 'none' && (
+                  <p className="text-[9px] text-indigo-400/60 mt-1.5 px-0.5">
+                    BGM fades in at start and out 3 s before end — narration always on top
+                  </p>
+                )}
+              </div>
+
               {/* AI-TTS path: script preview + generate buttons */}
               {presNarrationMode === 'ai-tts' && (
                 <>
@@ -2708,6 +2741,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             preGeneratedScript={presVideoPreScript}
             initialMode={presVideoMode}
             language={presVideoLanguage}
+            initialBgmId={presSelectedBgm}
           />
         )}
       </>
