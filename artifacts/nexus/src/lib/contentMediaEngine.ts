@@ -949,6 +949,7 @@ export async function recordVideoScenes(
   cancelSignal: { cancelled: boolean },
   bgmTrackId?: string,
   sceneScripts?: string[],
+  customRenderFn?: (canvas: HTMLCanvasElement, sceneIdx: number, progress: number) => void,
 ): Promise<VideoRecordResult> {
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
@@ -1043,6 +1044,13 @@ export async function recordVideoScenes(
       const sceneText = sceneScripts?.[i] ?? '';
       const useTTS = !!sceneText;
 
+      // Local render helper — uses custom renderer when provided (e.g. presentation
+      // slide theme), otherwise falls back to the generic VideoScene renderer.
+      const render = (p: number) =>
+        customRenderFn
+          ? customRenderFn(canvas, i, p)
+          : renderSceneToCanvas(canvas, scene, p);
+
       // ── Start TTS for this scene (non-blocking) ───────────────────────────
       // The slide must stay on screen until speech completes — never before.
       let ttsFinished = !useTTS;
@@ -1055,12 +1063,12 @@ export async function recordVideoScenes(
         const t0 = Date.now();
         while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
           const t = (Date.now() - t0) / HALF_TRANS_MS;
-          renderSceneToCanvas(canvas, scene, 0);
+          render(0);
           overlayBlack(1 - t);
           await new Promise(r => setTimeout(r, 40));
         }
       }
-      renderSceneToCanvas(canvas, scene, 0);
+      render(0);
 
       // ── Hold slide until TTS done (TTS mode) or fixed duration (no TTS) ──
       const sceneStart = Date.now();
@@ -1071,7 +1079,7 @@ export async function recordVideoScenes(
           const elapsed = Date.now() - sceneStart;
           // Progress bar fills smoothly toward 1 but never reaches it until TTS ends
           const approachProg = 1 - Math.exp(-elapsed / estimatedMs);
-          renderSceneToCanvas(canvas, scene, Math.min(approachProg, 0.95));
+          render(Math.min(approachProg, 0.95));
           await new Promise(r => setTimeout(r, 40));
         }
       } else {
@@ -1080,12 +1088,12 @@ export async function recordVideoScenes(
         const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
         while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
           const elapsed = Date.now() - sceneStart;
-          renderSceneToCanvas(canvas, scene, elapsed / sceneDurMs);
+          render(elapsed / sceneDurMs);
           await new Promise(r => setTimeout(r, 40));
         }
       }
 
-      if (!cancelSignal.cancelled) renderSceneToCanvas(canvas, scene, 1);
+      if (!cancelSignal.cancelled) render(1);
 
       // ── Fade out to black (skip for last scene) ──────────────────────────
       const hasOut = i < scenes.length - 1;
@@ -1093,14 +1101,14 @@ export async function recordVideoScenes(
         const t0 = Date.now();
         while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
           const t = (Date.now() - t0) / HALF_TRANS_MS;
-          renderSceneToCanvas(canvas, scene, 1);
+          render(1);
           overlayBlack(t);
           await new Promise(r => setTimeout(r, 40));
         }
         if (ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
         await new Promise(r => setTimeout(r, 40));
       } else {
-        renderSceneToCanvas(canvas, scene, 1);
+        render(1);
       }
     }
 
@@ -1136,6 +1144,7 @@ export async function recordVideoWithUserAudio(
   onProgress: (sceneIdx: number, total: number) => void,
   cancelSignal: { cancelled: boolean },
   bgmTrackId?: string,
+  customRenderFn?: (canvas: HTMLCanvasElement, sceneIdx: number, progress: number) => void,
 ): Promise<VideoRecordResult> {
   if (scenes.length === 0) throw new Error('No scenes to render');
   if (!audioBlob || audioBlob.size === 0) throw new Error('Audio recording is empty');
@@ -1271,17 +1280,24 @@ export async function recordVideoWithUserAudio(
       onProgress(i, syncedScenes.length);
       const sceneDurMs = scene.duration * 1000;
 
+      // Local render helper — uses custom renderer when provided (e.g. presentation
+      // slide theme), otherwise falls back to the generic VideoScene renderer.
+      const render = (p: number) =>
+        customRenderFn
+          ? customRenderFn(canvas, i, p)
+          : renderSceneToCanvas(canvas, scene, p);
+
       // Fade-in transition (skip first scene)
       if (i > 0) {
         const t0 = Date.now();
         while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
-          renderSceneToCanvas(canvas, scene, 0);
+          render(0);
           overlayBlack(1 - (Date.now() - t0) / HALF_TRANS_MS);
           await new Promise(r => setTimeout(r, 40));
         }
-        renderSceneToCanvas(canvas, scene, 0);
+        render(0);
       } else {
-        renderSceneToCanvas(canvas, scene, 0);
+        render(0);
       }
 
       // Main hold
@@ -1290,7 +1306,7 @@ export async function recordVideoWithUserAudio(
       const sceneStart = Date.now();
       while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
         const el = Date.now() - sceneStart;
-        renderSceneToCanvas(canvas, scene, el / Math.max(sceneDurMs, 1));
+        render(el / Math.max(sceneDurMs, 1));
         await new Promise(r => setTimeout(r, 40));
       }
 
@@ -1298,14 +1314,14 @@ export async function recordVideoWithUserAudio(
       if (hasOut && !cancelSignal.cancelled) {
         const t0 = Date.now();
         while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
-          renderSceneToCanvas(canvas, scene, 1);
+          render(1);
           overlayBlack((Date.now() - t0) / HALF_TRANS_MS);
           await new Promise(r => setTimeout(r, 40));
         }
         if (ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
         await new Promise(r => setTimeout(r, 40));
       } else {
-        renderSceneToCanvas(canvas, scene, 1);
+        render(1);
       }
     }
 

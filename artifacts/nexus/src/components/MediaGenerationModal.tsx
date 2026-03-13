@@ -40,6 +40,14 @@ interface MediaGenerationModalProps {
   preGeneratedScript?: string;
   /** Pre-selected BGM track id (from parent video creator). Defaults to 'none'. */
   initialBgmId?: string;
+  /**
+   * Optional custom canvas renderer for video mode. When provided it is called
+   * instead of the generic VideoScene renderer for every animation frame.
+   * Signature: (canvas, sceneIndex, progress 0..1) => void
+   * Use this to render the actual presentation slide design instead of the
+   * generic coloured card template.
+   */
+  customVideoRenderFn?: (canvas: HTMLCanvasElement, sceneIdx: number, progress: number) => void;
 }
 
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
@@ -54,7 +62,7 @@ type GenStage = 'idle' | 'extracting' | 'generating' | 'recording' | 'done' | 'e
 export default function MediaGenerationModal({
   open, onClose, sourceModule, sourceId, sourceName,
   getSourceText, totalPages = 0, initialMode = 'summary', language = 'en',
-  preGeneratedScript, initialBgmId = 'none',
+  preGeneratedScript, initialBgmId = 'none', customVideoRenderFn,
 }: MediaGenerationModalProps) {
   const navigate = useNavigate();
 
@@ -401,6 +409,7 @@ ${truncated}`;
               cancelSignal.current,
               selectedBgm,
               generatedSceneScripts,
+              customVideoRenderFn,
             );
             if (!cancelSignal.current.cancelled) {
               await saveVideoBlob(id, result.blob);
@@ -471,6 +480,7 @@ ${truncated}`;
         cancelSignal.current,
         vfsBgm,
         vSS,
+        customVideoRenderFn,
       );
 
       if (!cancelSignal.current.cancelled) {

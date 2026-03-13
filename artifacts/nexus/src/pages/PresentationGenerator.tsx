@@ -13,6 +13,7 @@ import {
 import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { chatWithStudioAI } from '@/lib/longcat';
 import { sanitiseAIScript, buildVideoScenes, recordVideoWithUserAudio, isVideoSupported } from '@/lib/contentMediaEngine';
+import { preloadSlideImages, renderPresentationSlideToCanvas } from '@/lib/presentationVideoEngine';
 import { BGM_TRACKS } from '@/lib/bgmEngine';
 import { saveVideoBlob, saveMediaItem } from '@/lib/mediaStorage';
 import { getPresentationAudio, hasPresentationAudio } from '@/lib/presentationAudioStorage';
@@ -209,6 +210,8 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [presGenWithAudio, setPresGenWithAudio] = useState(false);
   const [presGenProgress, setPresGenProgress] = useState(0);
   const presGenCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+  const presImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const mediaModalImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   /** Per-slide timing (seconds) editable inline in the video creator — null = use stored slideTimings */
   const [presTimingOverride, setPresTimingOverride] = useState<number[] | null>(null);
   const [presTimingSource, setPresTimingSource] = useState<'recording' | 'custom' | 'default'>('default');
@@ -434,6 +437,12 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       setPresHasRecording(has);
       if (has) setPresNarrationMode('recording');
     }).catch(() => setPresHasRecording(false));
+
+    // Pre-load slide images eagerly so the canvas renderer has them ready
+    // by the time video recording starts (AI TTS or user-audio paths).
+    preloadSlideImages(pres.slides).then(cache => {
+      presImageCacheRef.current = cache;
+    });
   };
 
   /** Convert slide content → VideoScene objects with custom ms-based timings */
@@ -502,6 +511,21 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       // Build canvas scenes from slide content with layout-aware types
       scenes = buildScenesFromSlides(pres, timingsMs);
 
+      // Pre-load all slide images so the canvas renderer can draw them synchronously
+      presImageCacheRef.current = await preloadSlideImages(pres.slides);
+      const presTheme = getTheme(pres.themeId);
+
+      // Custom renderer: draws the actual presentation slide (theme + images)
+      // instead of the generic VideoScene coloured card.
+      const customRenderFn = (
+        c: HTMLCanvasElement,
+        idx: number,
+        prog: number,
+      ) => {
+        const slide = pres.slides[idx] ?? pres.slides[pres.slides.length - 1];
+        renderPresentationSlideToCanvas(c, slide, presTheme, presImageCacheRef.current, prog);
+      };
+
       // Offscreen canvas — same size used by AI video generation
       const canvas = document.createElement('canvas');
       canvas.width = 480;
@@ -514,6 +538,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
         (idx, total) => setPresGenProgress(total > 0 ? idx / total : 0),
         presGenCancelRef.current,
         presSelectedBgm,
+        customRenderFn,
       );
 
       if (presGenCancelRef.current.cancelled) {
@@ -944,6 +969,16 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [view, editingPresentation, editingSlideIdx, presenting]);
+
+  // Pre-load slide images for the general media modal (library card → media button)
+  // so the custom canvas renderer has them ready when video recording starts.
+  useEffect(() => {
+    if (!mediaModalPresId) { mediaModalImageCacheRef.current = new Map(); return; }
+    const mp = presentations.find(p => p.id === mediaModalPresId);
+    if (!mp) return;
+    preloadSlideImages(mp.slides).then(cache => { mediaModalImageCacheRef.current = cache; });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaModalPresId]);
 
 
 
@@ -2742,6 +2777,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             initialMode={presVideoMode}
             language={presVideoLanguage}
             initialBgmId={presSelectedBgm}
+            customVideoRenderFn={(c, idx, prog) => {
+              const slide = pres.slides[idx] ?? pres.slides[pres.slides.length - 1];
+              if (slide) renderPresentationSlideToCanvas(c, slide, getTheme(pres.themeId), presImageCacheRef.current, prog);
+            }}
           />
         )}
       </>
@@ -2831,6 +2870,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             sourceName={mp.settings.title || 'Presentation'}
             getSourceText={async (_f: number, _t: number) => slideText}
             totalPages={mp.slides.length}
+            customVideoRenderFn={(c, idx, prog) => {
+              const slide = mp.slides[idx] ?? mp.slides[mp.slides.length - 1];
+              if (slide) renderPresentationSlideToCanvas(c, slide, getTheme(mp.themeId), mediaModalImageCacheRef.current, prog);
+            }}
           />
         );
       })()}
