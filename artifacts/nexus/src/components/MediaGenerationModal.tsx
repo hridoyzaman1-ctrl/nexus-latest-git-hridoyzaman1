@@ -279,10 +279,10 @@ export default function MediaGenerationModal({
 
         if (isStudioModule) {
           const modePrompts: Record<MediaMode, string> = {
-            summary:  'Write a concise spoken summary covering all key points. 2-3 minutes when read aloud. Dive straight into the content — no greetings or sign-off.',
-            explainer:'Write a clear spoken explainer walking through the main concepts. 4-5 minutes when read aloud. Start immediately with the first concept — no greetings or meta-commentary.',
-            podcast:  'Write an engaging conversational monologue about this content. Sound natural and enthusiastic. 6-8 minutes when read aloud. Start immediately with the substance — no "welcome back" or podcast intro phrases.',
-            video:    'Write flowing spoken narration for a video presentation covering the main ideas. 3-4 minutes when read aloud. Begin immediately with the first point — no title read-out or introductory remarks.',
+            summary:  'Write a concise spoken summary (2-3 minutes when read aloud). Cover all main points in continuous natural prose — no bullet points, no heading or section labels.',
+            explainer:'Write a clear spoken explainer (4-5 minutes when read aloud). Walk through key concepts in continuous natural prose — no section labels, no numbered steps.',
+            podcast:  'Write an engaging conversational monologue (6-8 minutes when read aloud). Sound natural and enthusiastic — no topic headers, just flowing conversation.',
+            video:    'Write flowing spoken narration (3-4 minutes when read aloud). Flow naturally through the main ideas — no section labels, no spoken headings, just continuous prose.',
           };
           const langInstruction = language === 'bn'
             ? '\nIMPORTANT: Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.'

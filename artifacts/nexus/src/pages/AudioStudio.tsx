@@ -118,19 +118,17 @@ export default function AudioStudio() {
       const raw = await chatWithStudioAI([
         {
           role: 'system',
-          content: `You are a text-to-speech narrator. Output ONLY the exact words that will be spoken aloud — nothing else whatsoever.
+          content: `You are a professional spoken-word narrator. Your output will be read by a text-to-speech engine — every character you write will be heard aloud.
 
-STRICT RULES — violations will break the audio:
-- Pure natural spoken prose only, exactly as a narrator would say it
-- NO markdown of any kind: no **, *, #, _, -, bullet points
-- NO stage directions, music cues, sound effects, or production notes
-- NO brackets [] or parentheses () containing instructions or metadata
-- NO title card, preamble, or intro like "Here is your script", "Audio Script:", "Script for..."
-- NO metadata: no duration, word count, or labels
-- NO quotes around the title when you mention it
-- Begin immediately with the first spoken sentence of the narration
-- Conversational, engaging tone — write as if speaking directly to a listener
-- Aim for 400–600 words${language === 'bn' ? '\n- Write ENTIRELY in Bangla (Bengali language, বাংলা). Every single word must be in Bangla script. Do not use any English words.' : ''}`,
+ABSOLUTE RULES — violating any of these makes the output unusable:
+- Output ONLY the words to be spoken. Nothing else.
+- Do NOT write any title, heading, subject label, or section marker (no "Introduction", "Overview", "Key Points", "Conclusion", "Section 1", "Part 1", or similar).
+- Do NOT open with any greeting, preamble, or meta-commentary ("Welcome", "Hello", "Hi there", "Today we will explore", "In this narration", "Here is your script", "Audio Script:", etc.).
+- Do NOT close with any sign-off, outro, or call-to-action ("Thanks for listening", "That's all", "Subscribe", "Hope you enjoyed", etc.).
+- Do NOT use markdown, asterisks, bullets, numbered lists, hyphens as list markers, or any formatting characters.
+- Do NOT include stage directions, music cues, or parenthetical notes ([music], [pause], (upbeat tone), etc.).
+- The very first word must be substantive spoken content — a fact or sentence from the topic itself.
+- Conversational, engaging tone. Aim for 400–600 words.${language === 'bn' ? '\n- Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script. Do not use any English words.' : ''}`,
         },
         {
           role: 'user',
@@ -162,22 +160,26 @@ STRICT RULES — violations will break the audio:
     setAiScript(null);
     setScriptError(null);
     const modeInstructions: Record<string, string> = {
-      summary:  'Write a concise spoken summary (2-3 minutes when read aloud). Cover all main points clearly.',
-      explainer:'Write a structured spoken explainer (4-5 minutes when read aloud). Walk through key concepts step by step.',
-      podcast:  'Write an engaging conversational podcast episode (6-8 minutes when read aloud). Sound natural, enthusiastic, and easy to follow.',
+      summary:  'Write a concise spoken summary (2-3 minutes when read aloud). Cover all main points in continuous natural prose — no bullet points, no heading labels.',
+      explainer:'Write a clear spoken explainer (4-5 minutes when read aloud). Walk through key concepts in continuous natural prose — no section labels or numbered steps.',
+      podcast:  'Write an engaging conversational monologue (6-8 minutes when read aloud). Sound natural and enthusiastic — no topic headers, just flowing conversation.',
     };
     const langNote = language === 'bn' ? '\nWrite ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.' : '';
     try {
       const raw = await chatWithStudioAI([
         {
           role: 'system',
-          content: `You are a professional audio script writer.
-STRICT RULES:
-- Write ONLY the exact words spoken aloud
-- Do NOT include titles, file names, "Script:", preambles, or markdown
-- Do NOT use asterisks, hyphens, bullets, or formatting characters
-- Do NOT include [stage directions] or (production notes)
-- Begin IMMEDIATELY with the first spoken sentence
+          content: `You are a professional spoken-word script writer. Your output will be read by a text-to-speech engine — every character you write will be heard aloud.
+
+ABSOLUTE RULES — violating any of these makes the output unusable:
+- Output ONLY the words to be spoken. Nothing else.
+- Do NOT write any title, heading, subject label, or section marker (no "Introduction", "Overview", "Summary", "Key Points", "Conclusion", "Section 1", "Part 1", or similar).
+- Do NOT open with any greeting, preamble, or meta-commentary ("Welcome", "Hello", "Today we will", "In this summary", "Here is your script", "Script:", etc.).
+- Do NOT close with any sign-off or call-to-action ("Thanks for listening", "That's all", "Subscribe", "Hope you enjoyed", etc.).
+- Do NOT use markdown, asterisks (**bold**), bullets (•, -, *), numbered lists (1. 2.), or any formatting characters.
+- Do NOT include stage directions, music cues, or parenthetical notes ([music], [pause], (upbeat), etc.).
+- Do NOT repeat or echo the source title or filename anywhere in the output.
+- The very first word must be substantive spoken content — a fact or idea from the material itself.
 - ${modeInstructions[selectedMode]}${langNote}`,
         },
         { role: 'user', content: `CONTENT:\n${source.text.slice(0, 6000)}` },
