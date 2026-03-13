@@ -111,6 +111,7 @@ export function renderPresentationSlideToCanvas(
   // ── Images (rendered behind text) ─────────────────────────────────────────
   // x, y, width, height are percentages of the slide container
   for (const imgMeta of slide.images ?? []) {
+    // (drawn first so text sits on top)
     const el = imageCache.get(imgMeta.id);
     if (!el) continue;
 
@@ -139,6 +140,38 @@ export function renderPresentationSlideToCanvas(
       ctx.drawImage(el, ix, iy, iw, ih);
     }
     ctx.restore();
+  }
+
+  // ── Text readability panel (when images are present) ───────────────────────
+  // Draw a translucent version of the background colour over the text writing
+  // area so that text always stays readable regardless of image placement.
+  // Placed AFTER images (so images show through) and BEFORE text.
+  const hasImages = (slide.images?.length ?? 0) > 0 &&
+    slide.images!.some(img => (img.width ?? 0) > 5 && (img.height ?? 0) > 5);
+
+  if (hasImages) {
+    // Determine whether images predominantly occupy the right side of the slide.
+    // If so, constrain the text panel to the left ~55 %.  Otherwise cover full
+    // width (images may be small decoratives placed over the content area).
+    const rightSideOnly = slide.images!.every(img => (img.x ?? 0) >= 45);
+    const panelW = rightSideOnly ? W * 0.53 : W;
+    const panelAlpha = theme.darkTheme ? 0.62 : 0.65;
+
+    ctx.save();
+    ctx.globalAlpha = panelAlpha;
+    ctx.fillStyle = bg;
+    if (rightSideOnly) {
+      roundRectPath(ctx, 0, 0, panelW, H, 0);
+    } else {
+      ctx.fillRect(0, 0, panelW, H);
+    }
+    ctx.restore();
+
+    // Accent stripe still visible on top
+    if (theme.shapeAccent) {
+      ctx.fillStyle = ac;
+      ctx.fillRect(0, 0, W, 3);
+    }
   }
 
   // ── Text helpers ───────────────────────────────────────────────────────────

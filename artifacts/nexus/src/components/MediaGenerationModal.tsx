@@ -199,6 +199,23 @@ export default function MediaGenerationModal({
 
   const selectedVoice = voices.find(v => v.voiceURI === selectedVoiceUri) ?? null;
 
+  // Stop all audio/TTS on unmount (user navigated away without closing the modal)
+  useEffect(() => {
+    return () => {
+      ttsRef.current?.stop();
+      cancelSignal.current = { cancelled: true };
+      try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    };
+  }, []);
+
+  // Also stop TTS whenever the modal is closed (open → false)
+  useEffect(() => {
+    if (!open) {
+      ttsRef.current?.stop();
+      try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    }
+  }, [open]);
+
   // Auto-start when pre-generated script is provided
   const autoStartedRef = useRef(false);
   useEffect(() => {

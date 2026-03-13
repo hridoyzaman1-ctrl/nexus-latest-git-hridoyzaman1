@@ -199,6 +199,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [mediaModalPresId, setMediaModalPresId] = useState<string | null>(null);
   const [videoPresId, setVideoPresId] = useState<string | null>(null);
   const [presVideoMode, setPresVideoMode] = useState<'video' | 'summary' | 'explainer' | 'podcast'>('video');
+  const [presScriptSource, setPresScriptSource] = useState<'speaker-notes' | 'slide-words' | 'ai-script'>('slide-words');
   const [presAiScript, setPresAiScript] = useState<string | null>(null);
   const [presGeneratingScript, setPresGeneratingScript] = useState(false);
   const [presScriptError, setPresScriptError] = useState<string | null>(null);
@@ -413,6 +414,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const openVideoCreator = (pres: PresentationType) => {
     setVideoPresId(pres.id);
     setPresVideoMode('video');
+    setPresScriptSource('slide-words');
     setPresAiScript(null);
     setPresScriptError(null);
     setPresVideoPreScript(undefined);
@@ -609,10 +611,39 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     }
   };
 
-  const handlePresLaunchGeneration = (useScript?: boolean) => {
+  const handlePresLaunchGeneration = (useAiScript?: boolean) => {
     const pres = presentations.find(p => p.id === videoPresId);
     if (!pres) return;
-    setPresVideoPreScript(useScript && presAiScript ? presAiScript : undefined);
+
+    let preScript: string | undefined;
+    if (useAiScript && presAiScript) {
+      // AI-generated script explicitly confirmed by user
+      preScript = presAiScript;
+    } else if (presScriptSource === 'speaker-notes') {
+      // Use each slide's speaker notes (richest author-written text)
+      preScript = pres.slides
+        .map(s => s.speakerNotes?.trim())
+        .filter(Boolean)
+        .join('\n\n') || undefined;
+    } else if (presScriptSource === 'slide-words') {
+      // Use visible slide content: title + bullets + body
+      preScript = pres.slides.map(s => {
+        const parts: string[] = [];
+        if (s.title) parts.push(s.title);
+        if (s.subtitle) parts.push(s.subtitle);
+        if (s.bullets?.length) parts.push(s.bullets.join('. '));
+        if (s.body) parts.push(s.body);
+        if (s.statement) parts.push(s.statement);
+        if (s.leftColumn?.length) parts.push(s.leftColumn.join('. '));
+        if (s.rightColumn?.length) parts.push(s.rightColumn.join('. '));
+        if (s.agendaItems?.length) parts.push(s.agendaItems.join('. '));
+        if (s.summaryPoints?.length) parts.push(s.summaryPoints.join('. '));
+        return parts.filter(Boolean).join('. ');
+      }).filter(Boolean).join('\n\n') || undefined;
+    }
+    // presScriptSource === 'ai-script' without useAiScript → let modal generate from AI
+
+    setPresVideoPreScript(preScript);
     setPresVideoModalOpen(true);
   };
 
@@ -2568,8 +2599,35 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
               </div>
               )}
 
+              {/* Script source selector */}
               <div>
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Video Mode</p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Script Source</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { id: 'slide-words' as const, label: 'Slide Text', icon: <FileText className="w-3.5 h-3.5" />, desc: 'Titles & bullets' },
+                    { id: 'speaker-notes' as const, label: 'My Notes', icon: <Mic className="w-3.5 h-3.5" />, desc: 'Speaker notes' },
+                    { id: 'ai-script' as const, label: 'AI Script', icon: <Sparkles className="w-3.5 h-3.5" />, desc: 'AI-written' },
+                  ] as const).map(src => (
+                    <button key={src.id}
+                      onClick={() => { setPresScriptSource(src.id); setPresAiScript(null); setPresScriptError(null); }}
+                      className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-all ${presScriptSource === src.id ? 'bg-violet-500/20 border-violet-500/50 text-violet-200' : 'border-white/10 text-muted-foreground hover:border-white/20'}`}>
+                      <span className={presScriptSource === src.id ? 'text-violet-400' : ''}>{src.icon}</span>
+                      <p className="text-[10px] font-medium leading-none">{src.label}</p>
+                      <p className="text-[8px] opacity-60">{src.desc}</p>
+                    </button>
+                  ))}
+                </div>
+                {presScriptSource === 'speaker-notes' && !pres.slides.some(s => s.speakerNotes?.trim()) && (
+                  <p className="text-[10px] text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2 mt-2">
+                    No speaker notes found. Add notes to your slides in the editor, or choose a different source.
+                  </p>
+                )}
+              </div>
+
+              {/* AI Script mode picker — only shown when AI Script source is chosen */}
+              {presScriptSource === 'ai-script' && (
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">AI Script Style</p>
                 <div className="grid grid-cols-2 gap-2">
                   {modes.map(m => (
                     <button key={m.id} onClick={() => { setPresVideoMode(m.id); setPresAiScript(null); setPresScriptError(null); }}
@@ -2583,6 +2641,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                   ))}
                 </div>
               </div>
+              )}
 
               {/* Background Music picker — applies to both narration paths */}
               <div>
@@ -2614,50 +2673,66 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                 )}
               </div>
 
-              {/* AI-TTS path: script preview + generate buttons */}
+              {/* AI-TTS path: generate section — adapts to chosen script source */}
               {presNarrationMode === 'ai-tts' && (
                 <>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">AI Script</p>
-                    {!presAiScript && !presGeneratingScript && (
-                      <button onClick={handlePresGenerateAIScript}
-                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-500/20 to-indigo-500/20 border border-violet-500/30 text-xs font-medium text-violet-200 hover:from-violet-500/30 hover:to-indigo-500/30 transition-all flex items-center justify-center gap-2">
-                        <Sparkles className="w-3.5 h-3.5" /> ✨ Preview AI Script First
+                  {/* Slide Text or Speaker Notes: direct generate button */}
+                  {(presScriptSource === 'slide-words' || presScriptSource === 'speaker-notes') && (
+                    <div className="pt-1">
+                      <button
+                        onClick={() => handlePresLaunchGeneration(false)}
+                        className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-xs font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Film className="w-3.5 h-3.5" />
+                        {presScriptSource === 'speaker-notes' ? 'Generate Video from My Notes' : 'Generate Video from Slide Text'}
                       </button>
-                    )}
-                    {presGeneratingScript && (
-                      <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-                        <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
-                        <span>Writing AI script…</span>
-                      </div>
-                    )}
-                    {presScriptError && (
-                      <p className="text-[11px] text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2">{presScriptError}</p>
-                    )}
-                    {presAiScript && (
-                      <div className="space-y-2">
-                        <div className="glass rounded-xl p-3 max-h-48 overflow-y-auto">
-                          <p className="text-[11px] text-muted-foreground whitespace-pre-wrap leading-relaxed">{presAiScript}</p>
+                    </div>
+                  )}
+
+                  {/* AI Script: preview then generate */}
+                  {presScriptSource === 'ai-script' && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">AI Script Preview</p>
+                      {!presAiScript && !presGeneratingScript && (
+                        <button onClick={handlePresGenerateAIScript}
+                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-500/20 to-indigo-500/20 border border-violet-500/30 text-xs font-medium text-violet-200 hover:from-violet-500/30 hover:to-indigo-500/30 transition-all flex items-center justify-center gap-2">
+                          <Sparkles className="w-3.5 h-3.5" /> ✨ Preview AI Script First
+                        </button>
+                      )}
+                      {presGeneratingScript && (
+                        <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                          <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+                          <span>Writing AI script…</span>
                         </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => { setPresAiScript(null); setPresScriptError(null); }}
-                            className="flex-1 py-2 rounded-lg border border-white/10 text-[11px] text-muted-foreground hover:border-white/20 transition-all">
-                            Regenerate
-                          </button>
-                          <button onClick={() => handlePresLaunchGeneration(true)}
-                            className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-[11px] font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-1">
-                            <Film className="w-3.5 h-3.5" /> Generate from Script
-                          </button>
+                      )}
+                      {presScriptError && (
+                        <p className="text-[11px] text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2">{presScriptError}</p>
+                      )}
+                      {presAiScript && (
+                        <div className="space-y-2">
+                          <div className="glass rounded-xl p-3 max-h-48 overflow-y-auto">
+                            <p className="text-[11px] text-muted-foreground whitespace-pre-wrap leading-relaxed">{presAiScript}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setPresAiScript(null); setPresScriptError(null); }}
+                              className="flex-1 py-2 rounded-lg border border-white/10 text-[11px] text-muted-foreground hover:border-white/20 transition-all">
+                              Regenerate
+                            </button>
+                            <button onClick={() => handlePresLaunchGeneration(true)}
+                              className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-[11px] font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-1">
+                              <Film className="w-3.5 h-3.5" /> Generate from Script
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="pt-1">
-                    <button onClick={() => handlePresLaunchGeneration(false)}
-                      className="w-full py-3 rounded-xl border border-white/15 text-xs text-muted-foreground hover:border-violet-500/40 hover:text-violet-200 transition-all flex items-center justify-center gap-2">
-                      <Video className="w-3.5 h-3.5" /> Generate Directly (no script)
-                    </button>
-                  </div>
+                      )}
+                      {!presAiScript && !presGeneratingScript && (
+                        <button onClick={() => handlePresLaunchGeneration(false)}
+                          className="w-full py-2.5 rounded-xl border border-white/15 text-xs text-muted-foreground hover:border-violet-500/40 hover:text-violet-200 transition-all flex items-center justify-center gap-2">
+                          <Video className="w-3.5 h-3.5" /> Skip Preview &amp; Generate Directly
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
