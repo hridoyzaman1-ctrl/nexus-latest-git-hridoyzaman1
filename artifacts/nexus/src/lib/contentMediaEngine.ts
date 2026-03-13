@@ -912,6 +912,120 @@ export async function recordVideoScenes(
   });
 }
 
+/**
+ * Generate a video using pre-recorded user audio + slide canvas rendering.
+ * Each scene's duration (in its `.duration` field, seconds) controls how long
+ * that slide is shown. The audio blob is played through AudioContext and mixed
+ * into the video stream, so the final video has the user's voice as narration.
+ */
+export async function recordVideoWithUserAudio(
+  canvas: HTMLCanvasElement,
+  scenes: VideoScene[],
+  audioBlob: Blob,
+  onProgress: (sceneIdx: number, total: number) => void,
+  cancelSignal: { cancelled: boolean }
+): Promise<VideoRecordResult> {
+  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+    ? 'video/webm;codecs=vp9'
+    : MediaRecorder.isTypeSupported('video/webm')
+    ? 'video/webm'
+    : 'video/mp4';
+
+  // ── Set up AudioContext to pipe recorded audio blob into a MediaStream ─────
+  const audioCtx = new AudioContext();
+  const arrayBuf = await audioBlob.arrayBuffer();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+  const audioSrc = audioCtx.createBufferSource();
+  audioSrc.buffer = audioBuffer;
+  const audioDest = audioCtx.createMediaStreamDestination();
+  audioSrc.connect(audioDest);
+
+  // ── Merge canvas video track + audio track ────────────────────────────────
+  const canvasStream = canvas.captureStream(25);
+  const combined = new MediaStream([
+    ...canvasStream.getVideoTracks(),
+    ...audioDest.stream.getAudioTracks(),
+  ]);
+
+  const recorder = new MediaRecorder(combined, { mimeType });
+  const chunks: BlobPart[] = [];
+  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.start(200);
+
+  // Start playing the audio
+  audioSrc.start(0);
+  const startTime = Date.now();
+
+  const HALF_TRANS_MS = 200;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  const overlayBlack = (alpha: number) => {
+    if (!ctx) return;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  };
+
+  for (let i = 0; i < scenes.length; i++) {
+    if (cancelSignal.cancelled) break;
+    const scene = scenes[i];
+    onProgress(i, scenes.length);
+    const sceneDurMs = scene.duration * 1000;
+
+    // Fade in (skip first scene)
+    if (i > 0) {
+      const t0 = Date.now();
+      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+        renderSceneToCanvas(canvas, scene, 0);
+        overlayBlack(1 - (Date.now() - t0) / HALF_TRANS_MS);
+        await new Promise(r => setTimeout(r, 40));
+      }
+      renderSceneToCanvas(canvas, scene, 0);
+    }
+
+    // Main scene hold
+    const hasOut = i < scenes.length - 1;
+    const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
+    const sceneStart = Date.now();
+    while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
+      const elapsed = Date.now() - sceneStart;
+      renderSceneToCanvas(canvas, scene, elapsed / sceneDurMs);
+      await new Promise(r => setTimeout(r, 40));
+    }
+
+    // Fade out (skip last scene)
+    if (hasOut && !cancelSignal.cancelled) {
+      const t0 = Date.now();
+      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+        renderSceneToCanvas(canvas, scene, 1);
+        overlayBlack((Date.now() - t0) / HALF_TRANS_MS);
+        await new Promise(r => setTimeout(r, 40));
+      }
+      if (ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
+      await new Promise(r => setTimeout(r, 40));
+    } else {
+      renderSceneToCanvas(canvas, scene, 1);
+    }
+  }
+
+  // Stop audio playback
+  try { audioSrc.stop(); } catch {}
+  try { audioCtx.close(); } catch {}
+
+  return new Promise((resolve, reject) => {
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      resolve({ blob, mimeType, durationSecs: (Date.now() - startTime) / 1000 });
+    };
+    recorder.onerror = () => reject(new Error('MediaRecorder error'));
+    recorder.stop();
+  });
+}
+
 export function isVideoSupported(): boolean {
   try {
     const canvas = document.createElement('canvas');

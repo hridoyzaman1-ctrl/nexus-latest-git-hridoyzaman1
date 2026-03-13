@@ -1,22 +1,28 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { ArrowLeft, ChevronLeft, ChevronRight, RotateCcw, Mic } from 'lucide-react';
 import type { Presentation } from '@/types/presentation';
 import { getTheme } from '@/lib/presentationThemes';
 import { renderTextWithBreaks, renderSlidePreviewContent } from '@/lib/presentationRenderer';
 import { getTextAreaWidth } from '@/lib/slideEngine';
+import { AnimatePresence } from 'framer-motion';
+
+const PresentationRecordPlayer = lazy(() => import('@/components/PresentationRecordPlayer'));
 
 interface PresentationViewerProps {
     presentation: Presentation;
     onClose: () => void;
+    onPresentationUpdated?: (p: Presentation) => void;
 }
 
-export default function PresentationViewer({ presentation, onClose }: PresentationViewerProps) {
+export default function PresentationViewer({ presentation: initialPresentation, onClose, onPresentationUpdated }: PresentationViewerProps) {
+    const [presentation, setPresentation] = useState(initialPresentation);
     const [presentingSlideIdx, setPresentingSlideIdx] = useState(0);
     const [presenterScale, setPresenterScale] = useState(1);
     const [isLandscape, setIsLandscape] = useState(
         typeof window !== 'undefined' ? window.innerWidth > window.innerHeight : false
     );
     const [isRotating, setIsRotating] = useState(false);
+    const [showRecordPlayer, setShowRecordPlayer] = useState(false);
 
     const currentSlide = presentation.slides[presentingSlideIdx];
     const theme = getTheme(presentation.themeId);
@@ -165,6 +171,7 @@ export default function PresentationViewer({ presentation, onClose }: Presentati
     const textWidthStyle = textWidthPct < 100 ? { maxWidth: `${textWidthPct}%` } : {};
 
     return (
+        <>
         <div
             className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black overflow-hidden select-none"
             style={{ backgroundColor: `#${theme.bgColor}` }}
@@ -189,19 +196,29 @@ export default function PresentationViewer({ presentation, onClose }: Presentati
                     {presentingSlideIdx + 1} / {presentation.slides.length}
                 </span>
 
-                {/* Rotate button — mobile only */}
-                <button
-                    onClick={handleRotate}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-black/40 text-white text-xs font-medium backdrop-blur-md hover:bg-black/70 transition-colors border border-white/10 shadow-lg md:hidden"
-                    aria-label="Rotate screen"
-                    title={isLandscape ? 'Switch to portrait' : 'Switch to landscape'}
-                >
-                    <RotateCcw className={`w-4 h-4 transition-transform duration-500 ${isRotating ? 'rotate-180' : ''}`} />
-                    <span className="hidden xs:inline">{isLandscape ? 'Portrait' : 'Landscape'}</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                    {/* Record & Teleprompter button */}
+                    <button
+                        onClick={() => setShowRecordPlayer(true)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-red-500/20 text-red-300 text-xs font-medium backdrop-blur-md hover:bg-red-500/30 transition-colors border border-red-500/30 shadow-lg"
+                        title="Record narration & teleprompter"
+                    >
+                        <Mic className="w-3.5 h-3.5" />
+                        <span className="hidden xs:inline">Record</span>
+                    </button>
 
-                {/* Desktop: empty right placeholder for alignment */}
-                <div className="hidden md:block w-20" />
+                    {/* Rotate button — mobile only */}
+                    <button
+                        onClick={handleRotate}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-black/40 text-white text-xs font-medium backdrop-blur-md hover:bg-black/70 transition-colors border border-white/10 shadow-lg md:hidden"
+                        aria-label="Rotate screen"
+                        title={isLandscape ? 'Switch to portrait' : 'Switch to landscape'}
+                    >
+                        <RotateCcw className={`w-4 h-4 transition-transform duration-500 ${isRotating ? 'rotate-180' : ''}`} />
+                    </button>
+                    {/* Desktop: empty right placeholder for alignment */}
+                    <div className="hidden md:block w-6" />
+                </div>
             </div>
 
             {/* Desktop side click zones */}
@@ -319,5 +336,22 @@ export default function PresentationViewer({ presentation, onClose }: Presentati
                 {presentingSlideIdx + 1} / {presentation.slides.length}
             </div>
         </div>
+
+        {/* Teleprompter + Record Player overlay */}
+        <AnimatePresence>
+            {showRecordPlayer && (
+                <Suspense fallback={null}>
+                    <PresentationRecordPlayer
+                        presentation={presentation}
+                        onClose={() => setShowRecordPlayer(false)}
+                        onSaved={(updated) => {
+                            setPresentation(updated);
+                            onPresentationUpdated?.(updated);
+                        }}
+                    />
+                </Suspense>
+            )}
+        </AnimatePresence>
+        </>
     );
 }

@@ -12,7 +12,9 @@ import {
 } from 'lucide-react';
 import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { chatWithStudioAI } from '@/lib/longcat';
-import { sanitiseAIScript } from '@/lib/contentMediaEngine';
+import { sanitiseAIScript, buildVideoScenes, recordVideoWithUserAudio, isVideoSupported } from '@/lib/contentMediaEngine';
+import { saveVideoBlob, saveMediaItem } from '@/lib/mediaStorage';
+import { getPresentationAudio, hasPresentationAudio } from '@/lib/presentationAudioStorage';
 import { Button } from '@/components/ui/button';
 import PresentationViewer from '@/components/PresentationViewer';
 import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
@@ -201,6 +203,11 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [presVideoModalOpen, setPresVideoModalOpen] = useState(false);
   const [presVideoPreScript, setPresVideoPreScript] = useState<string | undefined>(undefined);
   const [presVideoLanguage, setPresVideoLanguage] = useState<'en' | 'bn'>('en');
+  const [presNarrationMode, setPresNarrationMode] = useState<'ai-tts' | 'recording'>('ai-tts');
+  const [presHasRecording, setPresHasRecording] = useState(false);
+  const [presGenWithAudio, setPresGenWithAudio] = useState(false);
+  const [presGenProgress, setPresGenProgress] = useState(0);
+  const presGenCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   const { toast } = useToast();
 
   const getStudySessions = (): StudySession[] => {
@@ -403,6 +410,100 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     setPresVideoPreScript(undefined);
     setPresVideoModalOpen(false);
     setPresVideoLanguage('en');
+    setPresNarrationMode('ai-tts');
+    setPresGenWithAudio(false);
+    setPresGenProgress(0);
+    // Check if narration recording exists for this presentation
+    hasPresentationAudio(pres.id).then(has => {
+      setPresHasRecording(has);
+      if (has) setPresNarrationMode('recording');
+    }).catch(() => setPresHasRecording(false));
+  };
+
+  /** Convert slide content → VideoScene objects with custom ms-based timings */
+  const buildScenesFromSlides = (pres: PresentationType, timingsMs: number[]) => {
+    return pres.slides.map((slide, i) => {
+      const bodyParts: string[] = [];
+      if (slide.body) bodyParts.push(slide.body);
+      if (slide.bullets?.length) bodyParts.push(slide.bullets.join('\n'));
+      if (slide.statement) bodyParts.push(slide.statement);
+      if (slide.summaryPoints?.length) bodyParts.push(slide.summaryPoints.join('\n'));
+      if (slide.speakerNotes) bodyParts.push(slide.speakerNotes);
+      return {
+        type: 'keypoint' as const,
+        heading: slide.title || `Slide ${i + 1}`,
+        body: bodyParts.join('\n').trim() || slide.subtitle || '',
+        duration: Math.max(0.5, (timingsMs[i] ?? 3000) / 1000),
+      };
+    });
+  };
+
+  /** Generate a video using the presentation's saved narration audio */
+  const handleGenerateVideoWithRecording = async () => {
+    const pres = presentations.find(p => p.id === videoPresId);
+    if (!pres) return;
+    const timingsMs = pres.slideTimings && pres.slideTimings.length === pres.slides.length
+      ? pres.slideTimings
+      : pres.slides.map(() => 5000);
+
+    setPresGenWithAudio(true);
+    setPresGenProgress(0);
+    presGenCancelRef.current = { cancelled: false };
+
+    try {
+      const audioBlob = await getPresentationAudio(pres.id, pres.recordedAudioMime || 'audio/webm');
+      if (!audioBlob) {
+        toast({ title: 'No recording found', description: 'Please record narration first.', variant: 'destructive' });
+        setPresGenWithAudio(false);
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 480; canvas.height = 270;
+      const scenes = buildScenesFromSlides(pres, timingsMs);
+
+      const result = await recordVideoWithUserAudio(
+        canvas, scenes, audioBlob,
+        (idx, total) => setPresGenProgress(idx / total),
+        presGenCancelRef.current,
+      );
+
+      if (presGenCancelRef.current.cancelled) {
+        setPresGenWithAudio(false);
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      await saveVideoBlob(id, result.blob);
+      saveMediaItem({
+        id,
+        title: `${pres.settings.title} — Narration Video`,
+        sourceModule: 'video-studio',
+        sourceId: pres.id,
+        sourceName: pres.settings.title || 'Presentation',
+        mode: 'video',
+        script: pres.slides.map(s => s.speakerNotes || s.title).join('\n\n'),
+        language: 'en-US',
+        voiceName: '',
+        voiceRate: 1,
+        voicePitch: 1,
+        scenes,
+        estimatedDuration: result.durationSecs,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        wordCount: pres.slides.reduce((n, s) => n + ((s.speakerNotes || '').split(' ').length), 0),
+        hasVideoBlob: true,
+        videoMimeType: result.mimeType,
+      });
+
+      toast({ title: '🎬 Video ready!', description: 'Your narration video has been saved to Video Studio.' });
+      setVideoPresId(null);
+    } catch (e: any) {
+      toast({ title: 'Generation failed', description: e?.message || 'Could not generate video.', variant: 'destructive' });
+    } finally {
+      setPresGenWithAudio(false);
+      setPresGenProgress(0);
+    }
   };
 
   const handlePresGenerateAIScript = async () => {
@@ -2324,6 +2425,41 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                 </div>
               </div>
 
+              {/* Narration source selector */}
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Narration Source</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setPresNarrationMode('ai-tts')}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${presNarrationMode === 'ai-tts' ? 'bg-violet-500/20 border-violet-500/50 text-violet-200' : 'border-white/10 text-muted-foreground hover:border-white/20'}`}
+                  >
+                    <Headphones className={`w-3.5 h-3.5 shrink-0 ${presNarrationMode === 'ai-tts' ? 'text-violet-400' : ''}`} />
+                    <div>
+                      <p className="text-xs font-medium leading-none">AI Voice</p>
+                      <p className="text-[9px] mt-0.5 opacity-70">TTS narration</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setPresNarrationMode('recording')}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all relative ${presNarrationMode === 'recording' ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200' : 'border-white/10 text-muted-foreground hover:border-white/20'} ${!presHasRecording ? 'opacity-60' : ''}`}
+                  >
+                    <Mic className={`w-3.5 h-3.5 shrink-0 ${presNarrationMode === 'recording' ? 'text-emerald-400' : ''}`} />
+                    <div>
+                      <p className="text-xs font-medium leading-none">My Voice</p>
+                      <p className="text-[9px] mt-0.5 opacity-70">{presHasRecording ? 'Recording saved ✓' : 'No recording yet'}</p>
+                    </div>
+                    {presHasRecording && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />}
+                  </button>
+                </div>
+                {presNarrationMode === 'recording' && !presHasRecording && (
+                  <p className="text-[10px] text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2 mt-2">
+                    Open this presentation in Viewer → tap <strong>Record</strong> to record your narration first.
+                  </p>
+                )}
+              </div>
+
+              {/* Language (AI-TTS only) */}
+              {presNarrationMode === 'ai-tts' && (
               <div>
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Language</p>
                 <div className="flex gap-2">
@@ -2335,6 +2471,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                   ))}
                 </div>
               </div>
+              )}
 
               <div>
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Video Mode</p>
@@ -2352,48 +2489,104 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">AI Script</p>
-                {!presAiScript && !presGeneratingScript && (
-                  <button onClick={handlePresGenerateAIScript}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-500/20 to-indigo-500/20 border border-violet-500/30 text-xs font-medium text-violet-200 hover:from-violet-500/30 hover:to-indigo-500/30 transition-all flex items-center justify-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5" /> ✨ Preview AI Script First
-                  </button>
-                )}
-                {presGeneratingScript && (
-                  <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
-                    <span>Writing AI script…</span>
-                  </div>
-                )}
-                {presScriptError && (
-                  <p className="text-[11px] text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2">{presScriptError}</p>
-                )}
-                {presAiScript && (
+              {/* AI-TTS path: script preview + generate buttons */}
+              {presNarrationMode === 'ai-tts' && (
+                <>
                   <div className="space-y-2">
-                    <div className="glass rounded-xl p-3 max-h-48 overflow-y-auto">
-                      <p className="text-[11px] text-muted-foreground whitespace-pre-wrap leading-relaxed">{presAiScript}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => { setPresAiScript(null); setPresScriptError(null); }}
-                        className="flex-1 py-2 rounded-lg border border-white/10 text-[11px] text-muted-foreground hover:border-white/20 transition-all">
-                        Regenerate
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">AI Script</p>
+                    {!presAiScript && !presGeneratingScript && (
+                      <button onClick={handlePresGenerateAIScript}
+                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-500/20 to-indigo-500/20 border border-violet-500/30 text-xs font-medium text-violet-200 hover:from-violet-500/30 hover:to-indigo-500/30 transition-all flex items-center justify-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5" /> ✨ Preview AI Script First
                       </button>
-                      <button onClick={() => handlePresLaunchGeneration(true)}
-                        className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-[11px] font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-1">
-                        <Film className="w-3.5 h-3.5" /> Generate from Script
-                      </button>
-                    </div>
+                    )}
+                    {presGeneratingScript && (
+                      <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+                        <span>Writing AI script…</span>
+                      </div>
+                    )}
+                    {presScriptError && (
+                      <p className="text-[11px] text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2">{presScriptError}</p>
+                    )}
+                    {presAiScript && (
+                      <div className="space-y-2">
+                        <div className="glass rounded-xl p-3 max-h-48 overflow-y-auto">
+                          <p className="text-[11px] text-muted-foreground whitespace-pre-wrap leading-relaxed">{presAiScript}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { setPresAiScript(null); setPresScriptError(null); }}
+                            className="flex-1 py-2 rounded-lg border border-white/10 text-[11px] text-muted-foreground hover:border-white/20 transition-all">
+                            Regenerate
+                          </button>
+                          <button onClick={() => handlePresLaunchGeneration(true)}
+                            className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-[11px] font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-1">
+                            <Film className="w-3.5 h-3.5" /> Generate from Script
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                  <div className="pt-1">
+                    <button onClick={() => handlePresLaunchGeneration(false)}
+                      className="w-full py-3 rounded-xl border border-white/15 text-xs text-muted-foreground hover:border-violet-500/40 hover:text-violet-200 transition-all flex items-center justify-center gap-2">
+                      <Video className="w-3.5 h-3.5" /> Generate Directly (no script)
+                    </button>
+                  </div>
+                </>
+              )}
 
-              <div className="pt-1">
-                <button onClick={() => handlePresLaunchGeneration(false)}
-                  className="w-full py-3 rounded-xl border border-white/15 text-xs text-muted-foreground hover:border-violet-500/40 hover:text-violet-200 transition-all flex items-center justify-center gap-2">
-                  <Video className="w-3.5 h-3.5" /> Generate Directly (no script)
-                </button>
-              </div>
+              {/* Recording path: show timings + generate button */}
+              {presNarrationMode === 'recording' && presHasRecording && (() => {
+                const recPres = presentations.find(p => p.id === videoPresId);
+                const timings = recPres?.slideTimings;
+                return (
+                  <div className="space-y-3">
+                    <div className="glass rounded-xl p-3">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Slide Timings from Recording</p>
+                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                        {(recPres?.slides || []).map((slide, i) => (
+                          <div key={i} className="flex justify-between text-[10px] px-1 py-0.5">
+                            <span className="text-muted-foreground truncate flex-1">Slide {i + 1}: {slide.title}</span>
+                            <span className="text-white/50 font-mono ml-2">
+                              {timings && timings[i] ? `${(timings[i] / 1000).toFixed(1)}s` : '5s'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {recPres?.recordedAt && (
+                        <p className="text-[9px] text-muted-foreground/50 mt-2 pt-2 border-t border-white/5">
+                          Recorded {new Date(recPres.recordedAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleGenerateVideoWithRecording}
+                      disabled={presGenWithAudio}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {presGenWithAudio ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating… {Math.round(presGenProgress * 100)}%</>
+                      ) : (
+                        <><Mic className="w-3.5 h-3.5" /> Generate with My Voice</>
+                      )}
+                    </button>
+                    {presGenWithAudio && (
+                      <div className="space-y-1">
+                        <div className="w-full bg-secondary/40 rounded-full h-1.5">
+                          <div className="bg-emerald-500 h-1.5 rounded-full transition-all" style={{ width: `${presGenProgress * 100}%` }} />
+                        </div>
+                        <button
+                          onClick={() => { presGenCancelRef.current.cancelled = true; }}
+                          className="w-full text-[10px] text-muted-foreground hover:text-red-400 transition-colors py-1"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </motion.div>
         </div>

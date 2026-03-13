@@ -205,4 +205,8 @@ export interface Presentation {
   updatedAt: string;
   generationSettings?: Record<string, unknown>;
   presentationGoal?: string;
+  // Narration recording (recorded via PresentationRecordPlayer)
+  recordedAudioMime?: string;   // e.g. 'audio/webm' or 'audio/ogg'
+  slideTimings?: number[];      // duration in ms each slide was shown during recording
+  recordedAt?: string;          // ISO timestamp of last recording
 }
