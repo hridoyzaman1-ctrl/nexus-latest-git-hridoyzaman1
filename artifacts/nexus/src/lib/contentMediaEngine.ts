@@ -1014,13 +1014,15 @@ export async function recordVideoScenes(
       const scene = scenes[i];
       onProgress(i, scenes.length);
       const sceneDurMs = scene.duration * 1000;
-
-      // ── Per-scene TTS narration — speaks alongside visual rendering ───────
-      // TTS audio plays to the system speakers while the canvas (BGM) is
-      // recorded; the promise resolves when speech finishes so the scene
-      // stays on screen long enough for the listener to absorb the narration.
       const sceneText = sceneScripts?.[i] ?? '';
-      const ttsDonePromise = sceneText ? speakAndWait(sceneText) : Promise.resolve();
+      const useTTS = !!sceneText;
+
+      // ── Start TTS for this scene (non-blocking) ───────────────────────────
+      // The slide must stay on screen until speech completes — never before.
+      let ttsFinished = !useTTS;
+      if (useTTS) {
+        speakAndWait(sceneText).then(() => { ttsFinished = true; });
+      }
 
       // ── Fade in from black (skip for first scene) ────────────────────────
       if (i > 0) {
@@ -1031,20 +1033,36 @@ export async function recordVideoScenes(
           overlayBlack(1 - t);
           await new Promise(r => setTimeout(r, 40));
         }
-        renderSceneToCanvas(canvas, scene, 0);
+      }
+      renderSceneToCanvas(canvas, scene, 0);
+
+      // ── Hold slide until TTS done (TTS mode) or fixed duration (no TTS) ──
+      const sceneStart = Date.now();
+      if (useTTS) {
+        // Estimate denominator for progress bar using speech-rate estimate
+        const estimatedMs = Math.max(sceneDurMs, estimateSpeechSeconds(sceneText) * 1000);
+        while (!cancelSignal.cancelled && !ttsFinished) {
+          const elapsed = Date.now() - sceneStart;
+          // Progress bar fills smoothly toward 1 but never reaches it until TTS ends
+          const approachProg = 1 - Math.exp(-elapsed / estimatedMs);
+          renderSceneToCanvas(canvas, scene, Math.min(approachProg, 0.95));
+          await new Promise(r => setTimeout(r, 40));
+        }
+      } else {
+        // Fixed-duration mode (no sceneScripts supplied — manual timing or fallback)
+        const hasOut = i < scenes.length - 1;
+        const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
+        while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
+          const elapsed = Date.now() - sceneStart;
+          renderSceneToCanvas(canvas, scene, elapsed / sceneDurMs);
+          await new Promise(r => setTimeout(r, 40));
+        }
       }
 
-      // ── Main scene content ───────────────────────────────────────────────
-      const hasOut = i < scenes.length - 1;
-      const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
-      const sceneStart = Date.now();
-      while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
-        const elapsed = Date.now() - sceneStart;
-        renderSceneToCanvas(canvas, scene, elapsed / sceneDurMs);
-        await new Promise(r => setTimeout(r, 40));
-      }
+      if (!cancelSignal.cancelled) renderSceneToCanvas(canvas, scene, 1);
 
       // ── Fade out to black (skip for last scene) ──────────────────────────
+      const hasOut = i < scenes.length - 1;
       if (hasOut && !cancelSignal.cancelled) {
         const t0 = Date.now();
         while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
@@ -1058,9 +1076,6 @@ export async function recordVideoScenes(
       } else {
         renderSceneToCanvas(canvas, scene, 1);
       }
-
-      // Wait for this scene's narration to finish before advancing
-      if (sceneText && !cancelSignal.cancelled) await ttsDonePromise;
     }
 
     return new Promise((resolve, reject) => {
