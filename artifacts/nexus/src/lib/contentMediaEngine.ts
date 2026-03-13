@@ -934,134 +934,148 @@ export async function recordVideoWithUserAudio(
     ? 'video/webm'
     : 'video/mp4';
 
-  // ── Decode audio to measure exact duration ────────────────────────────────
+  // ── Decode audio ──────────────────────────────────────────────────────────
+  // AudioContext is created outside try/finally so we can close it in all paths.
   const audioCtx = new AudioContext();
-  const arrayBuf = await audioBlob.arrayBuffer();
-  let audioBuffer: AudioBuffer;
+  let audioSrc: AudioBufferSourceNode | null = null;
+  let recorder: MediaRecorder | null = null;
+
   try {
-    audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
-  } catch (err) {
-    await audioCtx.close();
-    throw new Error('Could not decode audio recording. The format may not be supported.');
-  }
-  const audioDurationSecs = audioBuffer.duration;
-
-  // ── Scale scene durations to match audio exactly (critical sync fix) ──────
-  const totalSceneDurSecs = scenes.reduce((sum, s) => sum + s.duration, 0);
-  const syncedScenes = totalSceneDurSecs > 0
-    ? scenes.map(s => ({ ...s, duration: s.duration * (audioDurationSecs / totalSceneDurSecs) }))
-    : scenes.map(s => ({ ...s, duration: audioDurationSecs / scenes.length }));
-
-  // ── Pipe audio into a MediaStream ─────────────────────────────────────────
-  const audioSrc = audioCtx.createBufferSource();
-  audioSrc.buffer = audioBuffer;
-  const audioDest = audioCtx.createMediaStreamDestination();
-  audioSrc.connect(audioDest);
-
-  // Promise that resolves when audio playback ends naturally
-  const audioEndedPromise = new Promise<void>(res => { audioSrc.onended = () => res(); });
-
-  // ── Merge canvas video track + audio track ────────────────────────────────
-  const canvasStream = canvas.captureStream(25);
-  const combined = new MediaStream([
-    ...canvasStream.getVideoTracks(),
-    ...audioDest.stream.getAudioTracks(),
-  ]);
-
-  const recorder = new MediaRecorder(combined, { mimeType });
-  const chunks: BlobPart[] = [];
-  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-  recorder.start(200);
-
-  // Start audio playback
-  audioSrc.start(0);
-  const startTime = Date.now();
-
-  const HALF_TRANS_MS = 200;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
-
-  const overlayBlack = (alpha: number) => {
-    if (!ctx) return;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-  };
-
-  for (let i = 0; i < syncedScenes.length; i++) {
-    if (cancelSignal.cancelled) break;
-    const scene = syncedScenes[i];
-    onProgress(i, syncedScenes.length);
-    const sceneDurMs = scene.duration * 1000;
-
-    // Fade in (skip first scene)
-    if (i > 0) {
-      const t0 = Date.now();
-      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
-        renderSceneToCanvas(canvas, scene, 0);
-        overlayBlack(1 - (Date.now() - t0) / HALF_TRANS_MS);
-        await new Promise(r => setTimeout(r, 40));
-      }
-      renderSceneToCanvas(canvas, scene, 0);
-    } else {
-      // First scene: render immediately so canvas isn't blank
-      renderSceneToCanvas(canvas, scene, 0);
+    // Browsers may suspend AudioContext by default (autoplay policy).
+    // Resume explicitly so audio plays and onended fires reliably.
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
     }
 
-    // Main scene hold
-    const hasOut = i < syncedScenes.length - 1;
-    const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
-    const sceneStart = Date.now();
-    while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
-      const elapsed = Date.now() - sceneStart;
-      renderSceneToCanvas(canvas, scene, elapsed / Math.max(sceneDurMs, 1));
-      await new Promise(r => setTimeout(r, 40));
+    const arrayBuf = await audioBlob.arrayBuffer();
+    let audioBuffer: AudioBuffer;
+    try {
+      audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+    } catch {
+      throw new Error('Could not decode audio recording. Try re-recording in a different format.');
     }
+    const audioDurationSecs = audioBuffer.duration;
+    if (audioDurationSecs < 0.1) throw new Error('Audio recording is too short (under 0.1 seconds).');
 
-    // Fade out (skip last scene)
-    if (hasOut && !cancelSignal.cancelled) {
-      const t0 = Date.now();
-      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
-        renderSceneToCanvas(canvas, scene, 1);
-        overlayBlack((Date.now() - t0) / HALF_TRANS_MS);
-        await new Promise(r => setTimeout(r, 40));
-      }
-      if (ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
-      await new Promise(r => setTimeout(r, 40));
-    } else {
-      renderSceneToCanvas(canvas, scene, 1);
-    }
-  }
+    // ── Scale scene durations to match audio exactly ──────────────────────
+    const totalSceneDurSecs = scenes.reduce((sum, s) => sum + s.duration, 0);
+    const syncedScenes = totalSceneDurSecs > 0
+      ? scenes.map(s => ({ ...s, duration: s.duration * (audioDurationSecs / totalSceneDurSecs) }))
+      : scenes.map(s => ({ ...s, duration: audioDurationSecs / scenes.length }));
 
-  // Mark progress complete
-  onProgress(syncedScenes.length, syncedScenes.length);
+    // ── Pipe audio into MediaStream ───────────────────────────────────────
+    audioSrc = audioCtx.createBufferSource();
+    audioSrc.buffer = audioBuffer;
+    const audioDest = audioCtx.createMediaStreamDestination();
+    audioSrc.connect(audioDest);
 
-  if (!cancelSignal.cancelled) {
-    // After canvas loop, hold last frame and wait for audio to finish naturally
-    // (audio playback is driven by AudioContext clock, canvas by setTimeout — they may finish
-    // at slightly different real times even though we scaled them to be equal; this grace wait
-    // ensures MediaRecorder captures all audio data before we stop it)
-    const gracePromise = new Promise<void>(res => setTimeout(res, 3000));
-    await Promise.race([audioEndedPromise, gracePromise]);
-    // Small extra flush window for MediaRecorder
-    await new Promise(r => setTimeout(r, 300));
-  }
+    // Resolves when audio playback ends naturally
+    const audioEndedPromise = new Promise<void>(res => { audioSrc!.onended = () => res(); });
 
-  // Stop audio playback
-  try { audioSrc.stop(); } catch {}
-  try { audioCtx.close(); } catch {}
+    // ── Merge canvas + audio tracks ───────────────────────────────────────
+    const canvasStream = canvas.captureStream(25);
+    const combined = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...audioDest.stream.getAudioTracks(),
+    ]);
 
-  return new Promise((resolve, reject) => {
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      resolve({ blob, mimeType, durationSecs: (Date.now() - startTime) / 1000 });
+    const chunks: BlobPart[] = [];
+    recorder = new MediaRecorder(combined, { mimeType });
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.start(200);
+
+    // Start audio — must happen AFTER recorder.start() so streams are live
+    audioSrc.start(0);
+    const startTime = Date.now();
+
+    const HALF_TRANS_MS = 200;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const overlayBlack = (alpha: number) => {
+      if (!ctx) return;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
     };
-    recorder.onerror = () => reject(new Error('MediaRecorder error'));
-    recorder.stop();
-  });
+
+    // ── Render each scene to canvas ───────────────────────────────────────
+    for (let i = 0; i < syncedScenes.length; i++) {
+      if (cancelSignal.cancelled) break;
+      const scene = syncedScenes[i];
+      onProgress(i, syncedScenes.length);
+      const sceneDurMs = scene.duration * 1000;
+
+      // Fade-in transition (skip first scene)
+      if (i > 0) {
+        const t0 = Date.now();
+        while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+          renderSceneToCanvas(canvas, scene, 0);
+          overlayBlack(1 - (Date.now() - t0) / HALF_TRANS_MS);
+          await new Promise(r => setTimeout(r, 40));
+        }
+        renderSceneToCanvas(canvas, scene, 0);
+      } else {
+        renderSceneToCanvas(canvas, scene, 0);
+      }
+
+      // Main hold
+      const hasOut = i < syncedScenes.length - 1;
+      const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
+      const sceneStart = Date.now();
+      while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
+        const el = Date.now() - sceneStart;
+        renderSceneToCanvas(canvas, scene, el / Math.max(sceneDurMs, 1));
+        await new Promise(r => setTimeout(r, 40));
+      }
+
+      // Fade-out transition (skip last scene)
+      if (hasOut && !cancelSignal.cancelled) {
+        const t0 = Date.now();
+        while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+          renderSceneToCanvas(canvas, scene, 1);
+          overlayBlack((Date.now() - t0) / HALF_TRANS_MS);
+          await new Promise(r => setTimeout(r, 40));
+        }
+        if (ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
+        await new Promise(r => setTimeout(r, 40));
+      } else {
+        renderSceneToCanvas(canvas, scene, 1);
+      }
+    }
+
+    // ── Mark progress complete ─────────────────────────────────────────────
+    onProgress(syncedScenes.length, syncedScenes.length);
+
+    if (!cancelSignal.cancelled) {
+      // Wait for audio to finish naturally (AudioContext clock is authoritative).
+      // Grace of 3 s handles any clock drift; 300 ms flush ensures MediaRecorder
+      // captures the very last data chunk before we stop it.
+      const gracePromise = new Promise<void>(res => setTimeout(res, 3000));
+      await Promise.race([audioEndedPromise, gracePromise]);
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    // ── Stop and collect ───────────────────────────────────────────────────
+    return new Promise((resolve, reject) => {
+      recorder!.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType });
+        resolve({ blob, mimeType, durationSecs: (Date.now() - startTime) / 1000 });
+      };
+      recorder!.onerror = () => reject(new Error('MediaRecorder error during video capture'));
+      // Guard: only stop if still recording — prevents throw if recorder errored
+      if (recorder!.state !== 'inactive') recorder!.stop();
+      else recorder!.onstop?.(new Event('stop'));
+    });
+
+  } finally {
+    // Always clean up audio resources regardless of success, error, or cancellation
+    try { audioSrc?.stop(); } catch {}
+    try { await audioCtx.close(); } catch {}
+  }
 }
 
 export function isVideoSupported(): boolean {

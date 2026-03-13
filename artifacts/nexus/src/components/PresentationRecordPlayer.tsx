@@ -231,9 +231,10 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
     setIsSaving(true);
     try {
       await savePresentationAudio(presentation.id, pendingBlobRef.current);
+      const recordingTimingsMs = pendingTimingsRef.current;
       const updated: Presentation = {
         ...presentation,
-        slideTimings: pendingTimingsRef.current,
+        slideTimings: recordingTimingsMs,
         recordedAudioMime: micMimeRef.current,
         recordedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -242,6 +243,11 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
       setHasExistingRecording(true);
       setShowSavePrompt(false);
       pendingBlobRef.current = null;
+      // Sync the Timing tab editor so it shows the just-recorded timings,
+      // not the stale values from before this recording session.
+      // Without this, switching to Timing tab and hitting Save would overwrite
+      // the fresh recording timings with old ones.
+      setCustomTimings(recordingTimingsMs.map(ms => Math.max(1, Math.round(ms / 1000))));
       onSaved?.(updated);
       toast.success('Narration saved! You can now use it when generating video.');
     } catch {
