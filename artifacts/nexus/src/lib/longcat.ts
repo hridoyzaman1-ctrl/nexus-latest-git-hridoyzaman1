@@ -1,9 +1,129 @@
 // LongCat AI API client (OpenAI-compatible)
+// Supports multiple comma-separated API keys per role.
+// Keys are tried in round-robin order; if one is exhausted (401/429) the
+// next key in the pool is tried automatically, so generation continues even
+// when one key's quota runs out.
+
 const LONGCAT_API_URL = 'https://api.longcat.chat/openai/v1/chat/completions';
-const LONGCAT_API_KEY = import.meta.env.VITE_LONGCAT_API_KEY || '';
-const KIRA_API_KEY = import.meta.env.VITE_KIRA_API_KEY || '';
-const STUDIO_API_KEY = import.meta.env.VITE_STUDIO_API_KEY || '';
 const MODEL = 'LongCat-Flash-Chat';
+
+// ── Key pool helpers ──────────────────────────────────────────────────────────
+
+function parseKeyPool(raw: string): string[] {
+  return raw.split(',').map(k => k.trim()).filter(Boolean);
+}
+
+const LONGCAT_KEYS  = parseKeyPool(import.meta.env.VITE_LONGCAT_API_KEY  || '');
+const KIRA_KEYS     = parseKeyPool(import.meta.env.VITE_KIRA_API_KEY     || '');
+const STUDIO_KEYS   = parseKeyPool(import.meta.env.VITE_STUDIO_API_KEY   || '');
+
+// Per-pool round-robin cursors (survive across calls within a page session)
+const poolIndex: Record<string, number> = {
+  longcat: 0,
+  kira:    0,
+  studio:  0,
+};
+
+// Whether a status code means "this key is exhausted / rate-limited" and we
+// should immediately try the next key rather than waiting to retry.
+function isKeyExhausted(status: number): boolean {
+  return status === 401 || status === 403 || status === 429;
+}
+
+/**
+ * Core fetch wrapper with multi-key rotation.
+ *
+ * For each call it starts at the current round-robin cursor and tries every
+ * key in the pool once.  On success it advances the cursor so the next call
+ * starts on the following key (even load distribution).  On a "key exhausted"
+ * response it immediately moves to the next key without waiting.  Server
+ * errors (5xx) get a short back-off before the next attempt.
+ */
+async function callWithKeyPool(
+  poolName: string,
+  keys: string[],
+  body: object,
+  timeoutMs: number,
+  fallbackMsg: string,
+): Promise<string> {
+  if (keys.length === 0) {
+    throw new Error(`No API keys configured for "${poolName}". Please add keys to the environment.`);
+  }
+
+  const startIdx = poolIndex[poolName] ?? 0;
+  let lastError: Error = new Error('All API keys failed');
+
+  for (let ki = 0; ki < keys.length; ki++) {
+    const keyIdx = (startIdx + ki) % keys.length;
+    const apiKey = keys[keyIdx];
+
+    // Each key gets up to 2 retries for transient network issues
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), timeoutMs);
+
+        const res = await fetch(LONGCAT_API_URL, {
+          method:  'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization:  `Bearer ${apiKey}`,
+          },
+          body:   JSON.stringify(body),
+          signal: controller.signal,
+        });
+        clearTimeout(tid);
+
+        if (res.ok) {
+          // Success — advance the cursor so the next call uses the following key
+          poolIndex[poolName] = (keyIdx + 1) % keys.length;
+          const data = await res.json();
+          return data.choices?.[0]?.message?.content?.trim() ?? fallbackMsg;
+        }
+
+        const errText = await res.text().catch(() => 'unknown error');
+
+        if (isKeyExhausted(res.status)) {
+          // This key's quota is gone — skip straight to the next key
+          lastError = new Error(`Key ${ki + 1}/${keys.length} exhausted (${res.status}), trying next…`);
+          break; // break inner retry loop, outer loop tries next key
+        }
+
+        if (res.status >= 500) {
+          // Server error — short back-off then retry the same key once
+          if (attempt === 0) {
+            await new Promise(r => setTimeout(r, 600));
+            continue;
+          }
+          lastError = new Error(`${poolName} API error ${res.status}: ${errText}`);
+          break;
+        }
+
+        // Unrecoverable client error (400, 422, etc.)
+        throw new Error(`${poolName} API error ${res.status}: ${errText}`);
+
+      } catch (err) {
+        const e = err as Error;
+        if (e.name === 'AbortError' || e instanceof DOMException) {
+          // Timeout — retry once on the same key, then move to the next
+          if (attempt === 0) {
+            await new Promise(r => setTimeout(r, 400));
+            continue;
+          }
+          lastError = new Error(`${poolName} key ${ki + 1} timed out, trying next…`);
+          break;
+        }
+        // Re-throw unrecoverable errors (bad request, no keys configured, etc.)
+        throw err;
+      }
+    }
+    // Move to next key
+  }
+
+  throw lastError;
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────────
 
 export interface LongCatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -14,158 +134,57 @@ export async function chatWithLongCat(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
-  const maxRetries = 2;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const res = await fetch(LONGCAT_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${LONGCAT_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages,
-          max_tokens: options?.maxTokens ?? 300,
-          temperature: options?.temperature ?? 0.7,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => 'Unknown error');
-        if (attempt < maxRetries && (res.status >= 500 || res.status === 429)) {
-          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-          continue;
-        }
-        throw new Error(`LongCat API error ${res.status}: ${errText}`);
-      }
-
-      const data = await res.json();
-      return data.choices?.[0]?.message?.content?.trim() ?? 'I couldn\'t generate a response right now. Please try again.';
-    } catch (err) {
-      if (attempt < maxRetries && (err instanceof DOMException || (err as Error).name === 'AbortError')) {
-        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  throw new Error('Failed after retries');
+  return callWithKeyPool(
+    'longcat',
+    LONGCAT_KEYS,
+    {
+      model:       MODEL,
+      messages,
+      max_tokens:  options?.maxTokens  ?? 300,
+      temperature: options?.temperature ?? 0.7,
+    },
+    15000,
+    "I couldn't generate a response right now. Please try again.",
+  );
 }
 
 export async function chatWithKira(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
-  const maxRetries = 2;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const res = await fetch(LONGCAT_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${KIRA_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages,
-          max_tokens: options?.maxTokens ?? 300,
-          temperature: options?.temperature ?? 0.7,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => 'Unknown error');
-        if (attempt < maxRetries && (res.status >= 500 || res.status === 429)) {
-          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-          continue;
-        }
-        throw new Error(`Kira API error ${res.status}: ${errText}`);
-      }
-
-      const data = await res.json();
-      return data.choices?.[0]?.message?.content?.trim() ?? 'I couldn\'t generate a response right now. Please try again.';
-    } catch (err) {
-      if (attempt < maxRetries && (err instanceof DOMException || (err as Error).name === 'AbortError')) {
-        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  throw new Error('Failed after retries');
+  return callWithKeyPool(
+    'kira',
+    KIRA_KEYS,
+    {
+      model:       MODEL,
+      messages,
+      max_tokens:  options?.maxTokens  ?? 300,
+      temperature: options?.temperature ?? 0.7,
+    },
+    15000,
+    "I couldn't generate a response right now. Please try again.",
+  );
 }
 
-// Dedicated function for Audio Studio & Video Studio AI script generation
-// Uses VITE_STUDIO_API_KEY — separate from general Kira/LongCat keys
 export async function chatWithStudioAI(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
-  const apiKey = STUDIO_API_KEY;
-  if (!apiKey) throw new Error('Studio API key not configured. Please set VITE_STUDIO_API_KEY.');
-
-  const maxRetries = 2;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-
-      const res = await fetch(LONGCAT_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages,
-          max_tokens: options?.maxTokens ?? 1200,
-          temperature: options?.temperature ?? 0.72,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => 'Unknown error');
-        if (attempt < maxRetries && (res.status >= 500 || res.status === 429)) {
-          await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
-          continue;
-        }
-        throw new Error(`Studio AI error ${res.status}: ${errText}`);
-      }
-
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content?.trim();
-      if (!content) throw new Error('Empty response from Studio AI');
-      return content;
-    } catch (err) {
-      if (attempt < maxRetries && (err instanceof DOMException || (err as Error).name === 'AbortError')) {
-        await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
-        continue;
-      }
-      throw err;
-    }
+  if (STUDIO_KEYS.length === 0) {
+    throw new Error('Studio API key not configured. Please set VITE_STUDIO_API_KEY.');
   }
-  throw new Error('Studio AI failed after retries');
+  return callWithKeyPool(
+    'studio',
+    STUDIO_KEYS,
+    {
+      model:       MODEL,
+      messages,
+      max_tokens:  options?.maxTokens  ?? 1200,
+      temperature: options?.temperature ?? 0.72,
+    },
+    30000,
+    '',
+  );
 }
 
 // Kira system prompt
