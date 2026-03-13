@@ -395,7 +395,7 @@ export default function MediaGenerationModal({
       setErrorMsg(msg);
       setStage('error');
     }
-  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript]);
+  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript, selectedBgm]);
 
   // TTS controls
   const handlePlay = useCallback(() => {
