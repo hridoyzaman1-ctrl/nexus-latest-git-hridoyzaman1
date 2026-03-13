@@ -267,4 +267,5 @@ Rules:
 - Use emojis sparingly (2-3 total). No motivational poster language.
 - If scores are low, be constructive not discouraging. "Room to grow" not "you're failing."
 - If data is sparse, acknowledge it and encourage more tracking without being preachy.
-- CRITICAL: Only include Study Planner section if study data is provided. Do NOT generate study advice for users with no study data.`;
+- CRITICAL: Only include Study Planner section if study data is provided. Do NOT generate study advice for users with no study data.
+- CRITICAL: Your report MUST end with a complete, properly punctuated sentence. Never cut off mid-sentence or mid-word. If you are nearing the word limit, finish your current point with a clean concluding sentence before stopping.`;

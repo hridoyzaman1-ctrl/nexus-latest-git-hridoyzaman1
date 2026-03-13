@@ -306,14 +306,14 @@ ABSOLUTE RULES — violating any of these will make the output unusable:
 - Do NOT include stage directions, sound cues, or parenthetical notes ([music], [pause], (upbeat tone), etc.).
 - Do NOT repeat or echo the source title or filename anywhere in the output.
 - The very first word of your output must be substantive spoken content — a fact, concept, or sentence from the material itself.
-- Your output MUST end with a complete, properly punctuated sentence. The very last character before any whitespace must be a period, exclamation mark, or question mark. Never cut off mid-sentence or mid-thought.
+- Your output MUST end with a complete, properly punctuated sentence. The very last character must be a sentence terminator — a period, exclamation mark, question mark, or language-appropriate equivalent (e.g. । for Bangla). Never cut off mid-sentence, mid-word, or mid-thought. If you are running short on space, wrap up your current thought with one final concluding sentence and stop.
 - ${modePrompts[mode]}${langInstruction}
 
 CONTENT TO PROCESS:
 ${truncated}`;
 
           const maxTokensByMode: Record<MediaMode, number> = {
-            summary: 1500, explainer: 2500, podcast: 3000, video: 2000,
+            summary: 2500, explainer: 4000, podcast: 4500, video: 3000,
           };
 
           try {

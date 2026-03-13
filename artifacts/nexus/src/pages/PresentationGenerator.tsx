@@ -598,9 +598,9 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       podcast: `Write an engaging conversational podcast episode (6-8 minutes). Sound natural and add context.`,
     };
     const langNote = presVideoLanguage === 'bn' ? ' Write entirely in Bengali (বাংলা) script.' : '';
-    const prompt = `You are a professional scriptwriter.\n\nPresentation title: "${pres.settings.title}"\nPurpose: ${pres.settings.purpose}\nSlides:\n\n${text}\n\n${modeInstructions[presVideoMode]}${langNote}\n\nWrite only the narration script. No stage directions, no slide numbers, no meta-commentary. Start immediately with the spoken content.`;
+    const prompt = `You are a professional scriptwriter.\n\nPresentation title: "${pres.settings.title}"\nPurpose: ${pres.settings.purpose}\nSlides:\n\n${text}\n\n${modeInstructions[presVideoMode]}${langNote}\n\nWrite only the narration script. No stage directions, no slide numbers, no meta-commentary. Start immediately with the spoken content.\n\nCRITICAL: Your script MUST end with a complete, properly punctuated sentence. The very last character must be a period, exclamation mark, question mark, or (if writing in Bangla) a danda (।). Never cut off mid-sentence, mid-word, or mid-thought. If you are running short on space, add one final concluding sentence and stop.`;
     try {
-      const raw = await chatWithStudioAI([{ role: 'user', content: prompt }]);
+      const raw = await chatWithStudioAI([{ role: 'user', content: prompt }], { maxTokens: 3000 });
       setPresAiScript(sanitiseAIScript(raw));
     } catch {
       setPresScriptError('AI generation failed. You can still generate video directly.');

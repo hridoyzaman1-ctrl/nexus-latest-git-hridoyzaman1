@@ -76,7 +76,7 @@ export async function generateScript(settings: ScriptSettings): Promise<string> 
     throw new Error('Script generation is not available. Please add your longcat.chat API key.');
   }
 
-  const systemPrompt = `You are an expert speechwriter and presentation coach. Generate polished, natural-sounding scripts that are ready to be spoken aloud. Match the tone, audience, and purpose precisely. Output ONLY the script text with [PAUSE] markers — no headers, instructions, or meta-text.`;
+  const systemPrompt = `You are an expert speechwriter and presentation coach. Generate polished, natural-sounding scripts that are ready to be spoken aloud. Match the tone, audience, and purpose precisely. Output ONLY the script text with [PAUSE] markers — no headers, instructions, or meta-text. CRITICAL: Your script MUST end with a complete, properly punctuated sentence. Never cut off mid-sentence, mid-word, or mid-thought. If you are running short on space, finish your current point and add one final concluding sentence before stopping.`;
 
   const messages: LongCatMessage[] = [
     { role: 'system', content: systemPrompt },

@@ -92,16 +92,21 @@ export function truncateToWordLimit(text: string, maxWords: number): string {
 }
 
 /**
- * Trim text so it ends at the last complete sentence boundary (. ! ?).
+ * Trim text so it ends at the last complete sentence boundary.
+ * Handles: English . ! ?   Bangla । ॥   Arabic ؟   CJK 。   fullwidth ！ ？
  * Prevents scripts from ending mid-sentence after word-count truncation
  * or AI token cutoffs. Exported so the modal can apply it post-AI too.
  */
 export function trimToLastSentence(text: string): string {
   if (!text) return text;
+  // Sentence-ending punctuation (ASCII + Bangla danda + Arabic ? + CJK period + fullwidth)
+  // U+0964 = ।  U+0965 = ॥  U+061F = ؟  U+3002 = 。  U+FF01 = ！  U+FF1F = ？
+  const SENT_END_RE = /[.!?\u0964\u0965\u061F\u3002\uFF01\uFF1F]["'\u2019\u201d]?\s*$/;
+  const SENT_MATCH_RE = /[.!?\u0964\u0965\u061F\u3002\uFF01\uFF1F]["'\u2019\u201d]?(?=\s|$)/g;
   // Already ends with sentence-ending punctuation
-  if (/[.!?]["'\u2019\u201d]?\s*$/.test(text)) return text.trim();
+  if (SENT_END_RE.test(text)) return text.trim();
   // Collect all positions where a sentence ends
-  const endings = [...text.matchAll(/[.!?]["'\u2019\u201d]?(?=\s|$)/g)];
+  const endings = [...text.matchAll(SENT_MATCH_RE)];
   if (endings.length === 0) return text.trim(); // no sentence end found — return as-is
   const last = endings[endings.length - 1];
   const cutPos = (last.index ?? 0) + last[0].length;

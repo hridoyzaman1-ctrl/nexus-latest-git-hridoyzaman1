@@ -24,13 +24,14 @@ const MODES = [
 ];
 
 function getModePrompt(mode: 'summary' | 'detailed' | 'simple'): string {
+  const completionRule = `CRITICAL: Your response MUST end with a complete, properly punctuated sentence. The very last character must be a period, exclamation mark, question mark, or language-appropriate sentence terminator (e.g. । for Bangla). Never cut off mid-sentence, mid-word, or mid-thought under any circumstances. If space is running short, wrap up with a brief concluding sentence before stopping.`;
   switch (mode) {
     case 'summary':
-      return `You are an expert summarizer. Provide a comprehensive summary covering ALL main topics, key points, and important takeaways from the given text. Use clear headings and bullet points. Be thorough but concise.`;
+      return `You are an expert summarizer. Provide a comprehensive summary covering ALL main topics, key points, and important takeaways from the given text. Use clear headings and bullet points. Be thorough but concise.\n\n${completionRule}`;
     case 'detailed':
-      return `You are an expert educator. Provide a VERY detailed explanation of all concepts in the given text. Break down complex ideas, provide additional context, elaborate on key terms, explain relationships between concepts, and give thorough analysis. Use headings, subheadings, and structured formatting. Be as detailed and informative as possible.`;
+      return `You are an expert educator. Provide a VERY detailed explanation of all concepts in the given text. Break down complex ideas, provide additional context, elaborate on key terms, explain relationships between concepts, and give thorough analysis. Use headings, subheadings, and structured formatting. Be as detailed and informative as possible.\n\n${completionRule}`;
     case 'simple':
-      return `You are a friendly teacher who explains things so anyone can understand. Take the given text and explain ALL concepts in very simple, everyday language. Use real-world analogies, relatable examples, and a conversational tone. Imagine explaining to a curious friend who has no background in this topic. Make complex ideas feel easy and approachable. Use emojis sparingly to keep it friendly.`;
+      return `You are a friendly teacher who explains things so anyone can understand. Take the given text and explain ALL concepts in very simple, everyday language. Use real-world analogies, relatable examples, and a conversational tone. Imagine explaining to a curious friend who has no background in this topic. Make complex ideas feel easy and approachable. Use emojis sparingly to keep it friendly.\n\n${completionRule}`;
   }
 }
 
@@ -113,7 +114,7 @@ export default function AISummarizer({ documentId, documentName, getPageText, to
         { role: 'user', content: `Document: "${documentName}"\nPages ${start}-${end}:\n\n${text.slice(0, 8000)}` },
       ];
 
-      const response = await chatWithLongCat(messages, { maxTokens: 1200, temperature: 0.4 });
+      const response = await chatWithLongCat(messages, { maxTokens: 2500, temperature: 0.4 });
       setResult(response);
     } catch { toast.error('AI generation failed. Please try again.'); }
     setLoading(false);
