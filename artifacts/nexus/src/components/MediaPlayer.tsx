@@ -250,7 +250,7 @@ export default function MediaPlayer({ item, onDelete, compact = false }: MediaPl
       <div className="flex items-center gap-2">
         {!playing ? (
           <Button size="sm" onClick={handlePlay} className="flex-1 rounded-xl h-8 gap-1.5 text-xs">
-            <Play className="w-3.5 h-3.5" /> {paused ? 'Resume' : 'Play Audio'}
+            <Play className="w-3.5 h-3.5" /> {paused ? 'Resume' : item.mode === 'video' ? 'Play Video' : 'Play Audio'}
           </Button>
         ) : (
           <Button size="sm" variant="secondary" onClick={handlePause} className="flex-1 rounded-xl h-8 gap-1.5 text-xs">

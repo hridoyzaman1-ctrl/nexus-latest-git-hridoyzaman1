@@ -35,6 +35,8 @@ interface MediaGenerationModalProps {
   initialMode?: MediaMode;
   /** Script/TTS language: 'en' (default) or 'bn' (Bangla). */
   language?: string;
+  /** Pre-generated AI script — skips extraction + generation, goes straight to recording/done. */
+  preGeneratedScript?: string;
 }
 
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
@@ -49,6 +51,7 @@ type GenStage = 'idle' | 'extracting' | 'generating' | 'recording' | 'done' | 'e
 export default function MediaGenerationModal({
   open, onClose, sourceModule, sourceId, sourceName,
   getSourceText, totalPages = 0, initialMode = 'summary', language = 'en',
+  preGeneratedScript,
 }: MediaGenerationModalProps) {
   const navigate = useNavigate();
 
@@ -173,6 +176,16 @@ export default function MediaGenerationModal({
 
   const selectedVoice = voices.find(v => v.voiceURI === selectedVoiceUri) ?? null;
 
+  // Auto-start when pre-generated script is provided
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (open && preGeneratedScript && !autoStartedRef.current && stage === 'idle') {
+      autoStartedRef.current = true;
+      setTimeout(() => handleGenerate(), 80);
+    }
+    if (!open) autoStartedRef.current = false;
+  }, [open, preGeneratedScript, stage]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleGenerate = useCallback(async () => {
     // Reset generation state, create fresh cancel signal
     cancelSignal.current = { cancelled: false };
@@ -193,79 +206,102 @@ export default function MediaGenerationModal({
     try {
       const limits = getLimits(sourceModule, mode);
 
-      // Extract text
-      let rawText = '';
-      if (totalPages > 0) {
-        const effectiveTo = Math.min(toPage, fromPage + limits.maxPages - 1);
-        rawText = await getSourceText(fromPage, effectiveTo);
-      } else {
-        rawText = await getSourceText(1, 1);
-      }
-
-      if (cancelSignal.current.cancelled) return;
-
-      if (!rawText || rawText.trim().length < 20) {
-        throw new Error('Not enough content found. Try selecting more pages or adding more content.');
-      }
-
-      const truncated = truncateToWordLimit(rawText, limits.maxWords);
-      const words = countWords(truncated);
-
-      setStage('generating');
-      setProgress(35);
-      setProgressLabel(`Preparing ${mode} script…`);
-
-      await new Promise(r => setTimeout(r, 0));
-      if (cancelSignal.current.cancelled) return;
-
       let generatedScript = '';
       let generatedScenes: VideoScene[] | undefined;
 
-      if (isStudioModule) {
-        // AI-first: use LongCat to generate a clean, title-free spoken script
-        const modePrompts: Record<MediaMode, string> = {
-          summary:  'Write a concise spoken summary covering all key points. 2-3 minutes when read aloud.',
-          explainer:'Write a clear spoken explainer walking through the main concepts. 4-5 minutes when read aloud.',
-          podcast:  'Write an engaging conversational podcast episode about this content. Sound natural and enthusiastic. 6-8 minutes when read aloud.',
-          video:    'Write flowing spoken narration for a video presentation covering the main ideas. 3-4 minutes when read aloud.',
-        };
-        const langInstruction = language === 'bn'
-          ? '\nIMPORTANT: Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.'
-          : '';
-        const prompt = `You are a professional audio script writer.\n\nSTRICT RULES:\n- Write ONLY the exact words that will be spoken aloud\n- Do NOT include any titles, file names, document names, or subject headings\n- Do NOT write "Here is your script", "Script:", or any preamble whatsoever\n- Do NOT use markdown, asterisks, bullet symbols, or any formatting characters\n- Do NOT include stage directions like [music], [pause], or [applause]\n- Start immediately with the spoken content — no introduction about what you are about to write\n- ${modePrompts[mode]}${langInstruction}\n\nCONTENT TO PROCESS:\n${truncated}`;
+      // ── Fast path: pre-generated script from studio ──────────────────────
+      if (preGeneratedScript) {
+        setStage('generating');
+        setProgress(55);
+        setProgressLabel('Using your pre-generated script…');
+        await new Promise(r => setTimeout(r, 60));
+        if (cancelSignal.current.cancelled) return;
 
-        try {
-          setProgress(45);
-          setProgressLabel('AI is reading and scripting your content…');
-          const aiRaw = await chatWithStudioAI(
-            [{ role: 'user', content: prompt }],
-            { maxTokens: 2000 }
-          );
-          if (cancelSignal.current.cancelled) return;
-          generatedScript = sanitiseAIScript(aiRaw);
+        generatedScript = preGeneratedScript;
+
+        // For video mode, build visual scenes from source text
+        if (mode === 'video') {
+          setProgressLabel('Building video scenes…');
+          const rawText = await getSourceText(1, 1);
+          const truncated = truncateToWordLimit(rawText || generatedScript, limits.maxWords);
+          const { scenes: localScenes } = buildScriptForMode(truncated, sourceName, mode, language);
+          generatedScenes = localScenes;
           setProgress(72);
-          setProgressLabel('AI script ready — finalising…');
-        } catch {
-          // Fallback to local builder if AI call fails
-          setProgressLabel('Building script locally…');
+        } else {
+          setProgress(80);
+        }
+      } else {
+        // ── Normal path: extract + generate ───────────────────────────────
+        setStage('extracting');
+        setProgress(10);
+        setProgressLabel('Extracting content…');
+
+        let rawText = '';
+        if (totalPages > 0) {
+          const effectiveTo = Math.min(toPage, fromPage + limits.maxPages - 1);
+          rawText = await getSourceText(fromPage, effectiveTo);
+        } else {
+          rawText = await getSourceText(1, 1);
+        }
+
+        if (cancelSignal.current.cancelled) return;
+
+        if (!rawText || rawText.trim().length < 20) {
+          throw new Error('Not enough content found. Try selecting more pages or adding more content.');
+        }
+
+        const truncated = truncateToWordLimit(rawText, limits.maxWords);
+        const words = countWords(truncated);
+
+        setStage('generating');
+        setProgress(35);
+        setProgressLabel(`Preparing ${mode} script…`);
+
+        await new Promise(r => setTimeout(r, 0));
+        if (cancelSignal.current.cancelled) return;
+
+        if (isStudioModule) {
+          const modePrompts: Record<MediaMode, string> = {
+            summary:  'Write a concise spoken summary covering all key points. 2-3 minutes when read aloud.',
+            explainer:'Write a clear spoken explainer walking through the main concepts. 4-5 minutes when read aloud.',
+            podcast:  'Write an engaging conversational podcast episode about this content. Sound natural and enthusiastic. 6-8 minutes when read aloud.',
+            video:    'Write flowing spoken narration for a video presentation covering the main ideas. 3-4 minutes when read aloud.',
+          };
+          const langInstruction = language === 'bn'
+            ? '\nIMPORTANT: Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.'
+            : '';
+          const prompt = `You are a professional audio script writer.\n\nSTRICT RULES:\n- Write ONLY the exact words that will be spoken aloud\n- Do NOT include any titles, file names, document names, or subject headings\n- Do NOT write "Here is your script", "Script:", or any preamble whatsoever\n- Do NOT use markdown, asterisks, bullet symbols, or any formatting characters\n- Do NOT include stage directions like [music], [pause], or [applause]\n- Start immediately with the spoken content — no introduction about what you are about to write\n- ${modePrompts[mode]}${langInstruction}\n\nCONTENT TO PROCESS:\n${truncated}`;
+
+          try {
+            setProgress(45);
+            setProgressLabel('AI is reading and scripting your content…');
+            const aiRaw = await chatWithStudioAI(
+              [{ role: 'user', content: prompt }],
+              { maxTokens: 2000 }
+            );
+            if (cancelSignal.current.cancelled) return;
+            generatedScript = sanitiseAIScript(aiRaw);
+            setProgress(72);
+            setProgressLabel('AI script ready — finalising…');
+          } catch {
+            setProgressLabel('Building script locally…');
+            const result = buildScriptForMode(truncated, sourceName, mode, language);
+            generatedScript = result.script;
+            generatedScenes = result.scenes;
+          }
+          if (mode === 'video') {
+            const { scenes: localScenes } = buildScriptForMode(truncated, sourceName, mode, language);
+            generatedScenes = localScenes;
+          }
+        } else {
+          setProgressLabel(`Building ${mode} script (${words.toLocaleString()} words)…`);
+          setProgress(40);
+          await new Promise(r => setTimeout(r, 0));
+          if (cancelSignal.current.cancelled) return;
           const result = buildScriptForMode(truncated, sourceName, mode, language);
           generatedScript = result.script;
           generatedScenes = result.scenes;
         }
-        // For video mode: always build visual scenes from raw text (separate from narration)
-        if (mode === 'video') {
-          const { scenes: localScenes } = buildScriptForMode(truncated, sourceName, mode, language);
-          generatedScenes = localScenes;
-        }
-      } else {
-        // Non-studio: use local script builder
-        setProgressLabel(`Building ${mode} script (${words.toLocaleString()} words)…`);
-        setProgress(40);
-        await new Promise(r => setTimeout(r, 0));
-        if (cancelSignal.current.cancelled) return;
-        const result = buildScriptForMode(truncated, sourceName, mode, language);
-        generatedScript = result.script;
-        generatedScenes = result.scenes;
       }
 
       if (!generatedScript || generatedScript.trim().length < 20) {
@@ -354,7 +390,7 @@ export default function MediaGenerationModal({
       setErrorMsg(msg);
       setStage('error');
     }
-  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule]);
+  }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript]);
 
   // TTS controls
   const handlePlay = useCallback(() => {

@@ -542,85 +542,187 @@ export function getDefaultVoice(lang = 'en'): SpeechSynthesisVoice | null {
 
 // ── Video canvas renderer ─────────────────────────────────────────────────────
 
-const SCENE_COLORS: Record<VideoScene['type'], string> = {
-  title:      'hsl(245, 58%, 15%)',
-  keypoint:   'hsl(240, 20%, 10%)',
-  definition: 'hsl(199, 50%, 10%)',
-  quote:      'hsl(280, 40%, 10%)',
-  example:    'hsl(152, 40%, 8%)',
-  recap:      'hsl(245, 58%, 12%)',
+// Base HSL values for backgrounds [h, s, l]
+const SCENE_HSL: Record<VideoScene['type'], [number, number, number]> = {
+  title:      [245, 58, 14],
+  keypoint:   [220, 40, 10],
+  definition: [199, 55, 11],
+  quote:      [280, 45, 12],
+  example:    [152, 45, 9],
+  recap:      [245, 52, 13],
 };
 
 const ACCENT_COLORS: Record<VideoScene['type'], string> = {
-  title:      'hsl(245, 58%, 62%)',
-  keypoint:   'hsl(245, 58%, 62%)',
-  definition: 'hsl(199, 89%, 48%)',
-  quote:      'hsl(291, 64%, 55%)',
-  example:    'hsl(152, 69%, 45%)',
-  recap:      'hsl(245, 58%, 62%)',
+  title:      'hsl(245, 70%, 68%)',
+  keypoint:   'hsl(210, 80%, 62%)',
+  definition: 'hsl(199, 89%, 52%)',
+  quote:      'hsl(291, 70%, 62%)',
+  example:    'hsl(152, 69%, 48%)',
+  recap:      'hsl(38, 92%, 58%)',
 };
+
+// Large decorative glyph per scene type
+const SCENE_GLYPHS: Record<VideoScene['type'], string> = {
+  title:      '✦',
+  keypoint:   '◆',
+  definition: '◉',
+  quote:      '❝',
+  example:    '◎',
+  recap:      '↩',
+};
+
+function hslStr(h: number, s: number, l: number) {
+  return `hsl(${h}, ${s}%, ${l}%)`;
+}
 
 export function renderSceneToCanvas(
   canvas: HTMLCanvasElement,
   scene: VideoScene,
-  progress = 0 // 0-1 for progress bar
+  progress = 0
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
   const W = canvas.width;
   const H = canvas.height;
+  const [bh, bs, bl] = SCENE_HSL[scene.type];
+  const accent = ACCENT_COLORS[scene.type];
 
-  // Background
-  ctx.fillStyle = SCENE_COLORS[scene.type];
+  // ── Background gradient ────────────────────────────────────────────────────
+  const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+  bgGrad.addColorStop(0, hslStr(bh, bs, bl + 4));
+  bgGrad.addColorStop(0.5, hslStr(bh, bs, bl));
+  bgGrad.addColorStop(1, hslStr(bh, bs + 5, bl - 4));
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle gradient overlay
-  const grad = ctx.createLinearGradient(0, 0, W, H);
-  grad.addColorStop(0, 'rgba(255,255,255,0.03)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.2)');
-  ctx.fillStyle = grad;
+  // ── Radial glow (top-right corner) ────────────────────────────────────────
+  const radGrad = ctx.createRadialGradient(W * 0.88, H * 0.12, 0, W * 0.88, H * 0.12, W * 0.55);
+  radGrad.addColorStop(0, accent.replace('hsl', 'hsla').replace(')', ', 0.18)'));
+  radGrad.addColorStop(1, 'hsla(0,0%,0%,0)');
+  ctx.fillStyle = radGrad;
   ctx.fillRect(0, 0, W, H);
 
-  // Top accent bar
-  ctx.fillStyle = ACCENT_COLORS[scene.type];
-  ctx.fillRect(0, 0, W, 4);
+  // ── Decorative circles (background geometry) ──────────────────────────────
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = Math.max(W * 0.04, 8);
+  ctx.beginPath(); ctx.arc(W - W * 0.06, H * 0.18, W * 0.28, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 0.05;
+  ctx.lineWidth = Math.max(W * 0.025, 5);
+  ctx.beginPath(); ctx.arc(W * 0.04, H * 0.82, W * 0.2, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 0.04;
+  ctx.lineWidth = Math.max(W * 0.015, 3);
+  ctx.beginPath(); ctx.arc(W * 0.5, H * 0.5, W * 0.42, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
 
-  // Type badge
-  ctx.fillStyle = ACCENT_COLORS[scene.type] + '30';
-  roundRect(ctx, 16, 20, 100, 22, 11);
+  // ── Diagonal lines (texture) ───────────────────────────────────────────────
+  ctx.save();
+  ctx.globalAlpha = 0.04;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  for (let x = -H; x < W + H; x += 28) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + H, H); ctx.stroke();
+  }
+  ctx.restore();
+
+  // ── Left accent stripe ────────────────────────────────────────────────────
+  ctx.fillStyle = accent;
+  ctx.fillRect(0, 0, 4, H);
+
+  // ── Top accent bar ────────────────────────────────────────────────────────
+  const topGrad = ctx.createLinearGradient(0, 0, W, 0);
+  topGrad.addColorStop(0, accent);
+  topGrad.addColorStop(1, 'hsla(0,0%,100%,0)');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(4, 0, W - 4, 3);
+
+  // ── Large faded glyph (background) ────────────────────────────────────────
+  ctx.save();
+  ctx.globalAlpha = 0.07;
+  ctx.fillStyle = accent;
+  ctx.font = `${Math.round(H * 0.55)}px Arial, sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(SCENE_GLYPHS[scene.type], W - 8, H - 4);
+  ctx.restore();
+
+  // ── Type badge pill ───────────────────────────────────────────────────────
+  const badgeX = 14, badgeY = 16;
+  const badgeLabel = scene.type.toUpperCase();
+  ctx.font = '600 10px Inter, system-ui, sans-serif';
+  const badgeW = ctx.measureText(badgeLabel).width + 16;
+  ctx.fillStyle = accent.replace('hsl', 'hsla').replace(')', ', 0.22)');
+  roundRect(ctx, badgeX, badgeY, badgeW, 19, 9.5);
   ctx.fill();
-  ctx.fillStyle = ACCENT_COLORS[scene.type];
-  ctx.font = '600 11px Inter, system-ui, sans-serif';
+  ctx.fillStyle = accent;
   ctx.textAlign = 'left';
-  ctx.fillText(scene.type.toUpperCase(), 26, 35);
+  ctx.textBaseline = 'middle';
+  ctx.fillText(badgeLabel, badgeX + 8, badgeY + 9.5);
 
-  // Heading
+  // ── Heading ───────────────────────────────────────────────────────────────
+  const headTop = badgeY + 19 + 14;
+  ctx.textBaseline = 'top';
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'left';
-  const headingFontSize = scene.heading.length > 40 ? 18 : 22;
+  const headingFontSize = scene.heading.length > 45 ? Math.round(H * 0.07) : Math.round(H * 0.085);
   ctx.font = `700 ${headingFontSize}px Inter, system-ui, sans-serif`;
-  const headWords = wrapText(ctx, scene.heading, 16, H < 320 ? 80 : 72, W - 32);
-  headWords.forEach((line, i) => {
-    ctx.fillText(line, 16, (H < 320 ? 80 : 72) + i * (headingFontSize + 4));
+  // Subtle text shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 6;
+  const headLines = wrapText(ctx, scene.heading, 14, headTop, W - 28);
+  headLines.forEach((line, i) => {
+    ctx.fillText(line, 14, headTop + i * (headingFontSize + 4));
   });
-  const bodyStartY = (H < 320 ? 80 : 72) + headWords.length * (headingFontSize + 4) + 16;
+  ctx.shadowBlur = 0;
 
-  // Body text
-  ctx.fillStyle = 'rgba(255,255,255,0.82)';
-  const bodyFontSize = scene.body.length > 200 ? 12 : 14;
+  const bodyStartY = headTop + headLines.length * (headingFontSize + 4) + 12;
+
+  // Thin separator line below heading
+  ctx.fillStyle = accent.replace('hsl', 'hsla').replace(')', ', 0.30)');
+  ctx.fillRect(14, bodyStartY - 6, W * 0.35, 1.5);
+
+  // ── Body text ─────────────────────────────────────────────────────────────
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  const bodyFontSize = scene.body.length > 200 ? Math.round(H * 0.047) : Math.round(H * 0.054);
   ctx.font = `400 ${bodyFontSize}px Inter, system-ui, sans-serif`;
-  const bodyLines = scene.body.split('\n').flatMap(line => wrapText(ctx, line, 16, bodyStartY, W - 32));
-  bodyLines.slice(0, 10).forEach((line, i) => {
-    ctx.fillText(line, 16, bodyStartY + i * (bodyFontSize + 5));
+  const maxBodyLines = Math.floor((H - bodyStartY - 16) / (bodyFontSize + 5));
+  const bodyLines = scene.body
+    .split('\n')
+    .flatMap(line => {
+      const stripped = line.replace(/^[•\-\*]\s*/, '');
+      return wrapText(ctx, stripped ? '• ' + stripped : line, 14, bodyStartY, W - 28);
+    });
+  bodyLines.slice(0, maxBodyLines).forEach((line, i) => {
+    // Highlight bullet dots in accent color
+    if (line.startsWith('•')) {
+      ctx.fillStyle = accent;
+      ctx.fillText('•', 14, bodyStartY + i * (bodyFontSize + 5));
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(line.slice(1), 14 + bodyFontSize * 0.7, bodyStartY + i * (bodyFontSize + 5));
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(line, 14, bodyStartY + i * (bodyFontSize + 5));
+    }
   });
 
-  // Progress bar at bottom
+  // ── Progress bar ──────────────────────────────────────────────────────────
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(0, H - 5, W, 5);
   if (progress > 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(0, H - 4, W, 4);
-    ctx.fillStyle = ACCENT_COLORS[scene.type];
-    ctx.fillRect(0, H - 4, W * progress, 4);
+    const pgGrad = ctx.createLinearGradient(0, 0, W * progress, 0);
+    pgGrad.addColorStop(0, accent);
+    pgGrad.addColorStop(1, 'rgba(255,255,255,0.9)');
+    ctx.fillStyle = pgGrad;
+    ctx.fillRect(0, H - 5, W * Math.min(progress, 1), 5);
+    // Glowing dot at progress tip
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#ffffff';
+    const dotX = W * Math.min(progress, 1);
+    ctx.beginPath(); ctx.arc(dotX, H - 2.5, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 }
 

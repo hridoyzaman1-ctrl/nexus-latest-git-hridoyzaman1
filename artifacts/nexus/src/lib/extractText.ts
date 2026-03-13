@@ -2,11 +2,97 @@
 import { getBookFile } from '@/lib/bookStorage';
 import { getStudyFile } from '@/lib/studyStorage';
 
+// ── PDF text helpers ───────────────────────────────────────────────────────────
+
+function fixLigatures(text: string): string {
+  return text
+    .replace(/ﬁ/g, 'fi').replace(/ﬀ/g, 'ff').replace(/ﬂ/g, 'fl')
+    .replace(/ﬃ/g, 'ffi').replace(/ﬄ/g, 'ffl').replace(/ﬅ/g, 'st')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, '');
+}
+
+/** Returns true when >35% of non-space chars look like encoding garbage */
+function isLikelyGarbled(text: string): boolean {
+  if (!text || text.length < 40) return false;
+  const nonSpace = text.replace(/\s/g, '');
+  if (!nonSpace.length) return false;
+  // Allow: ASCII printable, Latin extended, Cyrillic, Arabic, Bangla, CJK, common punctuation
+  const weird = (nonSpace.match(
+    /[^\x20-\x7E\u00A0-\u024F\u0400-\u04FF\u0600-\u06FF\u0980-\u09FF\u4E00-\u9FFF\u2000-\u206F\u2018-\u201F]/g
+  ) || []).length;
+  return weird / nonSpace.length > 0.35;
+}
+
+/** Strip chars that look like encoding garbage, keep readable content */
+function cleanGarbled(text: string): string {
+  return text
+    .replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u024F\u0400-\u04FF\u0600-\u06FF\u0980-\u09FF\u4E00-\u9FFF\u2000-\u206F\u2018-\u201F]/g, ' ')
+    .replace(/\s{3,}/g, '\n\n')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+}
+
+interface RawItem { str: string; transform?: number[]; hasEOL?: boolean }
+
+/**
+ * Reconstruct readable lines from raw PDF.js text items.
+ * Sorts by y-position (PDF y increases upward) then x, grouping items
+ * within LINE_GAP units of each other onto the same line.
+ */
+function reconstructLines(items: RawItem[]): string {
+  const valid = items.filter(it => typeof it.str === 'string');
+  if (!valid.length) return '';
+
+  const LINE_GAP = 4;
+
+  const sorted = [...valid].sort((a, b) => {
+    const ay = a.transform?.[5] ?? 0;
+    const by = b.transform?.[5] ?? 0;
+    if (Math.abs(ay - by) > LINE_GAP) return by - ay;
+    return (a.transform?.[4] ?? 0) - (b.transform?.[4] ?? 0);
+  });
+
+  const lines: string[] = [];
+  let curY: number | null = null;
+  let curLine = '';
+
+  for (const it of sorted) {
+    const y = it.transform?.[5] ?? 0;
+    const s = it.str;
+
+    if (curY === null || Math.abs(y - curY) > LINE_GAP) {
+      if (curLine.trim()) lines.push(curLine.trim());
+      curLine = s;
+      curY = y;
+    } else {
+      if (curLine && s) {
+        const gap = !curLine.endsWith(' ') && !s.startsWith(' ');
+        curLine += gap ? ' ' + s : s;
+      } else {
+        curLine += s;
+      }
+    }
+
+    if (it.hasEOL) {
+      if (curLine.trim()) lines.push(curLine.trim());
+      curLine = '';
+      curY = null;
+    }
+  }
+  if (curLine.trim()) lines.push(curLine.trim());
+
+  return lines.filter(l => l.trim()).join('\n');
+}
+
+// ── Main extractors ────────────────────────────────────────────────────────────
+
 export async function extractPdfText(pdfData?: string, pdfUrl?: string, startPage = 1, endPage = 30): Promise<string> {
   const pdfjsLib = await import('pdfjs-dist');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
-  let pdf;
+  let pdf: Awaited<ReturnType<typeof pdfjsLib.getDocument>['promise']>;
   if (pdfUrl) {
     pdf = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
   } else if (pdfData) {
@@ -26,27 +112,44 @@ export async function extractPdfText(pdfData?: string, pdfUrl?: string, startPag
   for (let i = start; i <= end; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const pageText = content.items.map((item: any) => item.str).join(' ');
-    if (pageText.trim()) {
-      texts.push(`[Page ${i}]\n${pageText}`);
-    } else {
+    const items = content.items as RawItem[];
+
+    // Position-based line reconstruction
+    let pageText = reconstructLines(items);
+
+    // Fix ligatures
+    pageText = fixLigatures(pageText);
+
+    if (!pageText.trim()) {
       emptyPages++;
-      // Try to get annotations as fallback
+      // Fallback: annotation text
       try {
         const annots = await page.getAnnotations();
         const annotTexts = annots
           .filter((a: any) => a.contents || a.title)
           .map((a: any) => [a.title, a.contents].filter(Boolean).join(': '));
         if (annotTexts.length > 0) {
-          texts.push(`[Page ${i} - annotations]\n${annotTexts.join('\n')}`);
+          texts.push(`[Page ${i} - notes]\n${annotTexts.join('\n')}`);
         }
       } catch { /* no annotations */ }
+      continue;
+    }
+
+    // If text looks garbled, try to salvage readable content
+    if (isLikelyGarbled(pageText)) {
+      const cleaned = cleanGarbled(pageText);
+      if (cleaned.replace(/\s/g, '').length > 20) {
+        texts.push(`[Page ${i}]\n${cleaned}`);
+      } else {
+        emptyPages++;
+      }
+    } else {
+      texts.push(`[Page ${i}]\n${pageText}`);
     }
   }
 
-  // If most pages are empty, this is likely an image-based PDF
   if (emptyPages > 0 && texts.length === 0) {
-    return `[Info] This appears to be an image-based PDF (${pdf.numPages} pages). Pages ${start}-${end} contain no extractable text layer. This document may consist of scanned images or illustrations (e.g., comics, handwritten notes, or photo-based content).`;
+    return `[Info] This appears to be an image-based or scanned PDF (${pdf.numPages} pages). Pages ${start}-${end} contain no extractable text layer. Try copying and pasting the text manually instead.`;
   }
 
   return texts.join('\n\n');
@@ -60,100 +163,48 @@ export async function extractPptxText(slides: string[], startPage = 1, endPage =
   for (let i = start; i <= end; i++) {
     const slide = slides[i - 1];
     if (!slide) continue;
-
     try {
       let svgStr = '';
-
-      // Decode the SVG from different possible formats
       if (slide.startsWith('data:image/svg+xml;base64,')) {
-        try {
-          svgStr = decodeURIComponent(escape(atob(slide.replace('data:image/svg+xml;base64,', ''))));
-        } catch {
-          // Try direct atob
-          svgStr = atob(slide.replace('data:image/svg+xml;base64,', ''));
-        }
+        try { svgStr = decodeURIComponent(escape(atob(slide.replace('data:image/svg+xml;base64,', '')))); }
+        catch { svgStr = atob(slide.replace('data:image/svg+xml;base64,', '')); }
       } else if (slide.startsWith('data:image/svg+xml,')) {
         svgStr = decodeURIComponent(slide.replace('data:image/svg+xml,', ''));
       } else if (slide.startsWith('<svg') || slide.startsWith('<?xml')) {
         svgStr = slide;
       }
-
       let slideTexts: string[] = [];
-
-      // Method 1: DOMParser (most robust)
       if (svgStr) {
         try {
           const parser = new DOMParser();
           const doc = parser.parseFromString(svgStr, 'image/svg+xml');
-          // Walk all text nodes in the SVG
           const walker = document.createTreeWalker(doc.documentElement, NodeFilter.SHOW_TEXT);
           let node: Node | null;
           while ((node = walker.nextNode())) {
             const t = (node.textContent || '').trim();
-            if (t && t.length > 0) slideTexts.push(t);
+            if (t) slideTexts.push(t);
           }
-        } catch {
-          // DOMParser failed, fall through to regex
-        }
+        } catch { /* DOMParser failed */ }
       }
-
-      // Method 2: Regex fallback on SVG string
       if (slideTexts.length === 0 && svgStr) {
-        // Match text content between tags, including nested
         const textElRegex = /<text[^>]*>([\s\S]*?)<\/text>/gi;
         let match;
         while ((match = textElRegex.exec(svgStr)) !== null) {
-          // Strip inner tags to get plain text
           const plain = match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
           if (plain) slideTexts.push(plain);
         }
-        // Also try tspan elements
-        if (slideTexts.length === 0) {
-          const tspanRegex = /<tspan[^>]*>([^<]*)<\/tspan>/gi;
-          while ((match = tspanRegex.exec(svgStr)) !== null) {
-            const t = match[1].trim();
-            if (t) slideTexts.push(t);
-          }
-        }
-        // Last resort: any text between > and <
-        if (slideTexts.length === 0) {
-          const allText = svgStr.match(/>([^<]{2,})</g);
-          if (allText) {
-            slideTexts = allText.map(t => t.slice(1, -1).trim()).filter(t => t.length > 1 && !/^[0-9.]+$/.test(t));
-          }
-        }
       }
-
-      // Method 3: Raw base64 text scan (last resort for non-SVG slides)
-      if (slideTexts.length === 0 && slide.includes('base64,')) {
-        try {
-          const raw = atob(slide.split('base64,')[1] || '');
-          // Extract readable ASCII sequences
-          const readable = raw.match(/[\x20-\x7E]{4,}/g);
-          if (readable) {
-            slideTexts = readable.filter(s => /[a-zA-Z]{2,}/.test(s));
-          }
-        } catch { /* ignore */ }
-      }
-
-      if (slideTexts.length > 0) {
-        texts.push(`[Slide ${i}]\n${slideTexts.join(' ')}`);
-      }
-    } catch {
-      // Silently skip slides that can't be parsed
-    }
+      if (slideTexts.length > 0) texts.push(`[Slide ${i}]\n${slideTexts.join(' ')}`);
+    } catch { /* skip */ }
   }
 
-  // If no text was extracted from any slide, check if they're all image-based
   if (texts.length === 0) {
-    const imageSlideCount = slides.slice(start - 1, end).filter(s =>
-      s && (s.startsWith('data:image/png') || s.startsWith('data:image/jpeg') || s.startsWith('data:image/jpg'))
-    ).length;
-    if (imageSlideCount > 0) {
-      return `[Info] This presentation contains ${imageSlideCount} image-based slide(s) (slides ${start}-${end}). Image slides don't contain extractable text. The presentation may use images, screenshots, or scanned content instead of text elements.`;
+    const imageCount = slides.slice(start - 1, end)
+      .filter(s => s && (s.startsWith('data:image/png') || s.startsWith('data:image/jpeg'))).length;
+    if (imageCount > 0) {
+      return `[Info] This presentation contains ${imageCount} image-based slide(s). Image slides don't contain extractable text.`;
     }
   }
-
   return texts.join('\n\n');
 }
 
@@ -163,21 +214,18 @@ export function extractPlainText(fullText: string, startPage = 1, endPage = 30, 
   return fullText.slice(start, end);
 }
 
-// Helper to build getPageText for book reader
 export function makeBookPageTextFn(bookId: string, fileType?: string, pdfUrl?: string) {
   return async (startPage: number, endPage: number): Promise<string> => {
     if (fileType === 'pdf' || pdfUrl) {
       const file = pdfUrl ? null : await getBookFile(bookId);
       return extractPdfText(file?.pdfData, pdfUrl, startPage, endPage);
     }
-    // text/epub
     const file = await getBookFile(bookId);
     if (file?.content) return extractPlainText(file.content, startPage, endPage);
     return '';
   };
 }
 
-// Helper for study material
 export function makeStudyPageTextFn(materialId: string, fileType: string) {
   return async (startPage: number, endPage: number): Promise<string> => {
     const file = await getStudyFile(materialId);

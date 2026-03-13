@@ -63,6 +63,12 @@ export default function AudioStudio() {
   const [dragging, setDragging] = useState(false);
   const [language, setLanguage] = useState<'en' | 'bn'>('en');
 
+  // Two-step script preview
+  const [selectedMode, setSelectedMode] = useState<'summary' | 'explainer' | 'podcast'>('summary');
+  const [aiScript, setAiScript] = useState<string | null>(null);
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const [scriptError, setScriptError] = useState<string | null>(null);
+
   const refreshItems = useCallback(() => {
     setItems(getAllMediaItems().filter(m => m.sourceModule === 'audio-studio'));
   }, []);
@@ -150,9 +156,53 @@ STRICT RULES — violations will break the audio:
     setInputMode('upload');
   };
 
-  const openModal = () => {
+  const handleGenerateAIScript = async () => {
+    if (!source) return;
+    setGeneratingScript(true);
+    setAiScript(null);
+    setScriptError(null);
+    const modeInstructions: Record<string, string> = {
+      summary:  'Write a concise spoken summary (2-3 minutes when read aloud). Cover all main points clearly.',
+      explainer:'Write a structured spoken explainer (4-5 minutes when read aloud). Walk through key concepts step by step.',
+      podcast:  'Write an engaging conversational podcast episode (6-8 minutes when read aloud). Sound natural, enthusiastic, and easy to follow.',
+    };
+    const langNote = language === 'bn' ? '\nWrite ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.' : '';
+    try {
+      const raw = await chatWithStudioAI([
+        {
+          role: 'system',
+          content: `You are a professional audio script writer.
+STRICT RULES:
+- Write ONLY the exact words spoken aloud
+- Do NOT include titles, file names, "Script:", preambles, or markdown
+- Do NOT use asterisks, hyphens, bullets, or formatting characters
+- Do NOT include [stage directions] or (production notes)
+- Begin IMMEDIATELY with the first spoken sentence
+- ${modeInstructions[selectedMode]}${langNote}`,
+        },
+        { role: 'user', content: `CONTENT:\n${source.text.slice(0, 6000)}` },
+      ], { maxTokens: 2000, temperature: 0.7 });
+      setAiScript(sanitiseAIScript(raw));
+    } catch {
+      setScriptError('AI script generation failed. You can still generate audio directly below.');
+    } finally {
+      setGeneratingScript(false);
+    }
+  };
+
+  const [modalPreScript, setModalPreScript] = useState<string | undefined>(undefined);
+
+  const openModalWithScript = () => {
     if (!source) return;
     setModalSourceId(source.id);
+    setModalPreScript(aiScript ?? undefined);
+    setModalOpen(true);
+  };
+
+  const openModalDirect = () => {
+    if (!source) return;
+    setModalSourceId(source.id);
+    setModalPreScript(undefined);
     setModalOpen(true);
   };
 
@@ -323,6 +373,7 @@ STRICT RULES — violations will break the audio:
           {/* Source card (loaded content) */}
           {source && (
             <div className="rounded-2xl border border-border bg-card p-4 space-y-3" data-tour="audio-studio-source">
+              {/* Source info */}
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0">
                   {source.type === 'describe' ? <Sparkles className="w-5 h-5 text-blue-500" /> : <FileText className="w-5 h-5 text-blue-500" />}
@@ -334,22 +385,79 @@ STRICT RULES — violations will break the audio:
                     {source.type === 'describe' ? 'AI Generated' : source.type === 'paste' ? 'Pasted' : source.type.toUpperCase()}
                   </p>
                 </div>
-                <button onClick={() => setSource(null)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+                <button onClick={() => { setSource(null); setAiScript(null); }} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="text-xs text-muted-foreground bg-muted/50 rounded-xl p-3 max-h-20 overflow-hidden line-clamp-3">
-                {source.text.slice(0, 300)}…
+
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded-xl p-3 max-h-16 overflow-hidden line-clamp-3">
+                {source.text.slice(0, 280)}…
               </div>
+
+              {/* Mode selector */}
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  { id: 'summary',  label: 'Summary',  icon: FileText },
+                  { id: 'explainer',label: 'Explainer', icon: BookOpen },
+                  { id: 'podcast',  label: 'Podcast',  icon: Mic },
+                ] as const).map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => { setSelectedMode(m.id); setAiScript(null); setScriptError(null); }}
+                    className={`flex flex-col items-center gap-1 py-2 rounded-xl text-xs font-semibold transition-all border ${selectedMode === m.id ? 'bg-blue-500/10 border-blue-500/40 text-blue-400' : 'border-border/40 text-muted-foreground hover:border-blue-400/40'}`}
+                  >
+                    <m.icon className="w-3.5 h-3.5" />
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* AI script preview */}
+              {!aiScript && (
+                <>
+                  {scriptError && (
+                    <p className="text-[11px] text-destructive bg-destructive/10 rounded-lg px-3 py-2">{scriptError}</p>
+                  )}
+                  <button
+                    onClick={handleGenerateAIScript}
+                    disabled={generatingScript}
+                    className="w-full py-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 text-sm"
+                  >
+                    {generatingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    {generatingScript ? 'AI is writing your script…' : `✨ Preview AI Script (${selectedMode})`}
+                  </button>
+                </>
+              )}
+
+              {aiScript && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-blue-400 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> AI Script Preview</span>
+                    <button onClick={() => { setAiScript(null); setScriptError(null); }} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">↺ Regenerate</button>
+                  </div>
+                  <div className="bg-muted/50 rounded-xl p-3 max-h-32 overflow-y-auto text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                    {aiScript.slice(0, 600)}{aiScript.length > 600 ? '…' : ''}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground text-right">{aiScript.trim().split(/\s+/).length} words</p>
+                </div>
+              )}
+
+              {/* Main CTA */}
               <button
-                onClick={openModal}
+                onClick={openModalWithScript}
                 data-tour="audio-studio-generate"
                 className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
               >
                 <Headphones className="w-4 h-4" />
-                Generate Audio
+                {aiScript ? 'Generate Audio from this Script' : 'Generate Audio'}
                 <ChevronRight className="w-4 h-4" />
               </button>
+
+              {aiScript && (
+                <button onClick={openModalDirect} className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1">
+                  Or generate with fresh AI (skip preview)
+                </button>
+              )}
             </div>
           )}
 
@@ -398,14 +506,15 @@ STRICT RULES — violations will break the audio:
       {modalOpen && source && (
         <MediaGenerationModal
           open={modalOpen}
-          onClose={() => { setModalOpen(false); refreshItems(); }}
+          onClose={() => { setModalOpen(false); setAiScript(null); refreshItems(); }}
           sourceId={modalSourceId}
           sourceName={source.name}
           sourceModule="audio-studio"
           getSourceText={getSourceText}
           totalPages={0}
-          initialMode="summary"
+          initialMode={selectedMode}
           language={language}
+          preGeneratedScript={modalPreScript}
         />
       )}
     </>
