@@ -300,6 +300,16 @@ export function buildVideoScenes(rawText: string, title: string, lang = 'en'): V
 
   const scenes: VideoScene[] = [];
 
+  // How many chars fit comfortably on a 480×270 slide body area at readable font size.
+  // Empirically: ~260 chars renders cleanly at ≥11px across 7–8 lines.
+  const BODY_MAX_CHARS = 260;
+  // Max chars per individual bullet item (one line ~80px at bullet size)
+  const BULLET_MAX_CHARS = 90;
+
+  // Trim a bullet item to max chars at word boundary
+  const trimBullet = (b: string) =>
+    b.length <= BULLET_MAX_CHARS ? b : trimBodyText(b, BULLET_MAX_CHARS);
+
   // Title card
   scenes.push({
     type: 'title',
@@ -308,17 +318,17 @@ export function buildVideoScenes(rawText: string, title: string, lang = 'en'): V
     duration: 4,
   });
 
-  // Overview
+  // Overview — bullet list of headings (already short)
   if (headings.length > 0) {
     scenes.push({
       type: 'keypoint',
       heading: bn ? BN.topicsCovered : 'Topics Covered',
-      body: headings.slice(0, 5).map(h => `• ${h}`).join('\n'),
+      body: headings.slice(0, 5).map(h => `• ${trimBullet(h)}`).join('\n'),
       duration: 5,
     });
   }
 
-  // Key points from bullets
+  // Key points from bullets — max 3 per slide, each bullet trimmed
   const pointGroups: string[][] = [];
   for (let i = 0; i < Math.min(bullets.length, 9); i += 3) {
     pointGroups.push(bullets.slice(i, i + 3));
@@ -327,42 +337,43 @@ export function buildVideoScenes(rawText: string, title: string, lang = 'en'): V
     scenes.push({
       type: 'keypoint',
       heading: bn ? BN.keyPoints(idx) : `Key Points ${idx > 0 ? `(${idx + 1})` : ''}`.trim(),
-      body: group.map(b => `• ${b}`).join('\n'),
+      body: group.map(b => `• ${trimBullet(b)}`).join('\n'),
       duration: Math.max(5, group.length * 2),
     });
   });
 
-  // Content paragraphs as definition/example cards
+  // Content paragraphs — always trimmed at sentence boundary
   paragraphs.slice(0, 4).forEach((para, i) => {
-    const short = para.length > 450 ? para.slice(0, 450) : para;
+    const body = trimBodyText(para, BODY_MAX_CHARS);
     scenes.push({
       type: i % 2 === 0 ? 'definition' : 'example',
       heading: headings[i + 1] || (bn ? BN.section(i) : `Section ${i + 1}`),
-      body: short,
-      duration: Math.max(5, Math.ceil(countWords(short) / 40)),
+      body,
+      duration: Math.max(5, Math.ceil(countWords(body) / 40)),
     });
   });
 
-  // If no bullets/headings, use sentences
+  // If no bullets/headings, use sentence groups — trimmed at sentence boundary
   if (scenes.length < 4) {
     const senGroups: string[][] = [];
     for (let i = 0; i < Math.min(sentences.length, 12); i += 3) {
       senGroups.push(sentences.slice(i, i + 3));
     }
     senGroups.slice(0, 4).forEach((group, i) => {
+      const body = trimBodyText(group.join(' '), BODY_MAX_CHARS);
       scenes.push({
         type: 'keypoint',
         heading: bn ? BN.section(i) : `Section ${i + 1}`,
-        body: group.join(' '),
-        duration: Math.max(5, Math.ceil(countWords(group.join(' ')) / 40)),
+        body,
+        duration: Math.max(5, Math.ceil(countWords(body) / 40)),
       });
     });
   }
 
-  // Recap
+  // Recap — bullet list or trimmed sentences
   const recapText = bullets.length > 0
-    ? bullets.slice(0, 4).map(b => `• ${b}`).join('\n')
-    : sentences.slice(-3).join(' ');
+    ? bullets.slice(0, 4).map(b => `• ${trimBullet(b)}`).join('\n')
+    : trimBodyText(sentences.slice(-3).join(' '), BODY_MAX_CHARS);
   scenes.push({
     type: 'recap',
     heading: bn ? BN.recap : 'Recap',
@@ -707,14 +718,45 @@ export function renderSceneToCanvas(
 
   ctx.font = `400 ${bodyFontSize}px Inter, system-ui, sans-serif`;
   const visibleLines = bodyLines.slice(0, maxBodyLines);
-  // Last-resort '…' only when even minimum font can't fit everything
+
+  // ── Last-resort trim: never cut mid-word or mid-sentence ─────────────────
+  // This path is rare because buildVideoScenes pre-limits body text,
+  // but can still fire for very long headings that push bodyStartY down.
   if (bodyLines.length > maxBodyLines && visibleLines.length > 0) {
-    const last = visibleLines[visibleLines.length - 1];
-    let trimmed = last.replace(/[•\s]+$/, '');
-    while (trimmed.length > 0 && ctx.measureText(trimmed + '…').width > W - 28) {
-      trimmed = trimmed.slice(0, -1);
+    // Re-join what's visible and try to cut at a sentence boundary first.
+    const joined = visibleLines.join(' ');
+
+    // Find the last sentence-ending punctuation within the joined text
+    const lastSentEnd = Math.max(
+      joined.lastIndexOf('. '),
+      joined.lastIndexOf('! '),
+      joined.lastIndexOf('? '),
+    );
+
+    if (lastSentEnd > joined.length * 0.3) {
+      // Clean cut at sentence end — no ellipsis needed
+      const cleanCut = joined.slice(0, lastSentEnd + 1).trim();
+      // Re-wrap cleanCut into visibleLines
+      const rewrapped = cleanCut.split('\n').flatMap(line => {
+        const stripped = line.replace(/^[•\-\*]\s*/, '');
+        return wrapText(ctx, stripped ? '• ' + stripped : line, 14, bodyStartY, W - 28);
+      });
+      visibleLines.length = 0;
+      rewrapped.slice(0, maxBodyLines).forEach(l => visibleLines.push(l));
+    } else {
+      // Fall back: trim the last visible line to the nearest word boundary
+      const last = visibleLines[visibleLines.length - 1];
+      let trimmed = last.replace(/[•\s]+$/, '');
+      const lastSpace = trimmed.lastIndexOf(' ');
+      if (lastSpace > trimmed.length * 0.35) {
+        trimmed = trimmed.slice(0, lastSpace);
+      }
+      // Only add ellipsis if we genuinely cut content (not just trailing space)
+      visibleLines[visibleLines.length - 1] =
+        trimmed.endsWith('.') || trimmed.endsWith('!') || trimmed.endsWith('?')
+          ? trimmed
+          : trimmed + '…';
     }
-    visibleLines[visibleLines.length - 1] = trimmed + '…';
   }
 
   visibleLines.forEach((line, i) => {
@@ -747,6 +789,35 @@ export function renderSceneToCanvas(
     ctx.beginPath(); ctx.arc(dotX, H - 2.5, 3.5, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
+}
+
+/**
+ * Trims body text so it always ends at a complete sentence or word —
+ * never mid-word. Used to pre-limit slide body before rendering.
+ * @param text  Full body text
+ * @param maxChars  Soft character limit
+ */
+function trimBodyText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const slice = text.slice(0, maxChars);
+  // Prefer a sentence boundary
+  const lastSentenceEnd = Math.max(
+    slice.lastIndexOf('. '),
+    slice.lastIndexOf('! '),
+    slice.lastIndexOf('? '),
+    slice.lastIndexOf('.\n'),
+    slice.lastIndexOf('!\n'),
+    slice.lastIndexOf('?\n'),
+  );
+  if (lastSentenceEnd > maxChars * 0.35) {
+    return text.slice(0, lastSentenceEnd + 1).trim();
+  }
+  // Fall back to last word boundary
+  const lastSpace = slice.lastIndexOf(' ');
+  if (lastSpace > maxChars * 0.3) {
+    return text.slice(0, lastSpace).trim();
+  }
+  return slice.trim();
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, _x: number, _y: number, maxWidth: number): string[] {
