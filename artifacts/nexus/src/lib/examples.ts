@@ -30,7 +30,10 @@ export const exampleNotes: Note[] = [
   { id: id(), title: "Ideas for Weekend", content: "1. Visit the art museum\n2. Try the new ramen place\n3. Morning hike at the park", category: "Personal", isExample: true, createdAt: now },
 ];
 
-export const exampleBooks: Book[] = [];
+export const exampleBooks: Book[] = [
+  { id: 'builtin-american-roommate', title: "The American Roommate Experiment", author: "Elena Armas", status: "unread", currentPage: 1, totalPages: 350, fileType: "pdf", pdfUrl: "/books/the-american-roommate-experiment.pdf", isDefault: true, createdAt: new Date(0).toISOString() },
+  { id: 'builtin-youre-not-enough', title: "You're Not Enough (And That's Okay)", author: "Allie Beth Stuckey", status: "unread", currentPage: 1, totalPages: 220, fileType: "pdf", pdfUrl: "/books/youre-not-enough.pdf", isDefault: true, createdAt: new Date(0).toISOString() },
+];
 
 export const exampleExpenses: Expense[] = [
   { id: id(), title: "Coffee", amount: 4.50, category: "food", date: now, isExample: true, createdAt: now },

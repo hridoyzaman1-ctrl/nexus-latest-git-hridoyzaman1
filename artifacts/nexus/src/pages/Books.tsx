@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { exampleBooks } from '@/lib/examples';
 import { logError } from '@/lib/logger';
 import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
 import { Book, BookBookmark } from '@/types';
@@ -843,10 +844,16 @@ export default function Books() {
   if (!hasInit) setInit(true);
 
   useEffect(() => {
-    if (localStorage.getItem('mindflow_books_cleaned_v1')) return;
-    setBooks(prev => prev.filter(b => !b.isDefault));
+    if (localStorage.getItem('mindflow_books_v2_seeded')) return;
+    const validUrls = exampleBooks.map(b => b.pdfUrl).filter(Boolean);
+    setBooks(prev => {
+      const cleaned = prev.filter(b => !b.isDefault || validUrls.includes(b.pdfUrl));
+      const toAdd = exampleBooks.filter(eb => !cleaned.some(b => b.pdfUrl === eb.pdfUrl));
+      return [...cleaned, ...toAdd];
+    });
     localStorage.removeItem('mindflow_deletedDefaultBooks');
     localStorage.setItem('mindflow_books_cleaned_v1', '1');
+    localStorage.setItem('mindflow_books_v2_seeded', '1');
   }, []);
 
   const readingBook = books.find(b => b.id === readingBookId) || null;
