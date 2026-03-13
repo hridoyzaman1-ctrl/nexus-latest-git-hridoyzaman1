@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocalStorage, getLocalStorage } from '@/hooks/useLocalStorage';
 import { MeditationSession, AnxietyLog, Routine, RoutineStep, BreathingFeedback, SleepEntry, WaterEntry } from '@/types';
 import { exampleAnxietyLogs, exampleRoutines } from '@/lib/examples';
 import { getDailyQuote } from '@/lib/quotes';
 import { ArrowLeft, Play, Pause, Brain, Heart, Wind, Compass, CheckCircle2, Circle, Hand, Eye, Ear, Fingerprint, Flower2, Coffee, Music, Upload, Trash2, Sparkles, Plus, X, BookHeart, Lock, AlertTriangle, PartyPopper, Loader2, MessageCircle, ChevronRight, Moon, Droplets, Sunrise, Smile, Frown } from 'lucide-react';
+import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,30 @@ const copingStrategies = [
 export default function Wellness() {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [mediaGenOpen, setMediaGenOpen] = useState(false);
+
+  const getSourceText = useCallback(async (_fromPage: number, _toPage: number) => {
+    const sessions = getLocalStorage<MeditationSession[]>('meditationSessions', []);
+    const anxietyLogs = getLocalStorage<AnxietyLog[]>('anxietyLogs', []);
+    const routines = getLocalStorage<Routine[]>('routines', []);
+    const lines: string[] = ['My Wellness Journey\n'];
+    if (sessions.length) {
+      const totalMin = sessions.reduce((s, x) => s + (x.duration ?? 0), 0);
+      lines.push(`Meditation: ${sessions.length} sessions completed, ${totalMin} total minutes practiced.`);
+    }
+    if (routines.length) {
+      lines.push(`\nDaily Routines (${routines.length}):`);
+      routines.slice(0, 5).forEach(r => {
+        const done = r.steps.filter(s => s.done).length;
+        lines.push(`• ${r.name} — ${done}/${r.steps.length} steps completed today`);
+      });
+    }
+    if (anxietyLogs.length) {
+      lines.push(`\nAnxiety Tracking: ${anxietyLogs.length} entries. Recent levels: ${anxietyLogs.slice(0, 3).map(a => a.level).join(', ')}.`);
+    }
+    if (lines.length === 1) lines.push('No wellness data recorded yet. Start meditating, log your routines, or track your anxiety to build your wellness profile.');
+    return lines.join('\n');
+  }, []);
 
   if (activeSection === 'meditation') return <MeditationView onBack={() => setActiveSection(null)} />;
   if (activeSection === 'ocd') return <OCDView onBack={() => setActiveSection(null)} />;
@@ -59,10 +84,13 @@ export default function Wellness() {
       <PageOnboardingTooltips pageId="wellness" />
       <div data-tour="wellness-header" className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-muted-foreground"><ArrowLeft className="w-5 h-5" /></button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold font-display">Wellness Hub</h1>
           <p className="text-sm text-muted-foreground">Tools for mental health and mindfulness</p>
         </div>
+        <button onClick={() => setMediaGenOpen(true)} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Generate audio/video">
+          <Sparkles className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Daily Inspiration — same quote as Dashboard */}
@@ -95,6 +123,14 @@ export default function Wellness() {
           </motion.button>
         ))}
       </div>
+      <MediaGenerationModal
+        open={mediaGenOpen}
+        onClose={() => setMediaGenOpen(false)}
+        sourceModule="other"
+        sourceId="wellness"
+        sourceName="Wellness Hub"
+        getSourceText={getSourceText}
+      />
     </motion.div>
   );
 }

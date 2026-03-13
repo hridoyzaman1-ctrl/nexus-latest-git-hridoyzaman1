@@ -212,6 +212,7 @@ export default function MediaGenerationModal({
 
       let generatedScript = '';
       let generatedScenes: VideoScene[] | undefined;
+      let generatedSceneScripts: string[] | undefined;
 
       // ── Fast path: pre-generated script from studio ──────────────────────
       if (preGeneratedScript) {
@@ -228,8 +229,9 @@ export default function MediaGenerationModal({
           setProgressLabel('Building video scenes…');
           const rawText = await getSourceText(1, 1);
           const truncated = truncateToWordLimit(rawText || generatedScript, limits.maxWords);
-          const { scenes: localScenes } = buildScriptForMode(truncated, sourceName, mode, language);
+          const { scenes: localScenes, sceneScripts: localSS } = buildScriptForMode(truncated, sourceName, mode, language);
           generatedScenes = localScenes;
+          generatedSceneScripts = localSS;
           setProgress(72);
         } else {
           setProgress(80);
@@ -292,10 +294,12 @@ export default function MediaGenerationModal({
             const result = buildScriptForMode(truncated, sourceName, mode, language);
             generatedScript = result.script;
             generatedScenes = result.scenes;
+            generatedSceneScripts = result.sceneScripts;
           }
           if (mode === 'video') {
-            const { scenes: localScenes } = buildScriptForMode(truncated, sourceName, mode, language);
+            const { scenes: localScenes, sceneScripts: localSS } = buildScriptForMode(truncated, sourceName, mode, language);
             generatedScenes = localScenes;
+            generatedSceneScripts = localSS;
           }
         } else {
           setProgressLabel(`Building ${mode} script (${words.toLocaleString()} words)…`);
@@ -305,6 +309,7 @@ export default function MediaGenerationModal({
           const result = buildScriptForMode(truncated, sourceName, mode, language);
           generatedScript = result.script;
           generatedScenes = result.scenes;
+          generatedSceneScripts = result.sceneScripts;
         }
       }
 
@@ -365,6 +370,7 @@ export default function MediaGenerationModal({
               },
               cancelSignal.current,
               selectedBgm,
+              generatedSceneScripts,
             );
             if (!cancelSignal.current.cancelled) {
               await saveVideoBlob(id, result.blob);

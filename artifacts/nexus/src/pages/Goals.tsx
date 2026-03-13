@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { Goal, Milestone, AlarmSoundType } from '@/types';
 import { exampleGoals } from '@/lib/examples';
-import { ArrowLeft, Plus, Trash2, X, ChevronDown, ChevronUp, CheckCircle2, Circle, Target, TrendingUp, CalendarDays, Bell, Clock } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, X, ChevronDown, ChevronUp, CheckCircle2, Circle, Target, TrendingUp, CalendarDays, Bell, Clock, Sparkles } from 'lucide-react';
+import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,7 @@ export default function Goals() {
   const [goals, setGoals] = useLocalStorage<Goal[]>('goals', hasInit ? [] : exampleGoals);
   const [, setInit] = useLocalStorage('goals_init', true);
   const [showAdd, setShowAdd] = useState(false);
+  const [mediaGenOpen, setMediaGenOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<Goal['category']>('personal');
@@ -195,12 +197,28 @@ export default function Goals() {
   const completedGoals = goals.filter(g => g.completed).length;
   const avgProgress = goals.length > 0 ? Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length) : 0;
 
+  const getSourceText = useCallback(async (_fromPage: number, _toPage: number) => {
+    if (!goals.length) return 'No goals tracked yet.';
+    const lines: string[] = [`My Goals (${activeGoals} active, ${completedGoals} completed, average progress ${avgProgress}%)\n`];
+    goals.forEach(g => {
+      lines.push(`Goal: ${g.title}${g.description ? ` — ${g.description}` : ''}`);
+      lines.push(`Category: ${g.category}. Progress: ${g.progress}%. ${g.completed ? 'Completed.' : 'In progress.'}`);
+      if (g.milestones?.length) {
+        const done = g.milestones.filter(m => m.completed).length;
+        lines.push(`Milestones: ${done}/${g.milestones.length} done (${g.milestones.map(m => `${m.completed ? '✓' : '○'} ${m.title}`).join(', ')})`);
+      }
+      lines.push('');
+    });
+    return lines.join('\n');
+  }, [goals, activeGoals, completedGoals, avgProgress]);
+
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="px-4 pt-12 pb-24 space-y-4">
       <PageOnboardingTooltips pageId="goals" />
       <div data-tour="goals-header" className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-muted-foreground"><ArrowLeft className="w-5 h-5" /></button>
         <h1 className="text-2xl font-bold font-display flex-1">Goals</h1>
+        <Button size="sm" onClick={() => setMediaGenOpen(true)} variant="ghost" title="Generate audio/video"><Sparkles className="w-4 h-4 text-primary" /></Button>
         <Button data-tour="add-btn" size="sm" onClick={() => setShowAdd(!showAdd)} variant="ghost"><Plus className="w-5 h-5" /></Button>
       </div>
 
@@ -452,6 +470,14 @@ export default function Goals() {
         })
         }
       </div >
+      <MediaGenerationModal
+        open={mediaGenOpen}
+        onClose={() => setMediaGenOpen(false)}
+        sourceModule="other"
+        sourceId="goals"
+        sourceName="Goals"
+        getSourceText={getSourceText}
+      />
     </motion.div >
   );
 }

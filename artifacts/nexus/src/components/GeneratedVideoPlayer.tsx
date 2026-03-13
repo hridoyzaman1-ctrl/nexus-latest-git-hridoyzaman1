@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Maximize2, Minimize2, RotateCcw, RotateCw, Download,
+  Maximize2, Minimize2, RotateCcw, RotateCw, Download, Headphones, HeadphoneOff,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { getVideoBlob, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import RotateIcon from '@/components/study/RotateIcon';
+import { TTSController } from '@/lib/contentMediaEngine';
 
 interface Props {
   item: GeneratedMediaItem;
@@ -39,6 +40,11 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [landscapeMode, setLandscapeMode] = useState(false);
 
+  // TTS narration alongside video playback
+  const ttsRef = useRef<TTSController | null>(null);
+  const ttsStartedRef = useRef(false);
+  const [narrationOn, setNarrationOn] = useState(true);
+
   // Load blob from IndexedDB
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +73,39 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
   useEffect(() => {
     return () => { if (videoUrl) URL.revokeObjectURL(videoUrl); };
   }, [videoUrl]);
+
+  // TTS: start/pause/resume in sync with video play state
+  useEffect(() => {
+    if (!item.script) return;
+    if (isPlaying && narrationOn) {
+      if (!ttsRef.current) {
+        ttsRef.current = new TTSController({});
+        ttsStartedRef.current = false;
+      }
+      if (!ttsStartedRef.current) {
+        ttsRef.current.start(item.script);
+        ttsStartedRef.current = true;
+      } else {
+        ttsRef.current.resume();
+      }
+    } else if (!isPlaying) {
+      ttsRef.current?.pause();
+    }
+  }, [isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // TTS: stop when narration is toggled off
+  useEffect(() => {
+    if (!narrationOn) {
+      ttsRef.current?.stop();
+      ttsRef.current = null;
+      ttsStartedRef.current = false;
+    }
+  }, [narrationOn]);
+
+  // TTS: stop on unmount
+  useEffect(() => {
+    return () => { ttsRef.current?.stop(); };
+  }, []);
 
   // Fullscreen change sync
   useEffect(() => {
@@ -119,6 +158,18 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
     setCurrentTime(t);
     setProgress(vals[0]);
     showControlsFor();
+    // Restart TTS from beginning on seek
+    if (narrationOn && item.script) {
+      ttsRef.current?.stop();
+      ttsRef.current = null;
+      ttsStartedRef.current = false;
+      if (isPlaying) {
+        const ctrl = new TTSController({});
+        ttsRef.current = ctrl;
+        ttsStartedRef.current = true;
+        ctrl.start(item.script);
+      }
+    }
   };
 
   const skip = (secs: number) => {
@@ -333,6 +384,15 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
                   <button onClick={toggleMute} className="p-2 text-white hover:text-primary transition-colors">
                     {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
                   </button>
+                  {item.script && (
+                    <button
+                      onClick={() => setNarrationOn(v => !v)}
+                      className={cn('p-2 rounded transition-colors text-xs flex items-center gap-1', narrationOn ? 'text-primary' : 'text-white/50 hover:text-white/80')}
+                      title={narrationOn ? 'AI narration on — tap to mute' : 'AI narration off — tap to enable'}
+                    >
+                      {narrationOn ? <Headphones className="w-4 h-4" /> : <HeadphoneOff className="w-4 h-4" />}
+                    </button>
+                  )}
                 </div>
                 <button onClick={toggleFullscreen} className="p-2 text-white hover:text-primary transition-colors">
                   {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}

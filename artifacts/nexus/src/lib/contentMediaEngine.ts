@@ -213,18 +213,16 @@ export function buildSummaryScript(rawText: string, title: string, lang = 'en'):
 
   const topSentences = sentences.slice(0, 8).join(' ');
   const keyPoints = bullets.length > 0
-    ? bullets.slice(0, 6).map((b, i) => `${bn ? BN.keyPoint(i) : `Key point ${i + 1}:`} ${b}`).join('. ')
+    ? bullets.slice(0, 6).join('. ')
     : sentences.slice(8, 14).join(' ');
   const topicLine = headings.length > 0
-    ? (bn ? BN.coversTopics(headings.slice(0, 4).join(', ')) : `This content covers: ${headings.slice(0, 4).join(', ')}.`)
+    ? (bn ? BN.coversTopics(headings.slice(0, 4).join(', ')) : `This covers ${headings.slice(0, 4).join(', ')}.`)
     : '';
 
   return [
     topicLine,
-    bn ? BN.hereAreMain : 'Here are the main points.',
     topSentences,
-    keyPoints ? `${bn ? BN.importantHighlights : 'Important highlights:'} ${keyPoints}` : '',
-    bn ? 'এটি সারসংক্ষেপের সমাপ্তি।' : 'That concludes the summary.',
+    keyPoints,
   ].filter(Boolean).join(' ');
 }
 
@@ -233,27 +231,20 @@ export function buildExplainerScript(rawText: string, title: string, lang = 'en'
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
-  const headings = extractHeadings(text);
   const paragraphs = extractTopParagraphs(text, 6);
-
-  const topicIntro = headings.length > 0
-    ? (bn ? BN.explainerGoThrough(headings.slice(0, 5).join(', ')) : `In this explainer, we'll go through ${headings.slice(0, 5).join(', ')}.`)
-    : (bn ? BN.explainerBreakDown(title) : `In this explainer, we'll break down the key concepts from "${title}".`);
 
   const mainExplain = paragraphs.length > 0
     ? paragraphs.join(' ')
     : sentences.slice(0, 20).join(' ');
 
   const keyHighlights = bullets.length > 0
-    ? `${bn ? BN.keyHighlights : "Let's look at the key highlights."} ${bullets.slice(0, 8).map((b, i) => `${bn ? BN.point(i) : `Point ${i + 1}:`} ${b}.`).join(' ')}`
+    ? bullets.slice(0, 8).join('. ')
     : '';
 
   return [
-    topicIntro,
     mainExplain,
     keyHighlights,
-    `${bn ? BN.letsReview : "Let's review."} ${sentences.slice(-4).join(' ')}`,
-    bn ? 'এটি সম্পূর্ণ ব্যাখ্যার সমাপ্তি। শুনার জন্য ধন্যবাদ।' : `That's the full explainer. Thanks for listening.`,
+    sentences.slice(-4).join(' '),
   ].filter(Boolean).join(' ');
 }
 
@@ -262,16 +253,7 @@ export function buildPodcastScript(rawText: string, title: string, lang = 'en'):
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
-  const headings = extractHeadings(text);
   const paragraphs = extractTopParagraphs(text, 8);
-
-  const intro = bn
-    ? 'নমস্কার! আবারও স্বাগতম। আজকের পর্বে আমরা একটি চমৎকার বিষয় নিয়ে আলোচনা করব। চলুন শুরু করি।'
-    : `Hey there! Welcome back. Today we're exploring something fascinating. This is going to be a great episode, so let's get started.`;
-
-  const overview = headings.length > 0
-    ? (bn ? BN.coveringToday(headings.slice(0, 5).join(', ')) : `Here's what we're covering today: ${headings.slice(0, 5).join(', ')}. Exciting stuff!`)
-    : (bn ? BN.richInsights : `Today's topic is rich with insights. Let me walk you through what I found most interesting.`);
 
   const connectors = bn
     ? BN.connectors
@@ -282,15 +264,10 @@ export function buildPodcastScript(rawText: string, title: string, lang = 'en'):
     : sentences.slice(0, 25).join(' ');
 
   const keyTakeaways = bullets.length > 0
-    ? `${bn ? BN.keyTakeaways : 'Now let me give you the key takeaways.'} ${bullets.slice(0, 6).map((b, i) => `${bn ? BN.number(i) : `Number ${i + 1}:`} ${b}.`).join(' ')}`
-    : `${bn ? BN.sumUp : 'Let me sum up the most important things.'} ${sentences.slice(-8).join(' ')}`;
+    ? bullets.slice(0, 6).join('. ')
+    : sentences.slice(-8).join(' ');
 
-  const recap = bn
-    ? `ঠিক আছে, শেষ করা যাক। ${headings.slice(0, 3).length > 0 ? `মূল বিষয়গুলি ছিল: ${headings.slice(0, 3).join(', ')}।` : ''} আশা করি আপনি এটি মূল্যবান মনে করেছেন!`
-    : `Alright, let's wrap up. ${headings.slice(0, 3).length > 0 ? `The main topics were: ${headings.slice(0, 3).join(', ')}.` : ''} I hope you found this valuable!`;
-  const outro = bn ? BN.outro : `Thanks for listening! See you next time.`;
-
-  return [intro, overview, mainContent, keyTakeaways, recap, outro].filter(Boolean).join(' ');
+  return [mainContent, keyTakeaways].filter(Boolean).join(' ');
 }
 
 export function buildVideoScenes(rawText: string, title: string, lang = 'en'): VideoScene[] {
@@ -337,7 +314,7 @@ export function buildVideoScenes(rawText: string, title: string, lang = 'en'): V
 
   // Content paragraphs as definition/example cards
   paragraphs.slice(0, 4).forEach((para, i) => {
-    const short = para.length > 200 ? para.slice(0, 200) + '…' : para;
+    const short = para.length > 450 ? para.slice(0, 450) : para;
     scenes.push({
       type: i % 2 === 0 ? 'definition' : 'example',
       heading: headings[i + 1] || (bn ? BN.section(i) : `Section ${i + 1}`),
@@ -382,7 +359,7 @@ export function buildScriptForMode(
   title: string,
   mode: MediaMode,
   lang = 'en'
-): { script: string; scenes?: VideoScene[] } {
+): { script: string; scenes?: VideoScene[]; sceneScripts?: string[] } {
   switch (mode) {
     case 'summary':
       return { script: buildSummaryScript(rawText, title, lang) };
@@ -392,16 +369,16 @@ export function buildScriptForMode(
       return { script: buildPodcastScript(rawText, title, lang) };
     case 'video': {
       const scenes = buildVideoScenes(rawText, title, lang);
-      const script = scenes.map((s, i) => {
+      const sceneScripts = scenes.map((s, i) => {
         const spokenBody = s.body
           .replace(/^[•\-\*]\s*/gm, '')
           .replace(/\n+/g, ' ')
           .trim();
-        // Title card (index 0) — skip heading (filename) in narration, speak only body
         if (i === 0) return spokenBody;
         return `${s.heading}. ${spokenBody}`;
-      }).join('. ');
-      return { script, scenes };
+      });
+      const script = sceneScripts.join('. ');
+      return { script, scenes, sceneScripts };
     }
   }
 }
@@ -684,24 +661,36 @@ export function renderSceneToCanvas(
   ctx.fillStyle = accent.replace('hsl', 'hsla').replace(')', ', 0.30)');
   ctx.fillRect(14, bodyStartY - 6, W * 0.35, 1.5);
 
-  // ── Body text ─────────────────────────────────────────────────────────────
+  // ── Body text (adaptive font — shrinks to fit, never cuts mid-sentence) ──────
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  const bodyFontSize = scene.body.length > 200 ? Math.round(H * 0.047) : Math.round(H * 0.054);
-  ctx.font = `400 ${bodyFontSize}px Inter, system-ui, sans-serif`;
-  const maxBodyLines = Math.floor((H - bodyStartY - 20) / (bodyFontSize + 6));
-  const bodyLines = scene.body
-    .split('\n')
-    .flatMap(line => {
-      const stripped = line.replace(/^[•\-\*]\s*/, '');
-      return wrapText(ctx, stripped ? '• ' + stripped : line, 14, bodyStartY, W - 28);
-    });
 
-  // When truncated, append '…' to the last visible line so it never cuts mid-word
+  const buildBodyLines = (fontSize: number): string[] => {
+    ctx.font = `400 ${fontSize}px Inter, system-ui, sans-serif`;
+    return scene.body
+      .split('\n')
+      .flatMap(line => {
+        const stripped = line.replace(/^[•\-\*]\s*/, '');
+        return wrapText(ctx, stripped ? '• ' + stripped : line, 14, bodyStartY, W - 28);
+      });
+  };
+
+  let bodyFontSize = scene.body.length > 150 ? Math.round(H * 0.047) : Math.round(H * 0.054);
+  let bodyLines = buildBodyLines(bodyFontSize);
+  let maxBodyLines = Math.floor((H - bodyStartY - 20) / (bodyFontSize + 6));
+
+  // Shrink font until all lines fit (minimum 8 px for legibility)
+  while (bodyLines.length > maxBodyLines && bodyFontSize > 8) {
+    bodyFontSize -= 1;
+    bodyLines = buildBodyLines(bodyFontSize);
+    maxBodyLines = Math.floor((H - bodyStartY - 20) / (bodyFontSize + 6));
+  }
+
+  ctx.font = `400 ${bodyFontSize}px Inter, system-ui, sans-serif`;
   const visibleLines = bodyLines.slice(0, maxBodyLines);
+  // Last-resort '…' only when even minimum font can't fit everything
   if (bodyLines.length > maxBodyLines && visibleLines.length > 0) {
     const last = visibleLines[visibleLines.length - 1];
-    // Trim the last line char-by-char until 'last…' fits inside maxWidth
-    let trimmed = last.replace(/[•\s]+$/, ''); // strip trailing bullet/space
+    let trimmed = last.replace(/[•\s]+$/, '');
     while (trimmed.length > 0 && ctx.measureText(trimmed + '…').width > W - 28) {
       trimmed = trimmed.slice(0, -1);
     }
@@ -812,13 +801,37 @@ export interface VideoRecordResult {
   durationSecs: number;
 }
 
-/** Record canvas scenes as a WebM/MP4 video with smooth transitions. Returns blob or throws. */
+/**
+ * Speak text via the browser's SpeechSynthesis API and return a Promise that
+ * resolves when the utterance ends. Resolves immediately if TTS is unavailable.
+ */
+function speakAndWait(text: string): Promise<void> {
+  return new Promise(resolve => {
+    if (!text.trim() || typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.onend = () => resolve();
+    utt.onerror = () => resolve();
+    window.speechSynthesis.speak(utt);
+  });
+}
+
+/**
+ * Record canvas scenes as a WebM/MP4 video with smooth transitions.
+ * When `sceneScripts` are provided the corresponding text is spoken aloud via
+ * the browser's Text-to-Speech engine for each scene; the video canvas waits
+ * until speech finishes before advancing, so visual timing matches narration.
+ * Returns blob or throws.
+ */
 export async function recordVideoScenes(
   canvas: HTMLCanvasElement,
   scenes: VideoScene[],
   onProgress: (sceneIdx: number, total: number) => void,
   cancelSignal: { cancelled: boolean },
   bgmTrackId?: string,
+  sceneScripts?: string[],
 ): Promise<VideoRecordResult> {
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
@@ -911,6 +924,13 @@ export async function recordVideoScenes(
       onProgress(i, scenes.length);
       const sceneDurMs = scene.duration * 1000;
 
+      // ── Per-scene TTS narration — speaks alongside visual rendering ───────
+      // TTS audio plays to the system speakers while the canvas (BGM) is
+      // recorded; the promise resolves when speech finishes so the scene
+      // stays on screen long enough for the listener to absorb the narration.
+      const sceneText = sceneScripts?.[i] ?? '';
+      const ttsDonePromise = sceneText ? speakAndWait(sceneText) : Promise.resolve();
+
       // ── Fade in from black (skip for first scene) ────────────────────────
       if (i > 0) {
         const t0 = Date.now();
@@ -947,6 +967,9 @@ export async function recordVideoScenes(
       } else {
         renderSceneToCanvas(canvas, scene, 1);
       }
+
+      // Wait for this scene's narration to finish before advancing
+      if (sceneText && !cancelSignal.cancelled) await ttsDonePromise;
     }
 
     return new Promise((resolve, reject) => {
@@ -963,6 +986,8 @@ export async function recordVideoScenes(
     // Always release BGM resources regardless of success, error, or cancellation
     try { bgmSrc?.stop(); } catch {}
     try { await bgmAudioCtx?.close(); } catch {}
+    // Stop any pending TTS utterances
+    try { window.speechSynthesis?.cancel(); } catch {}
   }
 }
 
