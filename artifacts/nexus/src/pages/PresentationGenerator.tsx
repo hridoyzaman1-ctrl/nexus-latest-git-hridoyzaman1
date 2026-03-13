@@ -1838,7 +1838,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
         </div>
 
         <div ref={previewRef} className="rounded-xl p-4 mb-4 min-h-[180px] relative overflow-hidden select-none touch-pan-y"
-          style={{ backgroundColor: `#${theme.bgColor}`, color: `#${theme.titleColor}` }}
+          style={{ background: theme.gradientCover ? `linear-gradient(135deg, #${theme.bgColor} 0%, #${theme.bgColorAlt} 100%)` : `#${theme.bgColor}`, color: `#${theme.titleColor}` }}
           data-testid="slide-preview"
           onTouchStart={(e) => {
             const touch = e.touches[0];
@@ -1862,6 +1862,16 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
               setEditingImageId(null);
             }
           }}>
+          {/* Accent stripe decoration */}
+          {theme.shapeAccent && (
+            <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none rounded-tl-xl rounded-tr-xl" style={{ height: '3px', backgroundColor: `#${theme.accentColor}` }} />
+          )}
+          {theme.gradientCover && (
+            <div className="absolute top-0 right-0 z-0 pointer-events-none" style={{
+              width: '80px', height: '80px',
+              background: `radial-gradient(circle at top right, #${theme.accentColor}28 0%, transparent 70%)`,
+            }} />
+          )}
           {(() => {
             const ts = currentSlide.textStyle || {};
             const titleStyle: Record<string, string | number | undefined> = {
@@ -1886,9 +1896,11 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             const accentColor = ts.accentColor || `#${theme.accentColor}`;
             const textWidthPct = getTextAreaWidth(currentSlide.layout, slideImages);
             const textWidthStyle = textWidthPct < 100 ? { maxWidth: `${textWidthPct}%` } : {};
+            const hasVis = !!(currentSlide.chartConfig || currentSlide.tableConfig || currentSlide.timelineConfig || currentSlide.kpiConfig);
             return (
               <>
-                <div className="relative z-[1]" style={textWidthStyle}>
+                {/* Text zone — capped height when visual data is present */}
+                <div className="relative z-[1] overflow-hidden" style={{ ...textWidthStyle, maxHeight: hasVis ? '52%' : undefined }}>
                   <p className="text-sm" style={titleStyle}>{renderTextWithBreaks(currentSlide.title)}</p>
                   {currentSlide.subtitle && <p className="text-[11px] mt-1 opacity-70" style={bodyStyle}>{renderTextWithBreaks(currentSlide.subtitle)}</p>}
                   {currentSlide.bullets && currentSlide.bullets.length > 0 && (
@@ -1901,7 +1913,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                     </ul>
                   )}
                   {currentSlide.statement && <p className="text-xs mt-2 opacity-80" style={{ ...titleStyle, fontSize: '12px' }}>{renderTextWithBreaks(currentSlide.statement)}</p>}
-
                   {currentSlide.leftColumn && (
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <div>
@@ -1918,7 +1929,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                       </div>
                     </div>
                   )}
-
                   {currentSlide.agendaItems && (
                     <div className="mt-2 space-y-0.5">
                       {currentSlide.agendaItems.map((item, i) => (
@@ -1929,7 +1939,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                       ))}
                     </div>
                   )}
-
                   {currentSlide.summaryPoints && (
                     <div className="mt-2 space-y-0.5">
                       {currentSlide.summaryPoints.map((point, i) => (
@@ -1941,8 +1950,13 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                       ))}
                     </div>
                   )}
-                  {renderSlidePreviewContent(currentSlide, theme)}
                 </div>
+                {/* Visual data zone — always below text, never overlapping */}
+                {hasVis && (
+                  <div className="relative z-[1] mt-2 overflow-hidden" style={textWidthStyle}>
+                    {renderSlidePreviewContent(currentSlide, theme)}
+                  </div>
+                )}
               </>
             );
           })()}

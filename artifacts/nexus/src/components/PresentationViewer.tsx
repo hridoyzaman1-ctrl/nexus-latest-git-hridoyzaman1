@@ -169,12 +169,16 @@ export default function PresentationViewer({ presentation: initialPresentation, 
     const accentColor = ts.accentColor || `#${theme.accentColor}`;
     const textWidthPct = getTextAreaWidth(currentSlide.layout, slideImages);
     const textWidthStyle = textWidthPct < 100 ? { maxWidth: `${textWidthPct}%` } : {};
+    const slideBg = theme.gradientCover
+        ? `linear-gradient(135deg, #${theme.bgColor} 0%, #${theme.bgColorAlt} 100%)`
+        : `#${theme.bgColor}`;
+    const hasVisualData = !!(currentSlide.chartConfig || currentSlide.tableConfig || currentSlide.timelineConfig || currentSlide.kpiConfig);
 
     return (
         <>
         <div
             className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black overflow-hidden select-none"
-            style={{ backgroundColor: `#${theme.bgColor}` }}
+            style={{ background: slideBg }}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -233,15 +237,37 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                     color: `#${theme.titleColor}`,
                     transform: `scale(${presenterScale})`,
                     transformOrigin: 'center center',
-                    backgroundColor: `#${theme.bgColor}`,
+                    background: slideBg,
                 }}
             >
-                <div className="p-8 w-full h-full relative" style={{ boxSizing: 'border-box' }}>
-                    <div className="relative z-[1]" style={{ ...textWidthStyle, height: '100%' }}>
-                        <p style={{ ...titleStyle, marginBottom: '12px' }}>{renderTextWithBreaks(currentSlide.title)}</p>
-                        {currentSlide.subtitle && <p className="opacity-70 mb-4" style={{ ...bodyStyle, fontSize: '16px' }}>{renderTextWithBreaks(currentSlide.subtitle)}</p>}
+                {/* Premium decorations — accent stripe at top */}
+                {theme.shapeAccent && (
+                    <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none" style={{ height: '4px', backgroundColor: accentColor }} />
+                )}
+                {/* Subtle left accent bar */}
+                {theme.shapeAccent && (
+                    <div className="absolute top-0 left-0 bottom-0 z-20 pointer-events-none" style={{ width: '4px', backgroundColor: accentColor, opacity: 0.22 }} />
+                )}
+                {/* Corner glow for gradient themes */}
+                {theme.gradientCover && (
+                    <div className="absolute top-0 right-0 z-0 pointer-events-none" style={{
+                        width: '220px', height: '220px',
+                        background: `radial-gradient(circle at top right, #${theme.accentColor}28 0%, transparent 70%)`,
+                    }} />
+                )}
+
+                <div className="w-full h-full relative flex flex-col" style={{ boxSizing: 'border-box', padding: theme.shapeAccent ? '36px 32px 28px 36px' : '32px' }}>
+                    {/* ── Text zone (capped when visual data is present) ── */}
+                    <div
+                        className="relative z-[1] flex-shrink-0 overflow-hidden"
+                        style={{ ...textWidthStyle, maxHeight: hasVisualData ? '52%' : undefined }}
+                    >
+                        <p style={{ ...titleStyle, marginBottom: '10px' }}>{renderTextWithBreaks(currentSlide.title)}</p>
+                        {currentSlide.subtitle && (
+                            <p className="opacity-70 mb-3" style={{ ...bodyStyle, fontSize: '16px' }}>{renderTextWithBreaks(currentSlide.subtitle)}</p>
+                        )}
                         {currentSlide.bullets && currentSlide.bullets.length > 0 && (
-                            <ul className="space-y-2 mt-4">
+                            <ul className="space-y-2 mt-3">
                                 {currentSlide.bullets.map((b, i) => (
                                     <li key={i} className="opacity-90 flex items-start gap-2" style={bulletStyle}>
                                         <span className="mt-1">&#8226;</span> <span>{renderTextWithBreaks(b)}</span>
@@ -249,10 +275,11 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                                 ))}
                             </ul>
                         )}
-                        {currentSlide.statement && <p className="mt-8 opacity-90" style={{ ...titleStyle, fontSize: '32px', lineHeight: '1.4' }}>{renderTextWithBreaks(currentSlide.statement)}</p>}
-
+                        {currentSlide.statement && (
+                            <p className="mt-8 opacity-90" style={{ ...titleStyle, fontSize: '32px', lineHeight: '1.4' }}>{renderTextWithBreaks(currentSlide.statement)}</p>
+                        )}
                         {currentSlide.leftColumn && (
-                            <div className="mt-6 grid grid-cols-2 gap-8">
+                            <div className="mt-5 grid grid-cols-2 gap-8">
                                 <div>
                                     {currentSlide.leftLabel && <p className="font-bold mb-2 uppercase tracking-wide" style={{ color: accentColor, fontSize: '14px' }}>{currentSlide.leftLabel}</p>}
                                     {currentSlide.leftColumn.map((item, i) => (
@@ -267,9 +294,8 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                                 </div>
                             </div>
                         )}
-
                         {currentSlide.agendaItems && (
-                            <div className="mt-6 space-y-3">
+                            <div className="mt-5 space-y-3">
                                 {currentSlide.agendaItems.map((item, i) => (
                                     <p key={i} className="opacity-80 flex items-center gap-3" style={bodyStyle}>
                                         <span className="font-bold text-xl" style={{ color: accentColor }}>{String(i + 1).padStart(2, '0')}</span>
@@ -278,9 +304,8 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                                 ))}
                             </div>
                         )}
-
                         {currentSlide.summaryPoints && (
-                            <div className="mt-6 space-y-3">
+                            <div className="mt-5 space-y-3">
                                 {currentSlide.summaryPoints.map((point, i) => (
                                     <p key={i} className="opacity-80 flex items-center gap-3" style={bodyStyle}>
                                         <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm text-white font-bold flex-shrink-0"
@@ -290,25 +315,29 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                                 ))}
                             </div>
                         )}
-                        <div className="mt-6" style={{ transform: 'scale(1.5)', transformOrigin: 'top left' }}>
-                            {renderSlidePreviewContent(currentSlide, theme)}
-                        </div>
                     </div>
 
-                    {slideImages.map(img => (
-                        <div key={img.id}
-                            className="absolute z-[5]"
-                            style={{
-                                left: `${img.x}%`, top: `${img.y}%`, width: `${img.width}%`, height: `${img.height}%`,
-                                borderRadius: `${img.borderRadius}px`, opacity: img.opacity / 100,
-                            }}>
-                            {img.dataUrl && (
-                                <img src={img.dataUrl} alt={img.label} className="w-full h-full pointer-events-none" draggable={false}
-                                    style={{ objectFit: img.fit, borderRadius: `${img.borderRadius}px` }} />
-                            )}
+                    {/* ── Visual data zone (chart / table / timeline / KPI) — separate from text ── */}
+                    {hasVisualData && (
+                        <div className="relative z-[1] mt-4 flex-1 min-h-0 overflow-hidden" style={textWidthStyle}>
+                            {renderSlidePreviewContent(currentSlide, theme, true)}
                         </div>
-                    ))}
+                    )}
                 </div>
+
+                {slideImages.map(img => (
+                    <div key={img.id}
+                        className="absolute z-[5]"
+                        style={{
+                            left: `${img.x}%`, top: `${img.y}%`, width: `${img.width}%`, height: `${img.height}%`,
+                            borderRadius: `${img.borderRadius}px`, opacity: img.opacity / 100,
+                        }}>
+                        {img.dataUrl && (
+                            <img src={img.dataUrl} alt={img.label} className="w-full h-full pointer-events-none" draggable={false}
+                                style={{ objectFit: img.fit, borderRadius: `${img.borderRadius}px` }} />
+                        )}
+                    </div>
+                ))}
             </div>
 
             {/* ── Mobile bottom nav bar ── */}
