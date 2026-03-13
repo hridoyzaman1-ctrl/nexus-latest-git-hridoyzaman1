@@ -1,6 +1,5 @@
 {
   "buildCommand": "pnpm --filter @workspace/nexus run build",
   "outputDirectory": "artifacts/nexus/dist/public",
-  "installCommand": "pnpm install",
-  "framework": null
+  "installCommand": "pnpm install"
 }
