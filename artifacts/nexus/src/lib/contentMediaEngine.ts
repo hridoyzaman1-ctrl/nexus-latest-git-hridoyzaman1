@@ -101,30 +101,58 @@ export function truncateToWordLimit(text: string, maxWords: number): string {
  */
 export function sanitiseAIScript(raw: string): string {
   return raw
+    // Strip markdown bold/italic
     .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
+    // Strip markdown headings (## Heading)
+    .replace(/^#{1,6}\s+.*/gm, '')
+    // Strip stage directions in brackets or parentheses
     .replace(/\[([^\]\n]*)\]/g, '')
     .replace(/\(([^)\n]*(music|sound|sfx|pause|cue|fade|beat|ambien)[^)\n]*)\)/gi, '')
+    // Strip preamble lines (e.g. "Here's your script:", "Below is the narration:")
     .replace(/^[^\n.!?]*?(here'?s?|below is|this is|audio script|video script|narration script|script for)[^\n]*[\n:]/gim, '')
+    // Strip metadata lines (duration, word count)
     .replace(/^\*?\(?(duration|word count|~?\d+\s*min|~?\d+\s*words?)[^)\n]*\)?\*?\n?/gim, '')
+    // Strip section/label headers like "Introduction:", "Key Points:", "Conclusion:", "Summary:", "Overview:", "Section 1:", "Part 1:", etc.
+    .replace(/^(introduction|summary|overview|conclusion|outro|intro|key\s*points?|key\s*takeaways?|takeaways?|highlights?|topics?\s*covered|section\s*\d*|part\s*\d*|chapter\s*\d*|segment\s*\d*|narration|script|podcast|explainer|video)\s*:?\s*$/gim, '')
+    // Strip numbered/lettered standalone section markers ("1.", "2.", "A.", "B.", etc.)
+    .replace(/^(\d+\.|\([a-zA-Z]\)|\([0-9]+\))\s*$/gm, '')
+    // Strip ALL-CAPS lines that are short standalone headings (e.g. "KEY POINTS", "INTRODUCTION")
+    .replace(/^[A-Z][A-Z\s\d]{3,50}$\n?/gm, (m) => {
+      // only remove if the line is clearly a heading (no sentence-ending punctuation)
+      return /[.!?,;]/.test(m) ? m : '';
+    })
+    // Strip horizontal rules
     .replace(/^\s*[-–—_*#]{3,}\s*$/gm, '')
+    // Collapse multiple blank lines
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 function cleanText(text: string): string {
   return text
+    // Strip page/slide markers added by extractors
     .replace(/\[Page \d+\]/g, '')
     .replace(/\[Slide \d+\]/g, '')
     .replace(/\[Info\].*$/gm, '')
+    // Strip markdown formatting
     .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^#{1,6}\s+.*/gm, '')
     .replace(/__([^_\n]+)__/g, '$1')
     .replace(/_([^_\n]+)_/g, '$1')
+    // Strip CSS/SVG style declarations (font-family, font-size, fill, etc.)
+    .replace(/\b(font-family|font-size|font-weight|font-style|font-variant|letter-spacing|word-spacing|text-anchor|text-decoration|line-height|fill|stroke|color|background|opacity|visibility|display|overflow)\s*:\s*[^;\n}]{0,120}[;]?/gi, '')
+    // Strip standalone common font name lines
+    .replace(/^[ \t]*(Helvetica|Arial|Times(\s+New\s+Roman)?|Calibri|Cambria|Courier(\s+New)?|Verdana|Georgia|Tahoma|Trebuchet(\s+MS)?|Gill\s+Sans|Futura|Garamond|Palatino|Century|Roboto|Lato|Montserrat|Open\s+Sans|Noto\s+Sans|Source\s+Sans|Liberation|DejaVu|Ubuntu|Kalpurush|SolaimanLipi|Nikosh)(\s+(Bold|Italic|Regular|Light|Medium|Black|\d+))?\s*$/gim, '')
+    // Strip standalone size tokens ("18px", "12pt", "1.5em")
+    .replace(/^\s*\d+(\.\d+)?\s*(px|pt|em|rem|%|sp|dp)\s*$/gm, '')
+    // Strip standalone hex colour codes
+    .replace(/^\s*#[0-9a-fA-F]{3,8}\s*$/gm, '')
+    // Strip bare URLs
+    .replace(/https?:\/\/\S+/g, '')
+    // Normalise whitespace
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
-    .replace(/https?:\/\/\S+/g, '')
     .trim();
 }
 
@@ -204,26 +232,18 @@ const BN = {
   recap: 'পুনরালোচনা',
 } as const;
 
-export function buildSummaryScript(rawText: string, title: string, lang = 'en'): string {
-  const bn = lang === 'bn';
+export function buildSummaryScript(rawText: string, _title: string, lang = 'en'): string {
+  const _bn = lang === 'bn';
   const text = cleanText(rawText);
   const sentences = extractSentences(text);
   const bullets = extractBulletPoints(text);
-  const headings = extractHeadings(text);
 
   const topSentences = sentences.slice(0, 8).join(' ');
   const keyPoints = bullets.length > 0
     ? bullets.slice(0, 6).join('. ')
     : sentences.slice(8, 14).join(' ');
-  const topicLine = headings.length > 0
-    ? (bn ? BN.coversTopics(headings.slice(0, 4).join(', ')) : `This covers ${headings.slice(0, 4).join(', ')}.`)
-    : '';
 
-  return [
-    topicLine,
-    topSentences,
-    keyPoints,
-  ].filter(Boolean).join(' ');
+  return [topSentences, keyPoints].filter(Boolean).join(' ');
 }
 
 export function buildExplainerScript(rawText: string, title: string, lang = 'en'): string {

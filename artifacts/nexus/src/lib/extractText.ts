@@ -2,6 +2,39 @@
 import { getBookFile } from '@/lib/bookStorage';
 import { getStudyFile } from '@/lib/studyStorage';
 
+/**
+ * Strips font metadata, CSS declarations, SVG style artifacts, and other
+ * non-content noise that PDF.js / SVG-PPTX extraction can accidentally pull in.
+ * Safe to run on any raw extracted text before feeding it to the AI.
+ */
+export function cleanExtractedText(text: string): string {
+  return text
+    // ── CSS property declarations ────────────────────────────────────────────
+    // e.g. "font-family: Helvetica; font-size: 18px; fill: #333;"
+    .replace(/\b(font-family|font-size|font-weight|font-style|font-variant|letter-spacing|word-spacing|text-anchor|text-decoration|line-height|fill|stroke|color|background|opacity|visibility|display|overflow)\s*:\s*[^;\n}]{0,120}[;]?/gi, '')
+    // ── Standalone CSS/SVG style blocks ─────────────────────────────────────
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<defs[\s\S]*?<\/defs>/gi, '')
+    // ── Lines that are nothing but common font names ─────────────────────────
+    // e.g. "Helvetica", "Arial Bold", "Times New Roman"
+    .replace(/^[ \t]*(Helvetica|Arial|Times(\s+New\s+Roman)?|Calibri|Cambria|Courier(\s+New)?|Verdana|Georgia|Tahoma|Trebuchet(\s+MS)?|Gill\s+Sans|Futura|Garamond|Palatino|Century|Comic\s+Sans(\s+MS)?|Impact|Lucida|Roboto|Open\s+Sans|Lato|Montserrat|Source\s+Sans|Noto\s+Sans|Ubuntu|DejaVu|Liberation|Bangla|Kalpurush|SolaimanLipi|Nikosh|Siyam\s+Rupali)(\s+(Bold|Italic|Regular|Light|Medium|Black|Condensed|Narrow|Extended|\d+))?\s*$/gim, '')
+    // ── Standalone px / pt / em / % size values ──────────────────────────────
+    .replace(/^\s*\d+(\.\d+)?\s*(px|pt|em|rem|%|sp|dp)\s*$/gm, '')
+    // ── Hex colour codes on their own line ────────────────────────────────────
+    .replace(/^\s*#[0-9a-fA-F]{3,8}\s*$/gm, '')
+    // ── XML / SVG namespace and attribute fragments ──────────────────────────
+    .replace(/xmlns[:\w]*\s*=\s*"[^"]*"/g, '')
+    .replace(/xlink:[:\w]+\s*=\s*"[^"]*"/g, '')
+    // ── Lines that look like CSS selectors or rules ──────────────────────────
+    .replace(/^\.[\w-]+\s*\{[^}]*\}\s*$/gm, '')
+    // ── Lines that are ONLY numbers (sizes, ids, coordinates) ────────────────
+    .replace(/^\s*-?\d+(\.\d+)?\s*$/gm, '')
+    // ── Collapse noise-gaps left behind ─────────────────────────────────────
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // ── PDF text helpers ───────────────────────────────────────────────────────────
 
 function fixLigatures(text: string): string {
@@ -137,14 +170,14 @@ export async function extractPdfText(pdfData?: string, pdfUrl?: string, startPag
 
     // If text looks garbled, try to salvage readable content
     if (isLikelyGarbled(pageText)) {
-      const cleaned = cleanGarbled(pageText);
+      const cleaned = cleanExtractedText(cleanGarbled(pageText));
       if (cleaned.replace(/\s/g, '').length > 20) {
         texts.push(`[Page ${i}]\n${cleaned}`);
       } else {
         emptyPages++;
       }
     } else {
-      texts.push(`[Page ${i}]\n${pageText}`);
+      texts.push(`[Page ${i}]\n${cleanExtractedText(pageText)}`);
     }
   }
 
@@ -173,29 +206,48 @@ export async function extractPptxText(slides: string[], startPage = 1, endPage =
       } else if (slide.startsWith('<svg') || slide.startsWith('<?xml')) {
         svgStr = slide;
       }
+
       let slideTexts: string[] = [];
+
       if (svgStr) {
         try {
           const parser = new DOMParser();
           const doc = parser.parseFromString(svgStr, 'image/svg+xml');
-          const walker = document.createTreeWalker(doc.documentElement, NodeFilter.SHOW_TEXT);
-          let node: Node | null;
-          while ((node = walker.nextNode())) {
-            const t = (node.textContent || '').trim();
-            if (t) slideTexts.push(t);
+
+          // ── Targeted element query (avoids <style>, <defs>, <script> entirely) ──
+          // Query only SVG <text> elements — their textContent captures child <tspan>s too.
+          // We deliberately skip <style>, <defs>, <title>, <desc> which carry CSS/font metadata.
+          const textEls = Array.from(doc.querySelectorAll('text'));
+          for (const el of textEls) {
+            const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (t && t.length > 0) slideTexts.push(t);
           }
-        } catch { /* DOMParser failed */ }
+
+          // Deduplicate adjacent identical fragments (tspan repetition)
+          slideTexts = [...new Set(slideTexts)];
+        } catch { /* DOMParser failed — fall through to regex */ }
       }
+
+      // Regex fallback: only if element-query yielded nothing
       if (slideTexts.length === 0 && svgStr) {
+        // Strip <style> and <defs> blocks first so font CSS can't leak in
+        const stripped = svgStr
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<defs[\s\S]*?<\/defs>/gi, '');
         const textElRegex = /<text[^>]*>([\s\S]*?)<\/text>/gi;
         let match;
-        while ((match = textElRegex.exec(svgStr)) !== null) {
+        while ((match = textElRegex.exec(stripped)) !== null) {
           const plain = match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
           if (plain) slideTexts.push(plain);
         }
       }
-      if (slideTexts.length > 0) texts.push(`[Slide ${i}]\n${slideTexts.join(' ')}`);
-    } catch { /* skip */ }
+
+      if (slideTexts.length > 0) {
+        // Apply noise cleaner before storing
+        const cleaned = cleanExtractedText(slideTexts.join('\n'));
+        if (cleaned.trim()) texts.push(`[Slide ${i}]\n${cleaned}`);
+      }
+    } catch { /* skip bad slide */ }
   }
 
   if (texts.length === 0) {

@@ -15,6 +15,14 @@ export interface ParsedSection {
 function cleanText(text: string): string {
   return text
     .replace(/\r\n/g, '\n')
+    // Strip CSS property declarations that leak from SVG/PDF
+    .replace(/\b(font-family|font-size|font-weight|font-style|font-variant|letter-spacing|word-spacing|text-anchor|text-decoration|line-height|fill|stroke|color|background|opacity|visibility)\s*:\s*[^;\n}]{0,120}[;]?/gi, '')
+    // Strip standalone common font name lines
+    .replace(/^[ \t]*(Helvetica|Arial|Times(\s+New\s+Roman)?|Calibri|Cambria|Courier(\s+New)?|Verdana|Georgia|Tahoma|Trebuchet(\s+MS)?|Roboto|Lato|Montserrat|Open\s+Sans|Noto\s+Sans|Source\s+Sans|Liberation|DejaVu|Ubuntu)(\s+(Bold|Italic|Regular|Light|Medium|Black|\d+))?\s*$/gim, '')
+    // Strip standalone size values (e.g. "18px", "12pt")
+    .replace(/^\s*\d+(\.\d+)?\s*(px|pt|em|rem|%)\s*$/gm, '')
+    // Strip standalone hex colours
+    .replace(/^\s*#[0-9a-fA-F]{3,8}\s*$/gm, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

@@ -87,6 +87,13 @@ export default function MediaGenerationModal({
   // Estimated recording time (set once scenes are built — video mode only)
   const [estimatedRecordingSecs, setEstimatedRecordingSecs] = useState(0);
 
+  // ── Video-from-Script (VFS) — secondary video generation from an already-generated script ──
+  const [vfsBusy, setVfsBusy] = useState(false);
+  const [vfsProgress, setVfsProgress] = useState(0);
+  const [vfsLabel, setVfsLabel] = useState('');
+  const [vfsBgm, setVfsBgm] = useState('none');
+  const [vfsDone, setVfsDone] = useState(false);
+
   // Single recording canvas — always in DOM, shown/hidden by stage
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Preview canvas for done-state scene browsing
@@ -171,6 +178,10 @@ export default function MediaGenerationModal({
     setProgressLabel('');
     setErrorMsg('');
     setEstimatedRecordingSecs(0);
+    setVfsBusy(false);
+    setVfsProgress(0);
+    setVfsLabel('');
+    setVfsDone(false);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -268,15 +279,29 @@ export default function MediaGenerationModal({
 
         if (isStudioModule) {
           const modePrompts: Record<MediaMode, string> = {
-            summary:  'Write a concise spoken summary covering all key points. 2-3 minutes when read aloud.',
-            explainer:'Write a clear spoken explainer walking through the main concepts. 4-5 minutes when read aloud.',
-            podcast:  'Write an engaging conversational podcast episode about this content. Sound natural and enthusiastic. 6-8 minutes when read aloud.',
-            video:    'Write flowing spoken narration for a video presentation covering the main ideas. 3-4 minutes when read aloud.',
+            summary:  'Write a concise spoken summary covering all key points. 2-3 minutes when read aloud. Dive straight into the content — no greetings or sign-off.',
+            explainer:'Write a clear spoken explainer walking through the main concepts. 4-5 minutes when read aloud. Start immediately with the first concept — no greetings or meta-commentary.',
+            podcast:  'Write an engaging conversational monologue about this content. Sound natural and enthusiastic. 6-8 minutes when read aloud. Start immediately with the substance — no "welcome back" or podcast intro phrases.',
+            video:    'Write flowing spoken narration for a video presentation covering the main ideas. 3-4 minutes when read aloud. Begin immediately with the first point — no title read-out or introductory remarks.',
           };
           const langInstruction = language === 'bn'
             ? '\nIMPORTANT: Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.'
             : '';
-          const prompt = `You are a professional audio script writer.\n\nSTRICT RULES:\n- Write ONLY the exact words that will be spoken aloud\n- Do NOT include any titles, file names, document names, or subject headings\n- Do NOT write "Here is your script", "Script:", or any preamble whatsoever\n- Do NOT use markdown, asterisks, bullet symbols, or any formatting characters\n- Do NOT include stage directions like [music], [pause], or [applause]\n- Start immediately with the spoken content — no introduction about what you are about to write\n- ${modePrompts[mode]}${langInstruction}\n\nCONTENT TO PROCESS:\n${truncated}`;
+          const prompt = `You are a professional spoken-word script writer. Your output will be read by a text-to-speech engine — every character you write will be spoken aloud.
+
+ABSOLUTE RULES — violating any of these will make the output unusable:
+- Output ONLY the words to be spoken. Nothing else.
+- Do NOT write any title, filename, document name, subject heading, or section label (no "Introduction", "Summary", "Key Points", "Conclusion", "Section 1", "Part 1", or similar).
+- Do NOT open with any preamble, greeting, or meta-commentary ("Here is your script", "In this summary", "Today we will explore", "Welcome", "Hello", "Hi there", "In this video", etc.).
+- Do NOT close with any sign-off, outro, or call-to-action ("Thanks for listening", "That's a wrap", "Subscribe", "Hope you enjoyed", etc.).
+- Do NOT use markdown, asterisks (**bold**), bullet symbols (•, -, *), numbered lists (1. 2. 3.), or any other formatting characters.
+- Do NOT include stage directions, sound cues, or parenthetical notes ([music], [pause], (upbeat tone), etc.).
+- Do NOT repeat or echo the source title or filename anywhere in the output.
+- The very first word of your output must be substantive spoken content — a fact, concept, or sentence from the material itself.
+- ${modePrompts[mode]}${langInstruction}
+
+CONTENT TO PROCESS:
+${truncated}`;
 
           try {
             setProgress(45);
@@ -403,6 +428,69 @@ export default function MediaGenerationModal({
     }
   }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript, selectedBgm]);
 
+  // ── Generate video from an already-produced script (VFS path) ────────────────────────────────
+  const handleGenerateVideoFromScript = useCallback(async () => {
+    if (!script || !savedItemId) return;
+    cancelSignal.current = { cancelled: false };
+    setVfsBusy(true);
+    setVfsProgress(5);
+    setVfsLabel('Building video scenes from script…');
+    setCurrentScene(0);
+
+    try {
+      const { scenes: vScenes, sceneScripts: vSS } = buildScriptForMode(script, sourceName, 'video', language);
+
+      if (!vScenes || vScenes.length === 0) throw new Error('Could not build scenes from this script.');
+
+      setScenes(vScenes);
+      const totalSecs = vScenes.reduce((s, sc) => s + sc.duration, 0) + 3;
+      setEstimatedRecordingSecs(totalSecs);
+      setVfsProgress(20);
+      setVfsLabel('Scenes ready — starting recording…');
+      await new Promise(r => setTimeout(r, 80)); // let React show canvas
+      if (cancelSignal.current.cancelled) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error('Recording canvas not available.');
+      canvas.width = 480;
+      canvas.height = 270;
+
+      const result = await recordVideoScenes(
+        canvas,
+        vScenes,
+        (sceneIdx, total) => {
+          setCurrentScene(sceneIdx);
+          setVfsProgress(20 + Math.round((sceneIdx / total) * 75));
+          setVfsLabel(`Recording scene ${sceneIdx + 1} of ${total}…`);
+        },
+        cancelSignal.current,
+        vfsBgm,
+        vSS,
+      );
+
+      if (!cancelSignal.current.cancelled) {
+        await saveVideoBlob(savedItemId, result.blob);
+        const existingItem = getMediaItem(savedItemId);
+        if (existingItem) {
+          saveMediaItem({ ...existingItem, hasVideoBlob: true, videoMimeType: result.mimeType, scenes: vScenes });
+        }
+        setHasVideoBlob(true);
+        setVfsDone(true);
+        setVfsProgress(100);
+        setVfsLabel('Video saved!');
+        toast.success('Video saved to Media Library');
+      }
+    } catch (e: unknown) {
+      if (!cancelSignal.current.cancelled) {
+        const msg = e instanceof Error ? e.message : 'Video recording failed. Please try again.';
+        toast.error(msg);
+        setVfsLabel('');
+      }
+    } finally {
+      setVfsBusy(false);
+    }
+  }, [script, savedItemId, sourceName, language, vfsBgm]);
+
   // TTS controls
   const handlePlay = useCallback(() => {
     if (!script) return;
@@ -507,7 +595,7 @@ export default function MediaGenerationModal({
             <canvas
               ref={canvasRef}
               width={480} height={270}
-              style={{ display: stage === 'recording' ? 'block' : 'none' }}
+              style={{ display: (stage === 'recording' || vfsBusy) ? 'block' : 'none' }}
               className="w-full rounded-xl"
             />
 
@@ -895,6 +983,108 @@ export default function MediaGenerationModal({
                     </div>
                   )}
 
+                  {/* ── Generate Video from Script (non-video modes only) ──────────────── */}
+                  {mode !== 'video' && isVideoSupported() && (
+                    <div className="rounded-2xl border border-purple-500/30 bg-purple-500/5 p-3 space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <Video className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                        <span className="text-sm font-semibold text-purple-300">Also Generate Video</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Turn your AI-generated {MODE_INFO[mode].label.toLowerCase()} into a visual video with slides and background music.
+                      </p>
+
+                      {/* BGM picker — only when idle (not yet recording or done) */}
+                      {!vfsBusy && !vfsDone && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                            <Music2 className="w-3 h-3" /> Background Music
+                          </p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {BGM_TRACKS.map(track => (
+                              <button
+                                key={track.id}
+                                onClick={() => setVfsBgm(track.id)}
+                                className={cn(
+                                  'flex items-start gap-2 p-2 rounded-xl border text-left transition-all',
+                                  vfsBgm === track.id
+                                    ? 'bg-purple-500/20 border-purple-500/50 text-purple-200'
+                                    : 'border-white/10 text-muted-foreground hover:border-white/20'
+                                )}
+                              >
+                                <div>
+                                  <p className="text-[11px] font-medium leading-none">{track.name}</p>
+                                  <p className="text-[9px] mt-0.5 opacity-70">{track.description}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recording progress */}
+                      {vfsBusy && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 flex-shrink-0" />
+                            <span className="text-xs text-muted-foreground truncate">{vfsLabel}</span>
+                          </div>
+                          <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
+                            <motion.div
+                              className="bg-purple-500 h-1.5 rounded-full"
+                              animate={{ width: `${vfsProgress}%` }}
+                              transition={{ duration: 0.4 }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3 flex-shrink-0" />
+                            {estimatedRecordingSecs > 0
+                              ? `Est. ~${estimatedRecordingSecs}s total · keep this screen open`
+                              : 'Recording — please keep this screen open'}
+                          </p>
+                          <Button
+                            variant="ghost" size="sm" className="w-full rounded-xl text-xs text-muted-foreground h-8"
+                            onClick={() => { cancelSignal.current.cancelled = true; setVfsBusy(false); setVfsLabel(''); setVfsProgress(0); }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Success state */}
+                      {vfsDone && !vfsBusy && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-emerald-400 text-xs">
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            <span>Video saved to Media Library!</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <Button variant="secondary" size="sm" className="rounded-xl h-8 text-xs gap-1.5" onClick={handleDownloadVideo}>
+                              <Download className="w-3 h-3" /> Download Video
+                            </Button>
+                            <Button
+                              variant="ghost" size="sm" className="rounded-xl h-8 text-xs gap-1.5"
+                              onClick={() => { setVfsDone(false); setVfsProgress(0); setVfsLabel(''); setScenes([]); }}
+                            >
+                              <RotateCcw className="w-3 h-3" /> Re-record
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Record button */}
+                      {!vfsBusy && !vfsDone && (
+                        <Button
+                          onClick={handleGenerateVideoFromScript}
+                          className="w-full rounded-2xl h-10 font-semibold gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+                        >
+                          <Video className="w-4 h-4" />
+                          Record Video from Script
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
                   {/* Script preview */}
                   <details className="group">
                     <summary className="cursor-pointer text-[11px] text-muted-foreground list-none flex items-center gap-1 select-none">
@@ -911,7 +1101,7 @@ export default function MediaGenerationModal({
                     <Button variant="secondary" size="sm" className="rounded-xl h-9 text-xs gap-1.5" onClick={handleDownloadScript}>
                       <Download className="w-3.5 h-3.5" /> Script (.txt)
                     </Button>
-                    {mode === 'video' && hasVideoBlob && (
+                    {(mode === 'video' || vfsDone) && hasVideoBlob && (
                       <Button variant="secondary" size="sm" className="rounded-xl h-9 text-xs gap-1.5" onClick={handleDownloadVideo}>
                         <Download className="w-3.5 h-3.5" /> Video (.webm)
                       </Button>
