@@ -1,5 +1,6 @@
 import type { ScriptSettings } from '@/types/presentationCoach';
 import { chatWithLongCat, type LongCatMessage } from '@/lib/longcat';
+import { trimToLastSentence } from '@/lib/contentMediaEngine';
 
 const LONGCAT_KEY = import.meta.env.VITE_LONGCAT_API_KEY || '';
 
@@ -11,9 +12,39 @@ function estimateWordCount(durationSeconds: number): number {
   return Math.round((durationSeconds / 60) * 140);
 }
 
+/**
+ * Detect non-Latin script languages whose Unicode characters are not in the
+ * model's base vocabulary. Each character may consume 3–6 tokens vs 1–2 for
+ * English — so we must multiply the token budget accordingly.
+ */
+function isNonLatinScript(language: string): boolean {
+  const lang = language.toLowerCase();
+  return (
+    lang.includes('bangla')    || lang.includes('bengali')  || lang.includes('বাংলা') ||
+    lang.includes('arabic')    || lang.includes('عرب')                                ||
+    lang.includes('chinese')   || lang.includes('mandarin') || lang.includes('中')    ||
+    lang.includes('japanese')  || lang.includes('日本')                               ||
+    lang.includes('korean')    || lang.includes('한국')                               ||
+    lang.includes('hindi')     || lang.includes('हिंदी')    || lang.includes('हिन')  ||
+    lang.includes('urdu')      || lang.includes('اردو')                               ||
+    lang.includes('persian')   || lang.includes('farsi')                              ||
+    lang.includes('thai')      || lang.includes('ภาษา')                               ||
+    lang.includes('russian')   || lang.includes('русский')                            ||
+    lang.includes('ukrainian') || lang.includes('украин')                             ||
+    lang.includes('greek')     || lang.includes('ελλην')
+  );
+}
+
+function isBanglaLanguage(language: string): boolean {
+  const lang = language.toLowerCase();
+  return lang.includes('bangla') || lang.includes('bengali') || language.includes('বাংলা');
+}
+
 function buildPrompt(settings: ScriptSettings): string {
   const wordCount = estimateWordCount(settings.duration);
   const durationMin = Math.round(settings.duration / 60);
+  const isBangla = isBanglaLanguage(settings.language || '');
+  const nonLatin = isNonLatinScript(settings.language || 'English');
 
   let prompt = `Generate a ${durationMin}-minute ${settings.presentationType || 'speech'} script on the topic: "${settings.topic}".
 
@@ -26,7 +57,13 @@ Target length: approximately ${wordCount} words (for ${durationMin} minutes at ~
     prompt += `\nTone: ${settings.tone}`;
   }
   if (settings.language && settings.language !== 'English') {
-    prompt += `\nLanguage: ${settings.language}`;
+    if (isBangla) {
+      prompt += `\nLanguage: Write the ENTIRE script in Bangla (বাংলা) ONLY. Every single word, sentence, and phrase must be in Bangla script. Do NOT use any English words or Latin characters except for proper nouns with no Bangla equivalent. End every sentence with the Bangla danda (।).`;
+    } else if (nonLatin) {
+      prompt += `\nLanguage: ${settings.language} — Write the ENTIRE script in ${settings.language} only. Do not mix in English or any other language.`;
+    } else {
+      prompt += `\nLanguage: ${settings.language}`;
+    }
   }
   if (settings.keyPoints) {
     prompt += `\nKey points to cover: ${settings.keyPoints}`;
@@ -76,16 +113,40 @@ export async function generateScript(settings: ScriptSettings): Promise<string> 
     throw new Error('Script generation is not available. Please add your longcat.chat API key.');
   }
 
-  const systemPrompt = `You are an expert speechwriter and presentation coach. Generate polished, natural-sounding scripts that are ready to be spoken aloud. Match the tone, audience, and purpose precisely. Output ONLY the script text with [PAUSE] markers — no headers, instructions, or meta-text. CRITICAL: Your script MUST end with a complete, properly punctuated sentence. Never cut off mid-sentence, mid-word, or mid-thought. If you are running short on space, finish your current point and add one final concluding sentence before stopping.`;
+  const isBangla  = isBanglaLanguage(settings.language || '');
+  const nonLatin  = isNonLatinScript(settings.language || 'English');
+
+  // Bangla and other non-Latin scripts use 4–6 tokens per character in the
+  // LLM tokenizer (vs 1–2 for English). We multiply the token budget by 5×
+  // so the full speech gets generated instead of cutting off after ~30 words.
+  const tokenMultiplier = nonLatin ? 5 : 2;
+  const hardCap         = nonLatin ? 8000 : 4000;
+  const minTokens       = nonLatin ? 1000 : 500;
+  const maxTokens       = Math.min(hardCap, Math.max(minTokens, estimateWordCount(settings.duration) * tokenMultiplier));
+
+  // Sentence-end rule tailored to the script language
+  const sentenceEndRule = isBangla
+    ? 'The VERY LAST character of your output MUST be the Bangla danda (।). Never end mid-sentence, mid-word, or mid-thought. If you are running out of space, stop adding new points and write one final short concluding sentence ending with ।'
+    : 'The VERY LAST character of your output MUST be a period (.), exclamation mark (!), or question mark (?). Never end mid-sentence, mid-word, or mid-thought. If you are running out of space, stop adding new points and write one final short concluding sentence to end gracefully.';
+
+  const banglaReminder = isBangla
+    ? '\n\nBANGLA REMINDER: Every single word must be in Bangla script (বাংলা). Do NOT write any English words. End every sentence with ।'
+    : '';
+
+  const systemPrompt = `You are an expert speechwriter and presentation coach. Generate polished, natural-sounding scripts that are ready to be spoken aloud. Match the tone, audience, and purpose precisely. Output ONLY the script text with [PAUSE] markers — no headers, instructions, or meta-text.
+
+CRITICAL — COMPLETION RULE: Your script MUST be complete and end at a proper sentence boundary. ${sentenceEndRule} A complete script that ends cleanly is far better than a longer script that is cut off mid-sentence.${banglaReminder}`;
 
   const messages: LongCatMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: buildPrompt(settings) },
   ];
 
-  const maxTokens = Math.min(4000, Math.max(500, estimateWordCount(settings.duration) * 2));
+  const raw = await chatWithLongCat(messages, { maxTokens, temperature: 0.7 });
 
-  return chatWithLongCat(messages, { maxTokens, temperature: 0.7 });
+  // Post-process: guarantee the output ends at a proper sentence boundary even
+  // if the model still manages to cut off (catches edge cases at the token limit)
+  return trimToLastSentence(raw);
 }
 
 export async function generateQuestionFromTopic(topic: string, category: string): Promise<string[]> {

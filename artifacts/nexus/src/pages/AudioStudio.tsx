@@ -135,7 +135,7 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
           role: 'user',
           content: `Write a narration about: ${desc}`,
         },
-      ], { maxTokens: 800, temperature: 0.7 });
+      ], { maxTokens: language === 'bn' ? 3500 : 800, temperature: 0.7 });
       const script = sanitiseAIScript(raw);
       const title = desc.length > 55 ? desc.slice(0, 55) + '…' : desc;
       setSource({ id: `as-${Date.now()}`, name: title, type: 'describe', text: script, wordCount: countWords(script) });
@@ -185,7 +185,7 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
 - ${modeInstructions[selectedMode]}${langNote}`,
         },
         { role: 'user', content: `CONTENT:\n${source.text.slice(0, 6000)}` },
-      ], { maxTokens: 1500, temperature: 0.7 });
+      ], { maxTokens: language === 'bn' ? 6000 : 1500, temperature: 0.7 });
       setAiScript(sanitiseAIScript(raw));
     } catch {
       setScriptError('AI script generation failed. You can still generate audio directly below.');

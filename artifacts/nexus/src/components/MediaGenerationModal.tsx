@@ -329,7 +329,12 @@ ABSOLUTE RULES — violating any of these will make the output unusable:
 CONTENT TO PROCESS:
 ${truncated}`;
 
-          const maxTokensByMode: Record<MediaMode, number> = {
+          // Bangla and other non-Latin scripts consume 4–6× more tokens per word
+          // than English. We multiply the budget so the full script is generated.
+          const isBangla = language === 'bn';
+          const maxTokensByMode: Record<MediaMode, number> = isBangla ? {
+            summary: 3500, explainer: 6000, podcast: 7500, video: 5000,
+          } : {
             summary: 900, explainer: 1400, podcast: 1800, video: 1100,
           };
 
