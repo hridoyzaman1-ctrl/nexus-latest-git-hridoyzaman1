@@ -520,10 +520,14 @@ function MeditationView({ onBack }: { onBack: () => void }) {
                     ))}
                   </div>
                 )}
-                {track.isCustom && (
+                {(track.isCustom || track.isDeletable) && (
                   <button onClick={e => {
                     e.stopPropagation();
-                    music.removeCustomTrack(track.id);
+                    if (track.isCustom) {
+                      music.removeCustomTrack(track.id);
+                    } else {
+                      music.removeBuiltinTrack(track.id);
+                    }
                   }}
                     className="text-muted-foreground hover:text-destructive ml-1">
                     <Trash2 className="w-3 h-3" />

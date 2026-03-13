@@ -7,6 +7,7 @@ export interface MusicTrack {
   name: string;
   url: string;
   isCustom: boolean;
+  isDeletable?: boolean;
 }
 
 export interface AudioPreferences {
@@ -33,8 +34,8 @@ export const BUILTIN_TRACKS: MusicTrack[] = [
   { id: 'yoga',          name: '🧘‍♀️ Yoga',                url: '/audio/Yoga.mp3',                      isCustom: false },
   { id: 'quietphase',   name: '✨ Quietphase Meditation', url: '/audio/Quietphase%20Meditation.mp3',   isCustom: false },
   { id: 'ambient',       name: '🌌 Ambient Background',   url: '/audio/Ambient%20Background.mp3',      isCustom: false },
-  { id: 'believer',      name: '🔥 Believer',              url: '/audio/Believer.mp3',                  isCustom: false },
-  { id: 'stronger',      name: '💪 Stronger Every Day',   url: '/audio/Stronger%20Every%20Day.mp3',    isCustom: false },
+  { id: 'believer',      name: '🔥 Believer',              url: '/audio/Believer.mp3',                  isCustom: false, isDeletable: true },
+  { id: 'stronger',      name: '💪 Stronger Every Day',   url: '/audio/Stronger%20Every%20Day.mp3',    isCustom: false, isDeletable: true },
 ];
 
 interface MusicPlayerState {
@@ -56,6 +57,7 @@ interface MusicPlayerContextType extends MusicPlayerState {
   playPrevious: () => void;
   addCustomTrack: (file: File) => void;
   removeCustomTrack: (id: string) => void;
+  removeBuiltinTrack: (id: string) => void;
   toggleGlassmorphism: () => void;
   closeMiniPlayer: () => void;
   getAnalyserNode: () => AnalyserNode | null;
@@ -71,6 +73,7 @@ export function useMusicPlayer() {
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
   const [customTracks, setCustomTracks] = useLocalStorage<Array<{ id: string; name: string }>>('customMusicTracks', []);
+  const [deletedBuiltinTracks, setDeletedBuiltinTracks] = useLocalStorage<string[]>('deletedBuiltinTracks', []);
   const audioPrefs = getLocalStorage<AudioPreferences>('audioPreferences', DEFAULT_AUDIO_PREFS);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(null);
@@ -270,8 +273,13 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     if (currentTrack?.id === id) stop();
   }, [setCustomTracks, currentTrack, stop]);
 
+  const removeBuiltinTrack = useCallback((id: string) => {
+    setDeletedBuiltinTracks(prev => [...prev, id]);
+    if (currentTrack?.id === id) stop();
+  }, [setDeletedBuiltinTracks, currentTrack, stop]);
+
   const allTracks: MusicTrack[] = [
-    ...BUILTIN_TRACKS,
+    ...BUILTIN_TRACKS.filter(t => !deletedBuiltinTracks.includes(t.id)),
     ...customTracks.map(t => ({
       id: t.id,
       name: `🎵 ${t.name}`,
@@ -314,14 +322,10 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     if (prev) play(prev);
   }, [currentTrack, allTracks, play]);
 
-  useEffect(() => {
-    localStorage.removeItem('deletedBuiltinTracks');
-  }, []);
-
   return (
     <MusicPlayerContext.Provider value={{
       isPlaying, currentTrack, volume, tracks: allTracks, showMiniPlayer, glassmorphism,
-      play, pause, resume, stop, setVolume, playNext, playPrevious, addCustomTrack, removeCustomTrack,
+      play, pause, resume, stop, setVolume, playNext, playPrevious, addCustomTrack, removeCustomTrack, removeBuiltinTrack,
       toggleGlassmorphism: () => setGlassmorphism(g => !g),
       closeMiniPlayer: () => { stop(); setShowMiniPlayer(false); },
       getAnalyserNode: () => analyserRef.current,
