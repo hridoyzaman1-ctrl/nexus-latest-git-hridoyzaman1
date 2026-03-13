@@ -30,16 +30,7 @@ export const exampleNotes: Note[] = [
   { id: id(), title: "Ideas for Weekend", content: "1. Visit the art museum\n2. Try the new ramen place\n3. Morning hike at the park", category: "Personal", isExample: true, createdAt: now },
 ];
 
-export const exampleBooks: Book[] = [
-  { id: id(), title: "Amazing Spider-Man #843", author: "Marvel Comics", status: "unread", currentPage: 1, totalPages: 30, fileType: "pdf", pdfUrl: "/books/843 amazing spider man.pdf", isExample: true, isDefault: true, createdAt: now },
-  { id: id(), title: "Black Lies, White Lies", author: "Tony Brown", status: "unread", currentPage: 1, totalPages: 280, fileType: "pdf", pdfUrl: "/books/Black-Lies-White-Lies-The-Truth-According-to-Tony-Brown-Tony-Brown-Z-Library.pdf", isExample: true, isDefault: true, createdAt: now },
-  { id: id(), title: "Dark Psychology Secrets", author: "William Cooper", status: "unread", currentPage: 1, totalPages: 200, fileType: "pdf", pdfUrl: "/books/Dark-Psychology-Secrets-William-Cooper-Z-Library.pdf", isExample: true, isDefault: true, createdAt: now },
-  { id: id(), title: "How to Be a People Magnet", author: "Leil Lowndes", status: "unread", currentPage: 1, totalPages: 280, fileType: "pdf", pdfUrl: "/books/How-to-Be-a-People-Magnet-Finding-Friends-and-Lovers-and-Keeping-Them-for-Life-Leil-Lowndes-Z-Library.pdf", isExample: true, isDefault: true, createdAt: now },
-  { id: id(), title: "The Best of Everything", author: "Rona Jaffe", status: "unread", currentPage: 1, totalPages: 300, fileType: "pdf", pdfUrl: "/books/Jaffe-Rona-The-Best-of-Everything.pdf", isExample: true, isDefault: true, createdAt: now },
-  { id: id(), title: "The Project Management Life Cycle", author: "Jason Westland", status: "unread", currentPage: 1, totalPages: 300, fileType: "pdf", pdfUrl: "/books/Jason-Westland-The-project-management-life-cycle_-a-complete-step-by-step-methodology-for-initiating-planning-executing-closing-a-project-s-2006-Kogan-Page-libgen.li_.pdf", isExample: true, isDefault: true, createdAt: now },
-  { id: id(), title: "The American Roommate Experiment", author: "Elena Armas", status: "unread", currentPage: 1, totalPages: 350, fileType: "pdf", pdfUrl: "/books/The-American-Roommate-Experiment-Spanish-Love-Deception-2-Elena-Armas-Z-Library.pdf", isExample: true, isDefault: true, createdAt: now },
-  { id: id(), title: "You're Not Enough (And That's Okay)", author: "Allie Beth Stuckey", status: "unread", currentPage: 1, totalPages: 250, fileType: "pdf", pdfUrl: "/books/Youre-Not-Enough-And-Thats-Okay-Allie-Beth-Stuckey-Z-Library (1).pdf", isExample: true, isDefault: true, createdAt: now },
-];
+export const exampleBooks: Book[] = [];
 
 export const exampleExpenses: Expense[] = [
   { id: id(), title: "Coffee", amount: 4.50, category: "food", date: now, isExample: true, createdAt: now },

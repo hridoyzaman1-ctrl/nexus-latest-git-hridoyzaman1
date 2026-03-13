@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { logError } from '@/lib/logger';
 import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
 import { Book, BookBookmark } from '@/types';
-import { exampleBooks } from '@/lib/examples';
 import { saveBookFile, getBookFile, deleteBookFile, type BookFileData } from '@/lib/bookStorage';
 import { ArrowLeft, Plus, X, Trash2, Upload, BookOpen, Sun, Moon, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Pencil, Check, FileText, Bookmark, BookmarkCheck, List, MessageSquare, ZoomIn, ZoomOut, Sparkles, StickyNote, Download, Headphones } from 'lucide-react';
 import MediaGenerationModal from '@/components/MediaGenerationModal';
@@ -813,7 +812,7 @@ function BookReader({ book, onBack, onUpdate }: { book: Book; onBack: () => void
 export default function Books() {
   const navigate = useNavigate();
   const [hasInit] = useLocalStorage('books_init', false);
-  const [books, setBooks] = useLocalStorage<Book[]>('books', hasInit ? [] : exampleBooks);
+  const [books, setBooks] = useLocalStorage<Book[]>('books', []);
   const [, setInit] = useLocalStorage('books_init', true);
   const [readingBookId, setReadingBookId] = useState<string | null>(null);
   const [mediaModalBookId, setMediaModalBookId] = useState<string | null>(null);
@@ -842,6 +841,13 @@ export default function Books() {
   }, []);
 
   if (!hasInit) setInit(true);
+
+  useEffect(() => {
+    if (localStorage.getItem('mindflow_books_cleaned_v1')) return;
+    setBooks(prev => prev.filter(b => !b.isDefault));
+    localStorage.removeItem('mindflow_deletedDefaultBooks');
+    localStorage.setItem('mindflow_books_cleaned_v1', '1');
+  }, []);
 
   const readingBook = books.find(b => b.id === readingBookId) || null;
 
@@ -1022,7 +1028,6 @@ export default function Books() {
                       {book.fileType.toUpperCase()}
                     </span>
                   )}
-                  {book.isExample && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground">Example</span>}
                 </div>
                 <p className="text-xs text-muted-foreground">{book.author}</p>
                 {book.totalPages > 0 && (
@@ -1053,12 +1058,6 @@ export default function Books() {
                   </button>
                 )}
                 <button onClick={() => {
-                  if (book.isDefault && book.pdfUrl) {
-                    const deleted = JSON.parse(localStorage.getItem('mindflow_deletedDefaultBooks') || '[]');
-                    if (!deleted.includes(book.pdfUrl)) {
-                      localStorage.setItem('mindflow_deletedDefaultBooks', JSON.stringify([...deleted, book.pdfUrl]));
-                    }
-                  }
                   deleteBookFile(book.id).catch(() => { });
                   setBooks(prev => prev.filter(b => b.id !== book.id));
                 }} className="text-muted-foreground hover:text-destructive transition-colors" title="Delete">
