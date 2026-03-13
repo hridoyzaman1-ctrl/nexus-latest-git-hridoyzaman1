@@ -15,7 +15,7 @@ import {
   type MediaMode, type SourceModule,
 } from '@/lib/contentMediaEngine';
 import { BGM_TRACKS } from '@/lib/bgmEngine';
-import { chatWithStudioAI } from '@/lib/longcat';
+import { chatWithMediaGenAI } from '@/lib/longcat';
 import {
   saveMediaItem, saveVideoBlob, getVideoBlob, getMediaItem,
   type GeneratedMediaItem, type VideoScene,
@@ -287,10 +287,10 @@ export default function MediaGenerationModal({
 
         if (isStudioModule) {
           const modePrompts: Record<MediaMode, string> = {
-            summary:  'Write a concise spoken summary (2-3 minutes when read aloud). Cover all main points in continuous natural prose — no bullet points, no heading or section labels.',
-            explainer:'Write a clear spoken explainer (4-5 minutes when read aloud). Walk through key concepts in continuous natural prose — no section labels, no numbered steps.',
-            podcast:  'Write an engaging conversational monologue (6-8 minutes when read aloud). Sound natural and enthusiastic — no topic headers, just flowing conversation.',
-            video:    'Write flowing spoken narration (3-4 minutes when read aloud). Flow naturally through the main ideas — no section labels, no spoken headings, just continuous prose.',
+            summary:  'Write a concise spoken summary of 300–400 words. Cover all main points in continuous natural prose — no bullet points, no heading or section labels.',
+            explainer:'Write a clear spoken explainer of 500–650 words. Walk through key concepts in continuous natural prose — no section labels, no numbered steps.',
+            podcast:  'Write an engaging conversational monologue of 700–850 words. Sound natural and enthusiastic — no topic headers, just flowing conversation.',
+            video:    'Write flowing spoken narration of 400–500 words. Flow naturally through the main ideas — no section labels, no spoken headings, just continuous prose.',
           };
           const langInstruction = language === 'bn'
             ? '\nIMPORTANT: Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.'
@@ -313,13 +313,13 @@ CONTENT TO PROCESS:
 ${truncated}`;
 
           const maxTokensByMode: Record<MediaMode, number> = {
-            summary: 2500, explainer: 4000, podcast: 4500, video: 3000,
+            summary: 900, explainer: 1400, podcast: 1800, video: 1100,
           };
 
           try {
             setProgress(45);
             setProgressLabel('AI is reading and scripting your content…');
-            const aiRaw = await chatWithStudioAI(
+            const aiRaw = await chatWithMediaGenAI(
               [{ role: 'user', content: prompt }],
               { maxTokens: maxTokensByMode[mode] }
             );

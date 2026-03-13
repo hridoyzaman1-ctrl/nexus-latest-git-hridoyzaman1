@@ -11,7 +11,7 @@ import {
   BookOpen, Play, Headphones, Film, Video, Mic, Music2
 } from 'lucide-react';
 import MediaGenerationModal from '@/components/MediaGenerationModal';
-import { chatWithStudioAI } from '@/lib/longcat';
+import { chatWithPresentationAI } from '@/lib/longcat';
 import { sanitiseAIScript, buildVideoScenes, recordVideoWithUserAudio, isVideoSupported } from '@/lib/contentMediaEngine';
 import { preloadSlideImages, renderPresentationSlideToCanvas } from '@/lib/presentationVideoEngine';
 import { BGM_TRACKS } from '@/lib/bgmEngine';
@@ -600,7 +600,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     const langNote = presVideoLanguage === 'bn' ? ' Write entirely in Bengali (বাংলা) script.' : '';
     const prompt = `You are a professional scriptwriter.\n\nPresentation title: "${pres.settings.title}"\nPurpose: ${pres.settings.purpose}\nSlides:\n\n${text}\n\n${modeInstructions[presVideoMode]}${langNote}\n\nWrite only the narration script. No stage directions, no slide numbers, no meta-commentary. Start immediately with the spoken content.\n\nCRITICAL: Your script MUST end with a complete, properly punctuated sentence. The very last character must be a period, exclamation mark, question mark, or (if writing in Bangla) a danda (।). Never cut off mid-sentence, mid-word, or mid-thought. If you are running short on space, add one final concluding sentence and stop.`;
     try {
-      const raw = await chatWithStudioAI([{ role: 'user', content: prompt }], { maxTokens: 3000 });
+      const raw = await chatWithPresentationAI([{ role: 'user', content: prompt }], { maxTokens: 1500 });
       setPresAiScript(sanitiseAIScript(raw));
     } catch {
       setPresScriptError('AI generation failed. You can still generate video directly.');

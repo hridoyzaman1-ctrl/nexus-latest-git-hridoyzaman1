@@ -128,14 +128,14 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
 - Do NOT use markdown, asterisks, bullets, numbered lists, hyphens as list markers, or any formatting characters.
 - Do NOT include stage directions, music cues, or parenthetical notes ([music], [pause], (upbeat tone), etc.).
 - The very first word must be substantive spoken content — a fact or sentence from the topic itself.
-- Conversational, engaging tone. Aim for 400–600 words.
+- Conversational, engaging tone. Aim for 250–350 words — complete within this range, do not exceed it.
 - CRITICAL: Your output MUST end with a complete, properly punctuated sentence. The very last character must be a period, exclamation mark, question mark, or (if writing in Bangla) a danda (।). Never cut off mid-sentence or mid-word.${language === 'bn' ? '\n- Write ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script. Do not use any English words.' : ''}`,
         },
         {
           role: 'user',
           content: `Write a narration about: ${desc}`,
         },
-      ], { maxTokens: 2000, temperature: 0.7 });
+      ], { maxTokens: 800, temperature: 0.7 });
       const script = sanitiseAIScript(raw);
       const title = desc.length > 55 ? desc.slice(0, 55) + '…' : desc;
       setSource({ id: `as-${Date.now()}`, name: title, type: 'describe', text: script, wordCount: countWords(script) });
@@ -161,9 +161,9 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
     setAiScript(null);
     setScriptError(null);
     const modeInstructions: Record<string, string> = {
-      summary:  'Write a concise spoken summary (2-3 minutes when read aloud). Cover all main points in continuous natural prose — no bullet points, no heading labels.',
-      explainer:'Write a clear spoken explainer (4-5 minutes when read aloud). Walk through key concepts in continuous natural prose — no section labels or numbered steps.',
-      podcast:  'Write an engaging conversational monologue (6-8 minutes when read aloud). Sound natural and enthusiastic — no topic headers, just flowing conversation.',
+      summary:  'Write a concise spoken summary of 350–450 words. Cover all main points in continuous natural prose — no bullet points, no heading labels.',
+      explainer:'Write a clear spoken explainer of 550–700 words. Walk through key concepts in continuous natural prose — no section labels or numbered steps.',
+      podcast:  'Write an engaging conversational monologue of 700–850 words. Sound natural and enthusiastic — no topic headers, just flowing conversation.',
     };
     const langNote = language === 'bn' ? '\nWrite ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.' : '';
     try {
@@ -185,7 +185,7 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
 - ${modeInstructions[selectedMode]}${langNote}`,
         },
         { role: 'user', content: `CONTENT:\n${source.text.slice(0, 6000)}` },
-      ], { maxTokens: 3500, temperature: 0.7 });
+      ], { maxTokens: 1500, temperature: 0.7 });
       setAiScript(sanitiseAIScript(raw));
     } catch {
       setScriptError('AI script generation failed. You can still generate audio directly below.');

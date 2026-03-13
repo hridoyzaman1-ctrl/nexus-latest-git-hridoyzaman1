@@ -590,7 +590,7 @@ export default function Analytics() {
         { role: 'system', content: ANALYTICS_SYSTEM_PROMPT },
         { role: 'user', content: dataSummary },
       ];
-      const report = await chatWithLongCat(messages, { maxTokens: 2500, temperature: 0.6 });
+      const report = await chatWithLongCat(messages, { maxTokens: 1800, temperature: 0.6 });
       setAiReport(report);
     } catch {
       setAiReport('Unable to generate report right now. Please try again.');

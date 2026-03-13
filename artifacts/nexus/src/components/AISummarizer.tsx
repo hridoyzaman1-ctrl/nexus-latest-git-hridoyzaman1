@@ -114,7 +114,7 @@ export default function AISummarizer({ documentId, documentName, getPageText, to
         { role: 'user', content: `Document: "${documentName}"\nPages ${start}-${end}:\n\n${text.slice(0, 8000)}` },
       ];
 
-      const response = await chatWithLongCat(messages, { maxTokens: 2500, temperature: 0.4 });
+      const response = await chatWithLongCat(messages, { maxTokens: 1200, temperature: 0.4 });
       setResult(response);
     } catch { toast.error('AI generation failed. Please try again.'); }
     setLoading(false);

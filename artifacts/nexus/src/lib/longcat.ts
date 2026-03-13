@@ -1,8 +1,15 @@
 // LongCat AI API client (OpenAI-compatible)
-// Supports multiple comma-separated API keys per role.
-// Keys are tried in round-robin order; if one is exhausted (401/429) the
-// next key in the pool is tried automatically, so generation continues even
-// when one key's quota runs out.
+//
+// KEY POOLS — each feature group has its own primary + fallback key pool.
+// Multiple comma-separated keys are supported per variable.
+// If the active key hits its quota (401/429) the next key is tried automatically.
+//
+// VITE_LONGCAT_API_KEY   → General AI: Book Summaries, Analytics, Study Quiz, Wellness
+// VITE_KIRA_API_KEY      → Kira chat assistant
+// VITE_STUDIO_API_KEY    → Audio Studio + Video Studio narration/scripts (primary)
+// VITE_AV_STUDIO_API_KEY → Audio Studio + Video Studio fallback key
+// VITE_MEDIA_GEN_API_KEY → Media Generation (Summary/Explainer/Podcast/Video modal) fallback
+// VITE_PRESENTATION_API_KEY → Presentation video script generation fallback
 
 const LONGCAT_API_URL = 'https://api.longcat.chat/openai/v1/chat/completions';
 const MODEL = 'LongCat-Flash-Chat';
@@ -13,31 +20,41 @@ function parseKeyPool(raw: string): string[] {
   return raw.split(',').map(k => k.trim()).filter(Boolean);
 }
 
-const LONGCAT_KEYS  = parseKeyPool(import.meta.env.VITE_LONGCAT_API_KEY  || '');
-const KIRA_KEYS     = parseKeyPool(import.meta.env.VITE_KIRA_API_KEY     || '');
-const STUDIO_KEYS   = parseKeyPool(import.meta.env.VITE_STUDIO_API_KEY   || '');
+// Primary pools
+const LONGCAT_KEYS      = parseKeyPool(import.meta.env.VITE_LONGCAT_API_KEY      || '');
+const KIRA_KEYS         = parseKeyPool(import.meta.env.VITE_KIRA_API_KEY         || '');
+const STUDIO_KEYS       = parseKeyPool(import.meta.env.VITE_STUDIO_API_KEY       || '');
 
-// Per-pool round-robin cursors (survive across calls within a page session)
+// Feature-specific fallback keys (merged into each pool below)
+const AV_STUDIO_KEYS    = parseKeyPool(import.meta.env.VITE_AV_STUDIO_API_KEY    || '');
+const MEDIA_GEN_KEYS    = parseKeyPool(import.meta.env.VITE_MEDIA_GEN_API_KEY    || '');
+const PRESENTATION_KEYS = parseKeyPool(import.meta.env.VITE_PRESENTATION_API_KEY || '');
+
+// Combined pools: primary STUDIO_KEYS first, then feature-specific backup
+const AV_POOL           = [...STUDIO_KEYS, ...AV_STUDIO_KEYS];
+const MEDIA_GEN_POOL    = [...STUDIO_KEYS, ...MEDIA_GEN_KEYS];
+const PRESENTATION_POOL = [...STUDIO_KEYS, ...PRESENTATION_KEYS];
+
+// Per-pool round-robin cursors (persist across calls within a page session)
 const poolIndex: Record<string, number> = {
-  longcat: 0,
-  kira:    0,
-  studio:  0,
+  longcat:      0,
+  kira:         0,
+  av:           0,
+  mediaGen:     0,
+  presentation: 0,
 };
 
-// Whether a status code means "this key is exhausted / rate-limited" and we
-// should immediately try the next key rather than waiting to retry.
+// Whether a status code means "this key is exhausted / rate-limited"
 function isKeyExhausted(status: number): boolean {
   return status === 401 || status === 403 || status === 429;
 }
 
 /**
- * Core fetch wrapper with multi-key rotation.
- *
- * For each call it starts at the current round-robin cursor and tries every
- * key in the pool once.  On success it advances the cursor so the next call
- * starts on the following key (even load distribution).  On a "key exhausted"
- * response it immediately moves to the next key without waiting.  Server
- * errors (5xx) get a short back-off before the next attempt.
+ * Core fetch with multi-key rotation.
+ * Starts at the current round-robin cursor and tries every key in the pool.
+ * On success: advances the cursor (even load distribution).
+ * On 401/403/429: skips immediately to the next key.
+ * On 5xx / timeout: one back-off retry before moving on.
  */
 async function callWithKeyPool(
   poolName: string,
@@ -47,7 +64,7 @@ async function callWithKeyPool(
   fallbackMsg: string,
 ): Promise<string> {
   if (keys.length === 0) {
-    throw new Error(`No API keys configured for "${poolName}". Please add keys to the environment.`);
+    throw new Error(`No API keys configured for "${poolName}".`);
   }
 
   const startIdx = poolIndex[poolName] ?? 0;
@@ -57,7 +74,6 @@ async function callWithKeyPool(
     const keyIdx = (startIdx + ki) % keys.length;
     const apiKey = keys[keyIdx];
 
-    // Each key gets up to 2 retries for transient network issues
     for (let attempt = 0; attempt <= 1; attempt++) {
       try {
         const controller = new AbortController();
@@ -75,7 +91,6 @@ async function callWithKeyPool(
         clearTimeout(tid);
 
         if (res.ok) {
-          // Success — advance the cursor so the next call uses the following key
           poolIndex[poolName] = (keyIdx + 1) % keys.length;
           const data = await res.json();
           return data.choices?.[0]?.message?.content?.trim() ?? fallbackMsg;
@@ -84,40 +99,26 @@ async function callWithKeyPool(
         const errText = await res.text().catch(() => 'unknown error');
 
         if (isKeyExhausted(res.status)) {
-          // This key's quota is gone — skip straight to the next key
           lastError = new Error(`Key ${ki + 1}/${keys.length} exhausted (${res.status}), trying next…`);
-          break; // break inner retry loop, outer loop tries next key
+          break;
         }
-
         if (res.status >= 500) {
-          // Server error — short back-off then retry the same key once
-          if (attempt === 0) {
-            await new Promise(r => setTimeout(r, 600));
-            continue;
-          }
+          if (attempt === 0) { await new Promise(r => setTimeout(r, 600)); continue; }
           lastError = new Error(`${poolName} API error ${res.status}: ${errText}`);
           break;
         }
-
-        // Unrecoverable client error (400, 422, etc.)
         throw new Error(`${poolName} API error ${res.status}: ${errText}`);
 
       } catch (err) {
         const e = err as Error;
         if (e.name === 'AbortError' || e instanceof DOMException) {
-          // Timeout — retry once on the same key, then move to the next
-          if (attempt === 0) {
-            await new Promise(r => setTimeout(r, 400));
-            continue;
-          }
+          if (attempt === 0) { await new Promise(r => setTimeout(r, 400)); continue; }
           lastError = new Error(`${poolName} key ${ki + 1} timed out, trying next…`);
           break;
         }
-        // Re-throw unrecoverable errors (bad request, no keys configured, etc.)
         throw err;
       }
     }
-    // Move to next key
   }
 
   throw lastError;
@@ -130,64 +131,74 @@ export interface LongCatMessage {
   content: string;
 }
 
+/** General AI — Book summaries, Analytics, Study Quiz, Wellness */
 export async function chatWithLongCat(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
-  return callWithKeyPool(
-    'longcat',
-    LONGCAT_KEYS,
-    {
-      model:       MODEL,
-      messages,
-      max_tokens:  options?.maxTokens  ?? 300,
-      temperature: options?.temperature ?? 0.7,
-    },
-    15000,
-    "I couldn't generate a response right now. Please try again.",
-  );
+  return callWithKeyPool('longcat', LONGCAT_KEYS, {
+    model: MODEL, messages,
+    max_tokens:  options?.maxTokens  ?? 300,
+    temperature: options?.temperature ?? 0.7,
+  }, 15000, "I couldn't generate a response right now. Please try again.");
 }
 
+/** Kira chat assistant */
 export async function chatWithKira(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
-  return callWithKeyPool(
-    'kira',
-    KIRA_KEYS,
-    {
-      model:       MODEL,
-      messages,
-      max_tokens:  options?.maxTokens  ?? 300,
-      temperature: options?.temperature ?? 0.7,
-    },
-    15000,
-    "I couldn't generate a response right now. Please try again.",
-  );
+  return callWithKeyPool('kira', KIRA_KEYS, {
+    model: MODEL, messages,
+    max_tokens:  options?.maxTokens  ?? 300,
+    temperature: options?.temperature ?? 0.7,
+  }, 15000, "I couldn't generate a response right now. Please try again.");
 }
 
+/** Audio Studio + Video Studio narration and script generation.
+ *  Primary pool: VITE_STUDIO_API_KEY  •  Fallback: VITE_AV_STUDIO_API_KEY */
 export async function chatWithStudioAI(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
-  if (STUDIO_KEYS.length === 0) {
-    throw new Error('Studio API key not configured. Please set VITE_STUDIO_API_KEY.');
-  }
-  return callWithKeyPool(
-    'studio',
-    STUDIO_KEYS,
-    {
-      model:       MODEL,
-      messages,
-      max_tokens:  options?.maxTokens  ?? 1200,
-      temperature: options?.temperature ?? 0.72,
-    },
-    30000,
-    '',
-  );
+  if (AV_POOL.length === 0) throw new Error('No Studio API keys configured.');
+  return callWithKeyPool('av', AV_POOL, {
+    model: MODEL, messages,
+    max_tokens:  options?.maxTokens  ?? 1200,
+    temperature: options?.temperature ?? 0.72,
+  }, 30000, '');
 }
 
-// Kira system prompt
+/** Media Generation modal (Summary / Explainer / Podcast / Video modes).
+ *  Primary pool: VITE_STUDIO_API_KEY  •  Fallback: VITE_MEDIA_GEN_API_KEY */
+export async function chatWithMediaGenAI(
+  messages: LongCatMessage[],
+  options?: { maxTokens?: number; temperature?: number }
+): Promise<string> {
+  if (MEDIA_GEN_POOL.length === 0) throw new Error('No Media Gen API keys configured.');
+  return callWithKeyPool('mediaGen', MEDIA_GEN_POOL, {
+    model: MODEL, messages,
+    max_tokens:  options?.maxTokens  ?? 1200,
+    temperature: options?.temperature ?? 0.72,
+  }, 30000, '');
+}
+
+/** Presentation video script generation.
+ *  Primary pool: VITE_STUDIO_API_KEY  •  Fallback: VITE_PRESENTATION_API_KEY */
+export async function chatWithPresentationAI(
+  messages: LongCatMessage[],
+  options?: { maxTokens?: number; temperature?: number }
+): Promise<string> {
+  if (PRESENTATION_POOL.length === 0) throw new Error('No Presentation API keys configured.');
+  return callWithKeyPool('presentation', PRESENTATION_POOL, {
+    model: MODEL, messages,
+    max_tokens:  options?.maxTokens  ?? 1200,
+    temperature: options?.temperature ?? 0.72,
+  }, 30000, '');
+}
+
+// ── System prompts ─────────────────────────────────────────────────────────────
+
 export const KIRA_SYSTEM_PROMPT = `You are Kira — an AI friend inside the MindFlow app. You're NOT a therapist, NOT a motivational poster, NOT a customer service bot. You're the friend everyone deserves: real, warm, funny when it fits, and solid when things get heavy.
 
 ## Who You Are
@@ -230,7 +241,6 @@ export const KIRA_SYSTEM_PROMPT = `You are Kira — an AI friend inside the Mind
 - Help with focus/habits/goals when asked, but weave it in naturally
 - Don't turn every conversation into a wellness lecture`;
 
-// Analytics report system prompt
 export const ANALYTICS_SYSTEM_PROMPT = `You are Kira, analyzing the user's MindFlow data. Write a report that feels like a friend reviewing their week — honest, constructive, and specific to THEIR numbers. No generic fluff.
 
 Structure:
