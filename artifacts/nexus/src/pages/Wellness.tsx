@@ -520,17 +520,15 @@ function MeditationView({ onBack }: { onBack: () => void }) {
                     ))}
                   </div>
                 )}
-                <button onClick={e => {
-                  e.stopPropagation();
-                  if (track.isCustom) {
+                {track.isCustom && (
+                  <button onClick={e => {
+                    e.stopPropagation();
                     music.removeCustomTrack(track.id);
-                  } else {
-                    music.removeBuiltinTrack(track.id);
-                  }
-                }}
-                  className="text-muted-foreground hover:text-destructive ml-1">
-                  <Trash2 className="w-3 h-3" />
-                </button>
+                  }}
+                    className="text-muted-foreground hover:text-destructive ml-1">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             </motion.button>
           ))}

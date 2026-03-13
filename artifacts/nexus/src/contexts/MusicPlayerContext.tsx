@@ -21,18 +21,7 @@ export const DEFAULT_AUDIO_PREFS: AudioPreferences = {
   autoplay: false,
 };
 
-// Real audio files (CC0 licensed from BigSoundBank & rse/soundfx)
-export const BUILTIN_TRACKS: MusicTrack[] = [
-  { id: 'stronger', name: '💪 Stronger Every Day', url: '/audio/Stronger%20Every%20Day_%20Transform%20Pain%20Into%20Power.mp3', isCustom: false },
-  { id: 'believer', name: '🔥 Believer', url: '/audio/Imagine%20Dragons%20-%20Believer.mp3', isCustom: false },
-  { id: 'yoga', name: '🧘‍♀️ Yoga', url: '/audio/Yoga.mp3', isCustom: false },
-  { id: 'chill', name: '🍃 Chill', url: '/audio/Chill.mp3', isCustom: false },
-  { id: 'flute', name: '🎐 Flute', url: '/audio/Flute.mp3', isCustom: false },
-  { id: 'piano', name: '🎹 Peaceful Piano', url: '/audio/Peaceful%20Piano.mp3', isCustom: false },
-  { id: 'melody', name: '🎶 Melody', url: '/audio/Melody.mp3', isCustom: false },
-  { id: 'cafe', name: '☕ Cafe', url: '/audio/Cafe.mp3', isCustom: false },
-  { id: 'quietphase', name: '✨ Quietphase Meditation', url: '/audio/Quietphase%20Meditation.mp3', isCustom: false },
-];
+export const BUILTIN_TRACKS: MusicTrack[] = [];
 
 interface MusicPlayerState {
   isPlaying: boolean;
@@ -53,7 +42,6 @@ interface MusicPlayerContextType extends MusicPlayerState {
   playPrevious: () => void;
   addCustomTrack: (file: File) => void;
   removeCustomTrack: (id: string) => void;
-  removeBuiltinTrack: (id: string) => void;
   toggleGlassmorphism: () => void;
   closeMiniPlayer: () => void;
   getAnalyserNode: () => AnalyserNode | null;
@@ -69,7 +57,6 @@ export function useMusicPlayer() {
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
   const [customTracks, setCustomTracks] = useLocalStorage<Array<{ id: string; name: string }>>('customMusicTracks', []);
-  const [deletedBuiltinTracks, setDeletedBuiltinTracks] = useLocalStorage<string[]>('deletedBuiltinTracks', []);
   const audioPrefs = getLocalStorage<AudioPreferences>('audioPreferences', DEFAULT_AUDIO_PREFS);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(null);
@@ -269,13 +256,8 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     if (currentTrack?.id === id) stop();
   }, [setCustomTracks, currentTrack, stop]);
 
-  const removeBuiltinTrack = useCallback((id: string) => {
-    setDeletedBuiltinTracks(prev => [...prev, id]);
-    if (currentTrack?.id === id) stop();
-  }, [setDeletedBuiltinTracks, currentTrack, stop]);
-
   const allTracks: MusicTrack[] = [
-    ...BUILTIN_TRACKS.filter(t => !deletedBuiltinTracks.includes(t.id)),
+    ...BUILTIN_TRACKS,
     ...customTracks.map(t => ({
       id: t.id,
       name: `🎵 ${t.name}`,
@@ -318,10 +300,14 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     if (prev) play(prev);
   }, [currentTrack, allTracks, play]);
 
+  useEffect(() => {
+    localStorage.removeItem('deletedBuiltinTracks');
+  }, []);
+
   return (
     <MusicPlayerContext.Provider value={{
       isPlaying, currentTrack, volume, tracks: allTracks, showMiniPlayer, glassmorphism,
-      play, pause, resume, stop, setVolume, playNext, playPrevious, addCustomTrack, removeCustomTrack, removeBuiltinTrack,
+      play, pause, resume, stop, setVolume, playNext, playPrevious, addCustomTrack, removeCustomTrack,
       toggleGlassmorphism: () => setGlassmorphism(g => !g),
       closeMiniPlayer: () => { stop(); setShowMiniPlayer(false); },
       getAnalyserNode: () => analyserRef.current,
