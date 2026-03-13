@@ -145,6 +145,7 @@ export const pageTooltipConfigs: Record<string, TooltipStep[]> = {
     { target: '[data-tour="generator-themes"]', title: 'Themes 🎭', description: 'Choose from multiple professional themes to style your presentation. Preview changes in real-time.', placement: 'bottom' },
     { target: '[data-tour="generator-export"]', title: 'Export PPTX 📥', description: 'Download your finished presentation as a PowerPoint file ready to present anywhere.', placement: 'bottom' },
     { target: '[data-tour="generator-notes"]', title: 'Speaker Notes 🗒️', description: 'Each slide includes AI-generated speaker notes to help guide your delivery during the actual presentation.', placement: 'bottom' },
+    { target: '[data-tour="generator-create-video"]', title: 'Create Video from Presentation 🎬', description: 'Tap the purple film icon on any presentation to open the Video Studio creator. Pick a mode (Video, Summary, Explainer, Podcast), choose English or বাংলা, preview the AI script, then generate a full animated video with smooth slide transitions — saved directly to Video Studio!', placement: 'left' },
   ],
   nutrition: [
     { target: '[data-tour="nutrition-header"]', title: 'Nutrition Planner 🍽️', description: 'Track your meals, plan diets, browse recipes, and generate nutrition reports — all in one place.', placement: 'bottom' },

@@ -765,7 +765,7 @@ export interface VideoRecordResult {
   durationSecs: number;
 }
 
-/** Record canvas scenes as a WebM/MP4 video. Returns blob or throws. */
+/** Record canvas scenes as a WebM/MP4 video with smooth transitions. Returns blob or throws. */
 export async function recordVideoScenes(
   canvas: HTMLCanvasElement,
   scenes: VideoScene[],
@@ -788,22 +788,72 @@ export async function recordVideoScenes(
   const startTime = Date.now();
   let totalDuration = 0;
 
+  // Transition constants: 200ms fade-out + 200ms fade-in = 400ms total per cut
+  const HALF_TRANS_MS = 200;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  /** Overlay a black rectangle at the given alpha (0 = invisible, 1 = fully black) */
+  const overlayBlack = (alpha: number) => {
+    if (!ctx) return;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  };
+
   for (let i = 0; i < scenes.length; i++) {
     if (cancelSignal.cancelled) break;
     const scene = scenes[i];
     onProgress(i, scenes.length);
     const sceneDurMs = scene.duration * 1000;
-    const sceneStart = Date.now();
     totalDuration += scene.duration;
 
-    while (Date.now() - sceneStart < sceneDurMs) {
-      if (cancelSignal.cancelled) break;
+    // ── Fade in from black (skip for first scene) ──────────────────────────
+    if (i > 0) {
+      const t0 = Date.now();
+      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+        const t = (Date.now() - t0) / HALF_TRANS_MS; // 0 → 1
+        renderSceneToCanvas(canvas, scene, 0);
+        overlayBlack(1 - t); // fully black → fully transparent (scene reveals)
+        await new Promise(r => setTimeout(r, 40));
+      }
+      // Guarantee clean visible frame
+      renderSceneToCanvas(canvas, scene, 0);
+    }
+
+    // ── Main scene content ─────────────────────────────────────────────────
+    // Reserve last HALF_TRANS_MS for the fade-out (except on the last scene)
+    const hasOut = i < scenes.length - 1;
+    const mainDurMs = hasOut ? Math.max(sceneDurMs - HALF_TRANS_MS, 0) : sceneDurMs;
+    const sceneStart = Date.now();
+    while (!cancelSignal.cancelled && Date.now() - sceneStart < mainDurMs) {
       const elapsed = Date.now() - sceneStart;
       const progress = elapsed / sceneDurMs;
       renderSceneToCanvas(canvas, scene, progress);
-      await new Promise(r => setTimeout(r, 40)); // ~25fps
+      await new Promise(r => setTimeout(r, 40));
     }
-    renderSceneToCanvas(canvas, scene, 1);
+
+    // ── Fade out to black (skip for last scene) ────────────────────────────
+    if (hasOut && !cancelSignal.cancelled) {
+      const t0 = Date.now();
+      while (!cancelSignal.cancelled && Date.now() - t0 < HALF_TRANS_MS) {
+        const t = (Date.now() - t0) / HALF_TRANS_MS; // 0 → 1
+        renderSceneToCanvas(canvas, scene, 1);
+        overlayBlack(t); // transparent → fully black
+        await new Promise(r => setTimeout(r, 40));
+      }
+      // Hold one fully-black frame at the cut point
+      if (ctx) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, W, H);
+      }
+      await new Promise(r => setTimeout(r, 40));
+    } else {
+      renderSceneToCanvas(canvas, scene, 1);
+    }
   }
 
   return new Promise((resolve, reject) => {

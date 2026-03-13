@@ -8,9 +8,11 @@ import {
   CheckCircle2, Loader2, Presentation, ImagePlus, X, Move, Maximize2,
   MessageSquare, BarChart3, Clock, RefreshCw,
   ChevronDown, ChevronUp, AlertTriangle, Type, Bold, Italic, AlignLeft, AlignCenter, AlignRight,
-  BookOpen, Play, Headphones
+  BookOpen, Play, Headphones, Film, Video, Mic
 } from 'lucide-react';
 import MediaGenerationModal from '@/components/MediaGenerationModal';
+import { chatWithStudioAI } from '@/lib/longcat';
+import { sanitiseAIScript } from '@/lib/contentMediaEngine';
 import { Button } from '@/components/ui/button';
 import PresentationViewer from '@/components/PresentationViewer';
 import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
@@ -191,6 +193,14 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [presenterScale, setPresenterScale] = useState(1);
   const [studyPlannerTargetId, setStudyPlannerTargetId] = useState<string | null>(null);
   const [mediaModalPresId, setMediaModalPresId] = useState<string | null>(null);
+  const [videoPresId, setVideoPresId] = useState<string | null>(null);
+  const [presVideoMode, setPresVideoMode] = useState<'video' | 'summary' | 'explainer' | 'podcast'>('video');
+  const [presAiScript, setPresAiScript] = useState<string | null>(null);
+  const [presGeneratingScript, setPresGeneratingScript] = useState(false);
+  const [presScriptError, setPresScriptError] = useState<string | null>(null);
+  const [presVideoModalOpen, setPresVideoModalOpen] = useState(false);
+  const [presVideoPreScript, setPresVideoPreScript] = useState<string | undefined>(undefined);
+  const [presVideoLanguage, setPresVideoLanguage] = useState<'en' | 'bn'>('en');
   const { toast } = useToast();
 
   const getStudySessions = (): StudySession[] => {
@@ -366,6 +376,65 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       refreshList();
       toast({ title: 'Duplicated', description: 'A copy has been created.' });
     }
+  };
+
+  const extractPresText = (pres: PresentationType): string => {
+    return pres.slides.map(s => {
+      const parts: string[] = [];
+      if (s.title) parts.push(s.title);
+      if (s.subtitle) parts.push(s.subtitle);
+      if (s.body) parts.push(s.body);
+      if (s.bullets?.length) parts.push(s.bullets.join(' '));
+      if (s.statement) parts.push(s.statement);
+      if (s.leftColumn?.length) parts.push(s.leftColumn.join(' '));
+      if (s.rightColumn?.length) parts.push(s.rightColumn.join(' '));
+      if (s.agendaItems?.length) parts.push(s.agendaItems.join(' '));
+      if (s.summaryPoints?.length) parts.push(s.summaryPoints.join(' '));
+      if (s.speakerNotes) parts.push(s.speakerNotes);
+      return parts.filter(Boolean).join('\n');
+    }).filter(Boolean).join('\n\n');
+  };
+
+  const openVideoCreator = (pres: PresentationType) => {
+    setVideoPresId(pres.id);
+    setPresVideoMode('video');
+    setPresAiScript(null);
+    setPresScriptError(null);
+    setPresVideoPreScript(undefined);
+    setPresVideoModalOpen(false);
+    setPresVideoLanguage('en');
+  };
+
+  const handlePresGenerateAIScript = async () => {
+    const pres = presentations.find(p => p.id === videoPresId);
+    if (!pres) return;
+    setPresGeneratingScript(true);
+    setPresAiScript(null);
+    setPresScriptError(null);
+    const text = extractPresText(pres);
+    const modeInstructions: Record<string, string> = {
+      video: `Write flowing spoken narration for a visual presentation video (3-4 minutes when read aloud). Cover each slide topic naturally.`,
+      summary: `Write a concise spoken summary (2-3 minutes). Hit the key points clearly and efficiently.`,
+      explainer: `Write a structured spoken explainer (4-5 minutes). Walk through concepts step-by-step for clarity.`,
+      podcast: `Write an engaging conversational podcast episode (6-8 minutes). Sound natural and add context.`,
+    };
+    const langNote = presVideoLanguage === 'bn' ? ' Write entirely in Bengali (বাংলা) script.' : '';
+    const prompt = `You are a professional scriptwriter.\n\nPresentation title: "${pres.settings.title}"\nPurpose: ${pres.settings.purpose}\nSlides:\n\n${text}\n\n${modeInstructions[presVideoMode]}${langNote}\n\nWrite only the narration script. No stage directions, no slide numbers, no meta-commentary. Start immediately with the spoken content.`;
+    try {
+      const raw = await chatWithStudioAI([{ role: 'user', content: prompt }]);
+      setPresAiScript(sanitiseAIScript(raw));
+    } catch {
+      setPresScriptError('AI generation failed. You can still generate video directly.');
+    } finally {
+      setPresGeneratingScript(false);
+    }
+  };
+
+  const handlePresLaunchGeneration = (useScript?: boolean) => {
+    const pres = presentations.find(p => p.id === videoPresId);
+    if (!pres) return;
+    setPresVideoPreScript(useScript && presAiScript ? presAiScript : undefined);
+    setPresVideoModalOpen(true);
   };
 
   const handleSaveEdits = () => {
@@ -947,8 +1016,13 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                         <BookOpen className="w-3.5 h-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" className="rounded-lg text-xs h-8 w-8 p-0 flex-shrink-0"
-                        onClick={() => setMediaModalPresId(pres.id)} title="Generate Audio / Video">
+                        onClick={() => setMediaModalPresId(pres.id)} title="Generate Audio">
                         <Headphones className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="rounded-lg text-xs h-8 w-8 p-0 flex-shrink-0 text-violet-400 hover:text-violet-300"
+                        onClick={() => openVideoCreator(pres)} title="Create Video in Video Studio"
+                        data-tour="generator-create-video">
+                        <Film className="w-3.5 h-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" className="rounded-lg text-xs h-8 w-8 p-0 flex-shrink-0" data-testid={`button-duplicate-${pres.id}`}
                         onClick={() => handleDuplicate(pres.id)}>
@@ -1479,6 +1553,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
           </Button>
           <Button size="sm" variant="secondary" className="rounded-lg text-[11px] h-7 flex-shrink-0" onClick={() => handleAddToStudyPlanner(editingPresentation.id)} data-testid="button-add-to-study-editor">
             <BookOpen className="w-3 h-3 mr-1" /> Study
+          </Button>
+          <Button size="sm" variant="secondary" className="rounded-lg text-[11px] h-7 flex-shrink-0 bg-violet-500/20 text-violet-300 hover:bg-violet-500/30"
+            onClick={() => openVideoCreator(editingPresentation)} data-testid="button-create-video-editor">
+            <Film className="w-3 h-3 mr-1" /> Video
           </Button>
         </div>
 
@@ -2200,6 +2278,144 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     );
   };
 
+  const renderVideoCreator = () => {
+    const pres = videoPresId ? presentations.find(p => p.id === videoPresId) : null;
+    if (!pres) return null;
+    const slideText = extractPresText(pres);
+    const wordCount = slideText.trim().split(/\s+/).length;
+    const modes: { id: 'video' | 'summary' | 'explainer' | 'podcast'; label: string; icon: React.ReactNode; desc: string }[] = [
+      { id: 'video', label: 'Video', icon: <Video className="w-3.5 h-3.5" />, desc: 'Visual narration' },
+      { id: 'summary', label: 'Summary', icon: <Sparkles className="w-3.5 h-3.5" />, desc: 'Key points only' },
+      { id: 'explainer', label: 'Explainer', icon: <MessageSquare className="w-3.5 h-3.5" />, desc: 'Step-by-step' },
+      { id: 'podcast', label: 'Podcast', icon: <Mic className="w-3.5 h-3.5" />, desc: 'Conversational' },
+    ];
+    const closeFn = () => { setVideoPresId(null); setPresAiScript(null); setPresScriptError(null); setPresVideoModalOpen(false); };
+    return (
+      <>
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={closeFn}>
+          <motion.div
+            initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
+            className="glass-strong rounded-t-3xl w-full max-w-lg max-h-[88vh] overflow-y-auto pb-8"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-violet-500/20 flex items-center justify-center">
+                  <Film className="w-4 h-4 text-violet-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-sm">Create Video</h2>
+                  <p className="text-[10px] text-muted-foreground">Video Studio</p>
+                </div>
+              </div>
+              <button onClick={closeFn} className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 space-y-4">
+              <div className="glass rounded-xl p-3">
+                <div className="flex items-start gap-2">
+                  <Presentation className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold truncate">{pres.settings.title}</p>
+                    <p className="text-[10px] text-muted-foreground">{pres.slides.length} slides &middot; ~{wordCount} words</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Language</p>
+                <div className="flex gap-2">
+                  {[{ id: 'en', label: 'English' }, { id: 'bn', label: 'বাংলা' }].map(lang => (
+                    <button key={lang.id} onClick={() => setPresVideoLanguage(lang.id as 'en' | 'bn')}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all border ${presVideoLanguage === lang.id ? 'bg-primary text-primary-foreground border-primary' : 'border-white/10 text-muted-foreground hover:border-white/20'}`}>
+                      {lang.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Video Mode</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {modes.map(m => (
+                    <button key={m.id} onClick={() => { setPresVideoMode(m.id); setPresAiScript(null); setPresScriptError(null); }}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${presVideoMode === m.id ? 'bg-violet-500/20 border-violet-500/50 text-violet-200' : 'border-white/10 text-muted-foreground hover:border-white/20'}`}>
+                      <span className={presVideoMode === m.id ? 'text-violet-400' : ''}>{m.icon}</span>
+                      <div>
+                        <p className="text-xs font-medium leading-none">{m.label}</p>
+                        <p className="text-[9px] mt-0.5 opacity-70">{m.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">AI Script</p>
+                {!presAiScript && !presGeneratingScript && (
+                  <button onClick={handlePresGenerateAIScript}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-500/20 to-indigo-500/20 border border-violet-500/30 text-xs font-medium text-violet-200 hover:from-violet-500/30 hover:to-indigo-500/30 transition-all flex items-center justify-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5" /> ✨ Preview AI Script First
+                  </button>
+                )}
+                {presGeneratingScript && (
+                  <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+                    <span>Writing AI script…</span>
+                  </div>
+                )}
+                {presScriptError && (
+                  <p className="text-[11px] text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2">{presScriptError}</p>
+                )}
+                {presAiScript && (
+                  <div className="space-y-2">
+                    <div className="glass rounded-xl p-3 max-h-48 overflow-y-auto">
+                      <p className="text-[11px] text-muted-foreground whitespace-pre-wrap leading-relaxed">{presAiScript}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setPresAiScript(null); setPresScriptError(null); }}
+                        className="flex-1 py-2 rounded-lg border border-white/10 text-[11px] text-muted-foreground hover:border-white/20 transition-all">
+                        Regenerate
+                      </button>
+                      <button onClick={() => handlePresLaunchGeneration(true)}
+                        className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-[11px] font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-1">
+                        <Film className="w-3.5 h-3.5" /> Generate from Script
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-1">
+                <button onClick={() => handlePresLaunchGeneration(false)}
+                  className="w-full py-3 rounded-xl border border-white/15 text-xs text-muted-foreground hover:border-violet-500/40 hover:text-violet-200 transition-all flex items-center justify-center gap-2">
+                  <Video className="w-3.5 h-3.5" /> Generate Directly (no script)
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+
+        {presVideoModalOpen && (
+          <MediaGenerationModal
+            open
+            onClose={() => { setPresVideoModalOpen(false); closeFn(); }}
+            sourceModule="video-studio"
+            sourceId={pres.id}
+            sourceName={pres.settings.title || 'Presentation'}
+            getSourceText={async () => slideText}
+            totalPages={pres.slides.length}
+            preGeneratedScript={presVideoPreScript}
+            initialMode={presVideoMode}
+            language={presVideoLanguage}
+          />
+        )}
+      </>
+    );
+  };
+
   const renderStudyPlannerModal = () => {
     if (!showStudyPlannerModal) return null;
     const sessions = getStudySessions();
@@ -2269,6 +2485,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       </AnimatePresence>
       {renderStudyPlannerModal()}
       {renderPresentationMode()}
+      <AnimatePresence>{videoPresId && renderVideoCreator()}</AnimatePresence>
       {mediaModalPresId && (() => {
         const mp = presentations.find(p => p.id === mediaModalPresId);
         if (!mp) return null;

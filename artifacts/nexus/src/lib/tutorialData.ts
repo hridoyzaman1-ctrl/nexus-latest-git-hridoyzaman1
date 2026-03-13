@@ -263,6 +263,7 @@ export const tutorialSections: TutorialSection[] = [
       { title: 'PPTX Export', description: 'Download your finished presentation as a PowerPoint (.pptx) file ready for use in Microsoft PowerPoint, Google Slides, or Keynote.' },
       { title: 'Speaker Notes', description: 'Each slide includes AI-generated speaker notes to guide your delivery. Edit them to add your own talking points.' },
       { title: 'Study Planner Integration', description: 'Presentations created here can be linked to study sessions in the Study Planner for seamless academic workflows.' },
+      { title: 'Create Video from Presentation 🎬', description: 'Tap the purple film icon on any presentation card (or the "Video" button in the editor toolbar) to open the Create Video panel. Choose a mode (Video narration, Summary, Explainer, or Podcast), toggle English or বাংলা language, preview an AI-written script, then generate a full animated slideshow video. The finished video is saved directly to Video Studio history — complete with play, download, and delete.' },
     ],
   },
   {
