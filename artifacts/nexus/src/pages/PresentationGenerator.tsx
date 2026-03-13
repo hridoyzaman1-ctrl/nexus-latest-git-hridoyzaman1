@@ -208,6 +208,9 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [presGenWithAudio, setPresGenWithAudio] = useState(false);
   const [presGenProgress, setPresGenProgress] = useState(0);
   const presGenCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+  /** Per-slide timing (seconds) editable inline in the video creator — null = use stored slideTimings */
+  const [presTimingOverride, setPresTimingOverride] = useState<number[] | null>(null);
+  const [presTimingSource, setPresTimingSource] = useState<'recording' | 'custom' | 'default'>('default');
   const { toast } = useToast();
 
   const getStudySessions = (): StudySession[] => {
@@ -413,7 +416,18 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     setPresNarrationMode('ai-tts');
     setPresGenWithAudio(false);
     setPresGenProgress(0);
-    // Check if narration recording exists for this presentation
+
+    // Initialise editable per-slide timings from stored data (seconds)
+    if (pres.slideTimings && pres.slideTimings.length === pres.slides.length) {
+      setPresTimingOverride(pres.slideTimings.map(ms => Math.max(1, Math.round(ms / 1000))));
+      setPresTimingSource(pres.recordedAt ? 'recording' : 'custom');
+    } else {
+      // Default: 5 s per slide
+      setPresTimingOverride(pres.slides.map(() => 5));
+      setPresTimingSource('default');
+    }
+
+    // Check if narration recording exists → switch default narration mode
     hasPresentationAudio(pres.id).then(has => {
       setPresHasRecording(has);
       if (has) setPresNarrationMode('recording');
@@ -459,10 +473,15 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     const pres = presentations.find(p => p.id === videoPresId);
     if (!pres || pres.slides.length === 0) return;
 
-    // Use recorded timings if available and matching, otherwise equal distribution
-    const timingsMs = (pres.slideTimings && pres.slideTimings.length === pres.slides.length)
-      ? pres.slideTimings
-      : pres.slides.map(() => 5000);
+    // Use the inline-editable timings from the video creator UI (presTimingOverride).
+    // These are always present because openVideoCreator() always initialises them.
+    // Fall back to stored slideTimings, then to a flat 5 s default.
+    const timingsMs: number[] =
+      (presTimingOverride && presTimingOverride.length === pres.slides.length)
+        ? presTimingOverride.map(s => Math.max(1, s) * 1000)
+        : (pres.slideTimings && pres.slideTimings.length === pres.slides.length)
+          ? pres.slideTimings
+          : pres.slides.map(() => 5000);
 
     setPresGenWithAudio(true);
     setPresGenProgress(0);
@@ -2406,6 +2425,13 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       <PresentationViewer
         presentation={editingPresentation}
         onClose={() => setPresenting(false)}
+        onPresentationUpdated={(updated) => {
+          // Keep local editor state + the presentations list both fresh.
+          // This ensures the video creator reads the latest timings/audio data
+          // even if the user records narration and immediately clicks Create Video.
+          setEditingPresentation(updated);
+          setPresentations(prev => prev.map(p => p.id === updated.id ? updated : p));
+        }}
       />
     );
   };
@@ -2567,30 +2593,77 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                 </>
               )}
 
-              {/* Recording path: show timings + generate button */}
+              {/* Recording path: editable per-slide timings + generate button */}
               {presNarrationMode === 'recording' && presHasRecording && (() => {
                 const recPres = presentations.find(p => p.id === videoPresId);
-                const timings = recPres?.slideTimings;
+                const timings = presTimingOverride ?? (recPres?.slides || []).map(() => 5);
+                const totalSecs = timings.reduce((a, b) => a + b, 0);
+                const fmtSec = (s: number) => s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+                const sourceLabel = presTimingSource === 'recording'
+                  ? '⏺ From your recording'
+                  : presTimingSource === 'custom'
+                  ? '✏️ Custom timings'
+                  : '⏱ Default (5s / slide)';
                 return (
                   <div className="space-y-3">
-                    <div className="glass rounded-xl p-3">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Slide Timings from Recording</p>
-                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                    {/* Editable timing panel */}
+                    <div className="glass rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Slide Timings</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-emerald-400/70 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">{sourceLabel}</span>
+                          <button
+                            onClick={() => {
+                              setPresTimingOverride((recPres?.slides || []).map(() => 5));
+                              setPresTimingSource('default');
+                            }}
+                            className="text-[9px] text-white/30 hover:text-white/60 underline transition-colors"
+                          >reset</button>
+                        </div>
+                      </div>
+
+                      {/* Per-slide editable rows */}
+                      <div className="space-y-1 max-h-40 overflow-y-auto pr-0.5">
                         {(recPres?.slides || []).map((slide, i) => (
-                          <div key={i} className="flex justify-between text-[10px] px-1 py-0.5">
-                            <span className="text-muted-foreground truncate flex-1">Slide {i + 1}: {slide.title}</span>
-                            <span className="text-white/50 font-mono ml-2">
-                              {timings && timings[i] ? `${(timings[i] / 1000).toFixed(1)}s` : '5s'}
+                          <div key={i} className="flex items-center gap-2 text-[10px]">
+                            <span className="text-muted-foreground truncate flex-1 min-w-0">
+                              <span className="text-white/30 mr-1">{i + 1}.</span>{slide.title || `Slide ${i + 1}`}
                             </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <input
+                                type="number"
+                                min={1}
+                                max={300}
+                                value={timings[i] ?? 5}
+                                onChange={e => {
+                                  const val = Math.max(1, Math.min(300, parseInt(e.target.value) || 1));
+                                  setPresTimingOverride(prev => {
+                                    const arr = prev ? [...prev] : (recPres?.slides || []).map(() => 5);
+                                    arr[i] = val;
+                                    return arr;
+                                  });
+                                  setPresTimingSource('custom');
+                                }}
+                                className="w-12 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-right text-[10px] text-white focus:outline-none focus:border-emerald-500/50"
+                              />
+                              <span className="text-white/30 w-3">s</span>
+                            </div>
                           </div>
                         ))}
                       </div>
-                      {recPres?.recordedAt && (
-                        <p className="text-[9px] text-muted-foreground/50 mt-2 pt-2 border-t border-white/5">
-                          Recorded {new Date(recPres.recordedAt).toLocaleDateString()}
+
+                      {/* Footer: total + note */}
+                      <div className="flex items-center justify-between pt-1.5 border-t border-white/5">
+                        <p className="text-[9px] text-white/30">
+                          {recPres?.recordedAt
+                            ? `Recorded ${new Date(recPres.recordedAt).toLocaleDateString()}`
+                            : 'Timings are proportional — audio controls actual length'}
                         </p>
-                      )}
+                        <p className="text-[10px] font-mono text-white/50">Total: {fmtSec(totalSecs)}</p>
+                      </div>
                     </div>
+
+                    {/* Generate button */}
                     <button
                       onClick={handleGenerateVideoWithRecording}
                       disabled={presGenWithAudio}
@@ -2602,17 +2675,18 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
                         <><Mic className="w-3.5 h-3.5" /> Generate with My Voice</>
                       )}
                     </button>
+
+                    {/* Progress + cancel */}
                     {presGenWithAudio && (
                       <div className="space-y-1">
                         <div className="w-full bg-secondary/40 rounded-full h-1.5">
-                          <div className="bg-emerald-500 h-1.5 rounded-full transition-all" style={{ width: `${presGenProgress * 100}%` }} />
+                          <div className="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.round(presGenProgress * 100)}%` }} />
                         </div>
                         <button
                           onClick={() => { presGenCancelRef.current.cancelled = true; }}
                           className="w-full text-[10px] text-muted-foreground hover:text-red-400 transition-colors py-1"
-                        >
-                          Cancel
-                        </button>
+                        >Cancel</button>
                       </div>
                     )}
                   </div>
