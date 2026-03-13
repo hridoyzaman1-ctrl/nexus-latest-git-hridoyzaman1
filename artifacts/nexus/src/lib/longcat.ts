@@ -31,8 +31,8 @@ const MEDIA_GEN_KEYS    = parseKeyPool(import.meta.env.VITE_MEDIA_GEN_API_KEY   
 const PRESENTATION_KEYS = parseKeyPool(import.meta.env.VITE_PRESENTATION_API_KEY || '');
 
 // Combined pools: primary STUDIO_KEYS first, then feature-specific backup
-const AV_POOL           = [...STUDIO_KEYS, ...AV_STUDIO_KEYS];
-const MEDIA_GEN_POOL    = [...STUDIO_KEYS, ...MEDIA_GEN_KEYS];
+const AV_POOL           = [...STUDIO_KEYS, ...AV_STUDIO_KEYS, 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
+const MEDIA_GEN_POOL    = [...STUDIO_KEYS, ...MEDIA_GEN_KEYS, 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
 const PRESENTATION_POOL = [...STUDIO_KEYS, ...PRESENTATION_KEYS];
 
 // Per-pool round-robin cursors (persist across calls within a page session)

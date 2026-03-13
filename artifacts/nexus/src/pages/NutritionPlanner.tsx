@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react';
-import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -108,7 +107,6 @@ export default function NutritionPlanner() {
   ), [todayLogs]);
   const todayHealth = useMemo(() => todayLogs.length > 0 ? calculateDailyHealthScore(todayNutrition) : null, [todayLogs, todayNutrition]);
 
-  const [mediaGenOpen, setMediaGenOpen] = useState(false);
 
   const refreshData = () => {
     setLogs(getNutritionLogs());
@@ -118,33 +116,7 @@ export default function NutritionPlanner() {
     setCalGoal(getCalorieGoal());
   };
 
-  const getSourceText = useCallback(async (_fromPage: number, _toPage: number) => {
-    const allLogs = getNutritionLogs();
-    const todayStr = formatDate(new Date());
-    const todayLogs = allLogs.filter(l => l.date === todayStr);
-    const allRoutines = getRoutines();
-    const lines: string[] = ['My Nutrition & Diet Overview\n'];
-    if (todayLogs.length) {
-      const tot = todayLogs.reduce((a, l) => ({
-        calories: a.calories + l.nutrition.calories,
-        protein: a.protein + l.nutrition.protein,
-        carbs: a.carbs + l.nutrition.carbs,
-        fat: a.fat + l.nutrition.fat,
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-      lines.push(`Today's food log (${todayLogs.length} items): ${todayLogs.map(l => l.foodName).join(', ')}.`);
-      lines.push(`Total: ${Math.round(tot.calories)} kcal, ${Math.round(tot.protein)}g protein, ${Math.round(tot.carbs)}g carbs, ${Math.round(tot.fat)}g fat. Daily calorie goal: ${calGoal} kcal.`);
-    } else {
-      lines.push('No foods logged today yet. Daily calorie goal: ' + calGoal + ' kcal.');
-    }
-    if (allRoutines.length) {
-      lines.push(`\nMeal Routines (${allRoutines.length} planned):`);
-      allRoutines.slice(0, 5).forEach(r => lines.push(`• ${r.name} — ${r.period} routine`));
-    }
-    if (ingredients.length) {
-      lines.push(`\nPantry/Ingredients tracked: ${ingredients.slice(0, 10).map(i => i.name).join(', ')}${ingredients.length > 10 ? ` and ${ingredients.length - 10} more` : ''}.`);
-    }
-    return lines.join('\n');
-  }, [calGoal, ingredients]);
+
 
   return (
     <PageTransition>
@@ -160,9 +132,7 @@ export default function NutritionPlanner() {
                 <UtensilsCrossed size={20} className="text-orange-500" /> Nutrition Planner
               </h1>
             </div>
-            <button onClick={() => setMediaGenOpen(true)} className="p-2 rounded-xl hover:bg-muted/50 transition-colors text-muted-foreground hover:text-primary" title="Generate audio/video summary">
-              <Sparkles size={18} />
-            </button>
+
           </div>
           <div className="flex gap-1 mt-2 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
             {TABS.map(tab => (
@@ -188,14 +158,7 @@ export default function NutritionPlanner() {
           </AnimatePresence>
         </div>
       </div>
-      <MediaGenerationModal
-        open={mediaGenOpen}
-        onClose={() => setMediaGenOpen(false)}
-        sourceModule="other"
-        sourceId="nutrition"
-        sourceName="Nutrition Planner"
-        getSourceText={getSourceText}
-      />
+
     </PageTransition>
   );
 }

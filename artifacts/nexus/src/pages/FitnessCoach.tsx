@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import MediaGenerationModal from '@/components/MediaGenerationModal';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -69,7 +68,7 @@ export default function FitnessCoach() {
   const [activeRoutineId, setActiveRoutineIdState] = useState<string | null>(() => getActiveRoutineId());
   const [history, setHistory] = useState<WorkoutSession[]>(() => getWorkoutHistory());
   const [streak, setStreak] = useState(() => getWorkoutStreak());
-  const [mediaGenOpen, setMediaGenOpen] = useState(false);
+
 
   const activeRoutine = useMemo(() => routines.find(r => r.id === activeRoutineId) || null, [routines, activeRoutineId]);
 
@@ -81,31 +80,7 @@ export default function FitnessCoach() {
     setStreak(getWorkoutStreak());
   }, []);
 
-  const getSourceText = useCallback(async (_fromPage: number, _toPage: number) => {
-    const lines: string[] = ['My Fitness & Body Overview\n'];
-    if (profile.weight > 0 && profile.height > 0) {
-      const bmi = profile.weight / ((profile.height / 100) ** 2);
-      lines.push(`Profile: ${profile.gender}, age ${profile.age}, weight ${profile.weight}kg, height ${profile.height}cm, BMI ${bmi.toFixed(1)}.`);
-      lines.push(`Fitness goal: ${profile.fitnessGoal}.`);
-    }
-    lines.push(`Workout streak: ${streak.current} days.`);
-    if (routines.length) {
-      lines.push(`\nWorkout Routines (${routines.length}):`);
-      routines.slice(0, 5).forEach(r => {
-        lines.push(`• ${r.name} — ${r.days.length} training days, goal: ${r.fitnessGoal}, period: ${r.period}`);
-      });
-    }
-    if (history.length) {
-      const recent = history.slice(0, 5);
-      lines.push(`\nRecent Sessions (${history.length} total):`);
-      recent.forEach(s => {
-        const done = s.exercises.filter(e => e.completed).length;
-        lines.push(`• ${new Date(s.completedAt).toLocaleDateString()} — ${done}/${s.exercises.length} exercises, ${s.totalDurationMin} min, ~${s.caloriesBurned} cal burned`);
-      });
-    }
-    if (lines.length === 1) lines.push('No fitness data yet. Set up your profile and start logging workouts to track your progress.');
-    return lines.join('\n');
-  }, [profile, routines, history, streak]);
+
 
   return (
     <PageTransition>
@@ -121,9 +96,7 @@ export default function FitnessCoach() {
                 <Dumbbell size={20} className="text-blue-500" /> Body & Fitness
               </h1>
             </div>
-            <button onClick={() => setMediaGenOpen(true)} className="p-2 rounded-xl hover:bg-muted/50 transition-colors text-muted-foreground hover:text-primary" title="Generate audio/video summary">
-              <Sparkles size={18} />
-            </button>
+
           </div>
           <div className="flex gap-1 mt-2 overflow-x-auto pb-1 scrollbar-hide">
             {TABS.map(tab => (
@@ -148,14 +121,7 @@ export default function FitnessCoach() {
           </AnimatePresence>
         </div>
       </div>
-      <MediaGenerationModal
-        open={mediaGenOpen}
-        onClose={() => setMediaGenOpen(false)}
-        sourceModule="other"
-        sourceId="fitness"
-        sourceName="Body & Fitness"
-        getSourceText={getSourceText}
-      />
+
     </PageTransition>
   );
 }
