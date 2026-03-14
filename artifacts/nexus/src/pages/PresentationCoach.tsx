@@ -428,8 +428,12 @@ export default function PresentationCoach() {
       toast({ title: 'Demo mode', description: 'AI script generation is disabled in demo mode.', variant: 'destructive' });
       return;
     }
-    if (!isScriptGenerationAvailable()) {
-      toast({ title: 'API key required', description: 'Add your longcat.chat API key to enable AI script generation.', variant: 'destructive' });
+    if (!navigator.onLine) {
+      toast({
+        title: "You're offline",
+        description: "AI script generation requires an internet connection. Please check your network and try again.",
+        variant: "destructive",
+      });
       return;
     }
     setScriptGenerating(true);

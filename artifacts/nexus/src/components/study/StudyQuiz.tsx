@@ -125,6 +125,12 @@ export default function StudyQuiz({ sessions, materials, quizHistory, onSaveQuiz
 
   // Generate quiz with rate limiting
   const generateQuiz = async () => {
+    // Offline check
+    if (!navigator.onLine) {
+      toast.error("You're offline — AI quiz generation requires an internet connection.");
+      return;
+    }
+
     // Rate limit check: 1 quiz per material/session per 24h
     if (scopeType === 'session' && selectedSessionId && !canTakeQuizForSession(selectedSessionId)) {
       toast.error('You already took a quiz for this session today. Try again in 24 hours or choose a different subject.');
@@ -313,6 +319,12 @@ Respond with valid JSON only.`;
       setStep('results');
 
       // Get AI feedback
+      if (!navigator.onLine) {
+        setFeedback('Great effort! Keep studying and you\'ll keep improving 💪');
+        setLoadingFeedback(false);
+        return;
+      }
+
       setLoadingFeedback(true);
       const pct = Math.round((obtained / totalMarks) * 100);
       studyAIChat(

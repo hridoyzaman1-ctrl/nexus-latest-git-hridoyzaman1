@@ -112,8 +112,10 @@ export default function VideoStudio() {
   };
 
   const handleDescribeEnhance = async () => {
-    const desc = describeText.trim();
-    if (!desc) return;
+    if (!navigator.onLine) {
+      setError('You are offline. AI script generation requires an internet connection.');
+      return;
+    }
     setAiEnhancing(true); setAiHint(null); setError(null);
     try {
       const raw = await chatWithStudioAI([
@@ -156,7 +158,10 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
   };
 
   const handleGenerateAIScript = async () => {
-    if (!source) return;
+    if (!navigator.onLine) {
+      setScriptError('You are offline. AI script generation requires an internet connection.');
+      return;
+    }
     setGeneratingScript(true);
     setAiScript(null);
     setScriptError(null);
