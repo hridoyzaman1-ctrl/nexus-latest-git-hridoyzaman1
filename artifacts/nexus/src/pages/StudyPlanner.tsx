@@ -2,11 +2,18 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { logError } from '@/lib/logger';
 import { useLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
 import { StudySession, StudyMaterial, StudyNote, StudyTimeLog, StudyHighlight, AlarmSoundType, QuizResult } from '@/types';
+import type { Presentation as PresentationType } from '@/types/presentation';
 import { getAllMediaItems } from '@/lib/mediaStorage';
 import { exampleStudySessions } from '@/lib/examples';
 import { saveStudyFile, deleteStudyFile, type StudyFileData } from '@/lib/studyStorage';
 import { ArrowLeft, Plus, X, CheckCircle2, Circle, CalendarDays, Bell, Clock, Upload, BookOpen, FileText, Video, Trash2, ChevronDown, ChevronUp, Play, Pause, RotateCcw, StickyNote, Timer, BarChart2, LayoutDashboard, Brain, Sparkles, Download, Presentation, Eye, Headphones } from 'lucide-react';
-import { getLinksForSession, removeStudyPresentationLink, removeLinksForSession, getPresentation as getPresentationById } from '@/lib/presentationStorage';
+import { 
+  getLinksForSession, 
+  removeStudyPresentationLink, 
+  removeLinksForSession, 
+  getPresentation as getPresentationById,
+  getAllPresentations
+} from '@/lib/presentationStorage';
 import { generatePptx, downloadPptx } from '@/lib/pptxGenerator';
 import { getTheme } from '@/lib/presentationThemes';
 import AISummarizer from '@/components/AISummarizer';
@@ -204,6 +211,11 @@ export default function StudyPlanner() {
   const [exportingPresId, setExportingPresId] = useState<string | null>(null);
   const [viewingPresentation, setViewingPresentation] = useState<string | null>(null);
   const [presLinkVersion, setPresLinkVersion] = useState(0);
+  const [presentations, setPresentations] = useState<PresentationType[]>([]);
+
+  useEffect(() => {
+    getAllPresentations().then(setPresentations);
+  }, [presLinkVersion]);
   // UI state
   const [showAdd, setShowAdd] = useState(false);
   const [subject, setSubject] = useState('');
@@ -575,7 +587,7 @@ export default function StudyPlanner() {
   }, [setStudyNotes]);
 
   const handleExportStudyPresentation = async (presentationId: string) => {
-    const pres = getPresentationById(presentationId);
+    const pres = await getPresentationById(presentationId);
     if (!pres) {
       toast.error('Presentation not found. It may have been deleted from the Presentation Maker.');
       return;
@@ -601,7 +613,7 @@ export default function StudyPlanner() {
 
   // Open a linked presentation as a PPTX in the default study reader
   const handleViewPresentationAsDoc = async (presentationId: string, sessionId: string) => {
-    const pres = getPresentationById(presentationId);
+    const pres = await getPresentationById(presentationId);
     if (!pres) {
       toast.error('Presentation not found.');
       return;
@@ -1213,10 +1225,9 @@ export default function StudyPlanner() {
 
                       {/* Linked Presentations */}
                       {(() => {
-                        void presLinkVersion;
                         const presLinks = getLinksForSession(session.id);
                         const linkedPresentations = presLinks.map(link => {
-                          const pres = getPresentationById(link.presentationId);
+                          const pres = presentations.find(p => p.id === link.presentationId);
                           return { link, pres };
                         }).filter(item => item.pres !== undefined);
                         if (linkedPresentations.length === 0 && presLinks.length === 0) return null;

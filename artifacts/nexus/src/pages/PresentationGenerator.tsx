@@ -5,7 +5,7 @@ import {
   Plus, FileText, Upload, Palette, Sparkles, Download, Trash2, Edit3,
   ChevronLeft, ChevronRight, Copy, LayoutGrid, List, ArrowLeft,
   FileType, SlidersHorizontal, Eye, RotateCcw,
-  CheckCircle2, Loader2, Presentation, ImagePlus, X, Move, Maximize2,
+  CheckCircle2, Loader2, Presentation as PresentationIcon, ImagePlus, X, Move, Maximize2,
   MessageSquare, BarChart3, Clock, RefreshCw,
   ChevronDown, ChevronUp, AlertTriangle, Type, Bold, Italic, AlignLeft, AlignCenter, AlignRight,
   BookOpen, Play, Headphones, Film, Video, Mic, Music2
@@ -604,7 +604,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     const pres = presentations.find(p => p.id === videoPresId);
     if (!pres) return;
     if (!navigator.onLine) {
-      toast.error('You are offline. AI script generation requires an internet connection.');
+      toast({ title: 'Offline', description: 'You are offline. AI script generation requires an internet connection.', variant: 'destructive' });
       return;
     }
     setPresGeneratingScript(true);
@@ -1225,7 +1225,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
           className="flex flex-col items-center justify-center py-16 px-4 text-center glass rounded-2xl border-dashed border-2 border-border/50"
         >
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-            <Presentation className="w-8 h-8 text-primary/50" />
+            <PresentationIcon className="w-8 h-8 text-primary/50" />
           </div>
           <h3 className="text-lg font-semibold mb-1" data-testid="text-no-presentations">No presentations yet</h3>
           <p className="text-sm text-muted-foreground max-w-[250px] mb-6">Create your first presentation from a topic, notes, PDF, or Word document.</p>
@@ -2600,7 +2600,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             <div className="px-5 space-y-4">
               <div className="glass rounded-xl p-3">
                 <div className="flex items-start gap-2">
-                  <Presentation className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
+                  <PresentationIcon className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <p className="text-xs font-semibold truncate">{pres.settings.title}</p>
                     <p className="text-[10px] text-muted-foreground">{pres.slides.length} slides &middot; ~{wordCount} words</p>

@@ -136,11 +136,11 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
         },
         {
           role: 'user',
-          content: `Write a narration about: ${desc}`,
+          content: `Write a narration about: ${describeText}`,
         },
       ], { maxTokens: language === 'bn' ? 3500 : 800, temperature: 0.7 });
       const script = sanitiseAIScript(raw);
-      const title = desc.length > 55 ? desc.slice(0, 55) + '…' : desc;
+      const title = describeText.length > 55 ? describeText.slice(0, 55) + '…' : describeText;
       setSource({ id: `vs-${Date.now()}`, name: title, type: 'describe', text: script, wordCount: countWords(script) });
       setDescribeText('');
       setInputMode('upload');
