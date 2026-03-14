@@ -1006,7 +1006,10 @@ export async function recordVideoScenes(
       }
     }
 
-    const recorder = new MediaRecorder(recordStream, { mimeType });
+    const recorder = new MediaRecorder(recordStream, {
+      mimeType,
+      videoBitsPerSecond: 2500000, // 2.5 Mbps for 720p quality
+    });
     const chunks: BlobPart[] = [];
     recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.start(200); // collect every 200ms

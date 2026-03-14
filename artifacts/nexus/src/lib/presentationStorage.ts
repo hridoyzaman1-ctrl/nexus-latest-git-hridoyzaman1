@@ -1,8 +1,10 @@
 import type { Presentation } from '@/types/presentation';
 import { getLocalStorage, setLocalStorage } from '@/hooks/useLocalStorage';
+import { dbGetAll, dbPut, dbDelete, STORES } from '@/lib/db';
 
 const STORAGE_KEY = 'presentations';
 const LINKS_KEY = 'studyPresentationLinks';
+const MIGRATION_DONE_KEY = 'presentations_migrated_to_db';
 
 export interface StudyPresentationLink {
   id: string;
@@ -48,8 +50,23 @@ export function removeLinksForSession(sessionId: string): void {
   setLocalStorage(LINKS_KEY, links);
 }
 
-export function getAllPresentations(): Presentation[] {
+async function runMigration() {
+  const isMigrated = getLocalStorage<boolean>(MIGRATION_DONE_KEY, false);
+  if (isMigrated === true) return;
+
   const raw = getLocalStorage<Presentation[]>(STORAGE_KEY, []);
+  if (raw && raw.length > 0) {
+    for (const p of raw) {
+      await dbPut(STORES.PRESENTATIONS, p);
+    }
+  }
+  setLocalStorage(MIGRATION_DONE_KEY, true);
+  // localStorage.removeItem(`mindflow_${STORAGE_KEY}`);
+}
+
+export async function getAllPresentations(): Promise<Presentation[]> {
+  await runMigration();
+  const raw = await dbGetAll<Presentation>(STORES.PRESENTATIONS);
   return raw.map(p => ({
     ...p,
     slides: (p.slides || []).map(s => ({
@@ -59,37 +76,35 @@ export function getAllPresentations(): Presentation[] {
   }));
 }
 
-export function getPresentation(id: string): Presentation | undefined {
-  return getAllPresentations().find(p => p.id === id);
+export async function getPresentation(id: string): Promise<Presentation | undefined> {
+  const all = await getAllPresentations();
+  return all.find(p => p.id === id);
 }
 
-export function savePresentation(presentation: Presentation): void {
-  const all = getAllPresentations();
-  const idx = all.findIndex(p => p.id === presentation.id);
-  if (idx >= 0) {
-    all[idx] = { ...presentation, updatedAt: new Date().toISOString() };
-  } else {
-    all.unshift(presentation);
-  }
+export async function savePresentation(presentation: Presentation): Promise<void> {
+  const presentationToSave = {
+    ...presentation,
+    updatedAt: new Date().toISOString()
+  };
   try {
-    setLocalStorage(STORAGE_KEY, all);
+    await dbPut(STORES.PRESENTATIONS, presentationToSave);
   } catch (e: any) {
+    // IndexedDB quota is much larger, but still good to handle.
     if (e?.name === 'QuotaExceededError' || (e?.message && /quota/i.test(e.message))) {
-      throw new Error('Storage quota exceeded. Try reducing image sizes or removing unused presentations.');
+      throw new Error('Storage space is low. Please remove old presentations.');
     }
     throw e;
   }
 }
 
-export function deletePresentation(id: string): void {
-  const all = getAllPresentations().filter(p => p.id !== id);
-  setLocalStorage(STORAGE_KEY, all);
+export async function deletePresentation(id: string): Promise<void> {
+  await dbDelete(STORES.PRESENTATIONS, id);
   const links = getStudyPresentationLinks().filter(l => l.presentationId !== id);
   setLocalStorage(LINKS_KEY, links);
 }
 
-export function duplicatePresentation(id: string): Presentation | null {
-  const original = getPresentation(id);
+export async function duplicatePresentation(id: string): Promise<Presentation | null> {
+  const original = await getPresentation(id);
   if (!original) return null;
   const now = new Date().toISOString();
   const dup: Presentation = {
@@ -100,6 +115,7 @@ export function duplicatePresentation(id: string): Presentation | null {
     createdAt: now,
     updatedAt: now,
   };
-  savePresentation(dup);
+  await savePresentation(dup);
   return dup;
 }
+

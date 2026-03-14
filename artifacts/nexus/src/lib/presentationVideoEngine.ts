@@ -1,4 +1,4 @@
-import type { SlideContent, ThemeConfig } from '@/types/presentation';
+import type { SlideContent, ThemeConfig, SlideLayoutType, SlideImage } from '@/types/presentation';
 
 /**
  * Pre-load all images referenced by slide.images[] from their dataUrls.
@@ -63,6 +63,15 @@ function roundRectPath(
  * @param imageCache - Map returned by preloadSlideImages()
  * @param progress   - 0..1 — drives the thin progress bar at the bottom
  */
+function getTextAreaWidth(layout: SlideLayoutType, images: SlideImage[]): number {
+  if (!images || images.length === 0) return 100;
+  // If images are placed on the right (x >= 55), constrain text to the left
+  const hasUploadedOrPlaceholder = images.some(img => img.x >= 55);
+  if (!hasUploadedOrPlaceholder) return 100;
+  const minX = Math.min(...images.filter(img => img.x >= 55).map(img => img.x));
+  return Math.max(45, minX - 4);
+}
+
 export function renderPresentationSlideToCanvas(
   canvas: HTMLCanvasElement,
   slide: SlideContent,
@@ -143,28 +152,19 @@ export function renderPresentationSlideToCanvas(
   }
 
   // ── Text readability panel (when images are present) ───────────────────────
-  // Draw a translucent version of the background colour over the text writing
-  // area so that text always stays readable regardless of image placement.
-  // Placed AFTER images (so images show through) and BEFORE text.
-  const hasImages = (slide.images?.length ?? 0) > 0 &&
-    slide.images!.some(img => (img.width ?? 0) > 5 && (img.height ?? 0) > 5);
+  // No longer hardcoded. We use getTextAreaWidth to match the UI perfectly.
+  const textWidthPct = getTextAreaWidth(slide.layout, slide.images || []);
+  const panelW = (textWidthPct / 100) * W;
+  const hasLargeImages = (slide.images?.length ?? 0) > 0 &&
+    slide.images!.some(img => (img.width ?? 0) > 10 && (img.height ?? 0) > 10);
 
-  if (hasImages) {
-    // Determine whether images predominantly occupy the right side of the slide.
-    // If so, constrain the text panel to the left ~55 %.  Otherwise cover full
-    // width (images may be small decoratives placed over the content area).
-    const rightSideOnly = slide.images!.every(img => (img.x ?? 0) >= 45);
-    const panelW = rightSideOnly ? W * 0.53 : W;
+  if (hasLargeImages && textWidthPct < 100) {
     const panelAlpha = theme.darkTheme ? 0.62 : 0.65;
-
     ctx.save();
     ctx.globalAlpha = panelAlpha;
     ctx.fillStyle = bg;
-    if (rightSideOnly) {
-      roundRectPath(ctx, 0, 0, panelW, H, 0);
-    } else {
-      ctx.fillRect(0, 0, panelW, H);
-    }
+    // Cover the text area with a readability panel
+    ctx.fillRect(0, 0, panelW, H);
     ctx.restore();
 
     // Accent stripe still visible on top
@@ -194,6 +194,20 @@ export function renderPresentationSlideToCanvas(
 
   const mx = Math.round(W * 0.048);   // horizontal margin
   const my = Math.round(H * 0.07);    // vertical margin
+
+  // Text Styling from slide object
+  const sStyle = slide.textStyle;
+  const contentMaxW = (textWidthPct / 100) * W - mx * 2;
+  
+  // Custom colors if defined
+  const finalTitleColor = sStyle?.titleColor ? `#${sStyle.titleColor}` : tc;
+  const finalBodyColor = sStyle?.bodyColor ? `#${sStyle.bodyColor}` : bc;
+
+  function getAlignmentX(align: string | undefined): number {
+    if (align === 'center') return panelW / 2;
+    if (align === 'right') return panelW - mx;
+    return mx;
+  }
 
   /** Measure and truncate a line to fit maxW pixels. */
   function truncLine(text: string, maxW: number): string {
@@ -257,8 +271,9 @@ export function renderPresentationSlideToCanvas(
     const blockH = approxLines * (titleSize + 4) + (slide.subtitle ? bodySize + 14 : 0) + 8;
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
+    const titleX = getAlignmentX(sStyle?.titleAlign);
     const titleBottom = drawWrapped(
-      slide.title || '', W / 2, startY, maxW, titleSize, tc, true, 3, tf, 'center',
+      slide.title || '', titleX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center',
     );
 
     // accent underline
@@ -266,8 +281,9 @@ export function renderPresentationSlideToCanvas(
     ctx.fillRect(W / 2 - Math.min(36, W * 0.07), titleBottom + 9, Math.min(72, W * 0.14), 2);
 
     if (slide.subtitle) {
+      const subX = getAlignmentX(sStyle?.bodyAlign);
       drawWrapped(
-        slide.subtitle, W / 2, titleBottom + 22, maxW, bodySize, bc, false, 2, bf, 'center',
+        slide.subtitle, subX, titleBottom + 22, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center',
       );
     }
 
@@ -279,30 +295,27 @@ export function renderPresentationSlideToCanvas(
     const blockH = approxLines * (titleSize + 6);
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
-    // Small accent mark above title
-    ctx.fillStyle = ac;
-    ctx.fillRect(W / 2 - 16, startY - titleSize - 6, 32, 2);
-
-    drawWrapped(text, W / 2, startY, maxW, titleSize, tc, true, 3, tf, 'center');
+    const textX = getAlignmentX(sStyle?.titleAlign);
+    drawWrapped(text, textX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center');
 
     if (slide.subtitle) {
-      drawWrapped(slide.subtitle, W / 2, startY + (titleSize + 6) * approxLines + 10, maxW, bodySize, bc, false, 2, bf, 'center');
+      const subX = getAlignmentX(sStyle?.bodyAlign);
+      drawWrapped(slide.subtitle, subX, startY + (titleSize + 6) * approxLines + 10, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center');
     }
 
   } else {
     // ── Standard slide: title bar at top, content area below ─────────────────
-    ctx.textAlign = 'left';
+    const alignX = getAlignmentX(sStyle?.titleAlign);
     const titleY = my + titleSize;
     const titleBottom = drawWrapped(
-      slide.title || '', mx, titleY, W - mx * 2, titleSize, tc, true, 2,
+      slide.title || '', alignX, titleY, contentMaxW, titleSize, finalTitleColor, true, 2, tf, sStyle?.titleAlign || 'left'
     );
 
     // Accent separator
-    ctx.fillStyle = ac;
-    ctx.fillRect(mx, titleBottom + 6, Math.min(44, W * 0.09), 2);
+    ctx.fillStyle = sStyle?.accentColor ? `#${sStyle.accentColor}` : ac;
+    ctx.fillRect(alignX, titleBottom + 6, Math.min(44, W * 0.09), 2);
 
     let cy = titleBottom + 20;
-    const contentMaxW = W - mx * 2;
 
     // ── Two-column ────────────────────────────────────────────────────────────
     if (slide.layout === 'two-column' && (slide.leftColumn?.length || slide.rightColumn?.length)) {
@@ -418,13 +431,16 @@ export function renderPresentationSlideToCanvas(
     // ── Body text ──────────────────────────────────────────────────────────────
     } else if (slide.body) {
       const maxLines = Math.floor((H - cy - my) / (bodySize + Math.round(bodySize * 0.28)));
-      drawWrapped(slide.body, mx, cy, contentMaxW, bodySize, bc, false, Math.max(1, maxLines));
+      const bAlign = sStyle?.bodyAlign || 'left';
+      drawWrapped(slide.body, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, Math.max(1, maxLines), bf, bAlign);
 
     } else if (slide.statement) {
-      drawWrapped(slide.statement, mx, cy, contentMaxW, bodySize, bc, false, 5);
+      const bAlign = sStyle?.bodyAlign || 'left';
+      drawWrapped(slide.statement, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 5, bf, bAlign);
 
     } else if (slide.subtitle) {
-      drawWrapped(slide.subtitle, mx, cy, contentMaxW, bodySize, bc, false, 3);
+      const bAlign = sStyle?.bodyAlign || 'left';
+      drawWrapped(slide.subtitle, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 3, bf, bAlign);
     }
   }
 

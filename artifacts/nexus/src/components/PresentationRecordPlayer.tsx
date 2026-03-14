@@ -239,16 +239,9 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
         recordedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      savePresentation(updated);
-      setHasExistingRecording(true);
-      setShowSavePrompt(false);
-      pendingBlobRef.current = null;
-      // Sync the Timing tab editor so it shows the just-recorded timings,
-      // not the stale values from before this recording session.
-      // Without this, switching to Timing tab and hitting Save would overwrite
-      // the fresh recording timings with old ones.
       setCustomTimings(recordingTimingsMs.map(ms => Math.max(1, Math.round(ms / 1000))));
       onSaved?.(updated);
+      await savePresentation(updated);
       toast.success('Narration saved! You can now use it when generating video.');
     } catch {
       toast.error('Could not save narration. Storage may be full.');
@@ -272,20 +265,20 @@ export default function PresentationRecordPlayer({ presentation, onClose, onSave
       recordedAt: undefined,
       updatedAt: new Date().toISOString(),
     };
-    savePresentation(updated);
+    await savePresentation(updated);
     setHasExistingRecording(false);
     onSaved?.(updated);
     toast.success('Recording deleted.');
   };
 
-  const saveCustomTimings = () => {
+  const saveCustomTimings = async () => {
     const timingsMs = customTimings.map(s => Math.max(1, s) * 1000);
     const updated: Presentation = {
       ...presentation,
       slideTimings: timingsMs,
       updatedAt: new Date().toISOString(),
     };
-    savePresentation(updated);
+    await savePresentation(updated);
     onSaved?.(updated);
     toast.success('Slide timings saved.');
   };

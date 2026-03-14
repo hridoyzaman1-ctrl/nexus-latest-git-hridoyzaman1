@@ -88,20 +88,14 @@ function addSlideImages(slide: PptxGenJS.Slide, content: SlideContent) {
   const images = content.images || [];
   for (const img of images) {
     if (!img.dataUrl) continue;
-    const slideW = 13.33;
-    const slideH = 7.5;
-    const x = (img.x / 100) * slideW;
-    const y = (img.y / 100) * slideH;
-    const w = (img.width / 100) * slideW;
-    const h = (img.height / 100) * slideH;
 
     try {
       const imageOpts: any = {
         data: img.dataUrl,
-        x,
-        y,
-        w,
-        h,
+        x: `${img.x}%`,
+        y: `${img.y}%`,
+        w: `${img.width}%`,
+        h: `${img.height}%`,
         transparency: 100 - img.opacity,
       };
 
@@ -109,17 +103,17 @@ function addSlideImages(slide: PptxGenJS.Slide, content: SlideContent) {
         imageOpts.rounding = true;
       }
 
-      if (img.fit === 'fill') {
-      } else {
+      if (img.fit && img.fit !== 'fill') {
         imageOpts.sizing = {
           type: img.fit === 'contain' ? 'contain' : 'cover',
-          w,
-          h,
+          w: `${img.width}%`,
+          h: `${img.height}%`,
         };
       }
 
       slide.addImage(imageOpts);
-    } catch {
+    } catch (err) {
+      console.warn('Could not add image to slide:', err);
     }
   }
 }
@@ -179,7 +173,7 @@ function renderVisualBlock(slide: PptxGenJS.Slide, visualBlock: VisualBlock, the
         rectRadius: 0.15,
       });
       if (colors.length > 2) {
-        slide.addShape('roundRect', {
+        slide.addShape('rect', {
           x: x + 1.5,
           y: y + 2.8,
           w: 2.5,
@@ -1345,64 +1339,73 @@ export function generatePptx(slides: SlideContent[], themeId: string, title: str
   });
 
   for (const content of slides) {
-    const slide = pptx.addSlide({ masterName: 'MINDFLOW_DEFAULT' });
+    try {
+      const slide = pptx.addSlide({ masterName: 'MINDFLOW_DEFAULT' });
 
-    addSpeakerNotes(slide, content);
+      addSpeakerNotes(slide, content);
 
-    switch (content.layout) {
-      case 'cover':
-        renderCover(pptx, slide, content, theme);
-        break;
-      case 'agenda':
-        renderAgenda(slide, content, theme);
-        break;
-      case 'section-divider':
-        renderSectionDivider(slide, content, theme);
-        break;
-      case 'title-bullets':
-        renderTitleBullets(slide, content, theme);
-        break;
-      case 'two-column':
-        renderTwoColumn(slide, content, theme);
-        break;
-      case 'image-text':
-        renderImageText(slide, content, theme);
-        break;
-      case 'big-statement':
-        renderBigStatement(slide, content, theme);
-        break;
-      case 'comparison':
-        renderComparison(slide, content, theme);
-        break;
-      case 'summary':
-        renderSummary(slide, content, theme);
-        break;
-      case 'closing':
-        renderClosing(slide, content, theme);
-        break;
-      case 'chart':
-        renderChart(slide, content, theme);
-        break;
-      case 'table':
-        renderTable(slide, content, theme);
-        break;
-      case 'timeline':
-        renderTimeline(slide, content, theme);
-        break;
-      case 'kpi':
-        renderKpi(slide, content, theme);
-        break;
-      case 'process':
-        renderProcess(slide, content, theme);
-        break;
-      case 'problem-solution':
-        renderProblemSolution(slide, content, theme);
-        break;
-      case 'recommendations':
-        renderRecommendations(slide, content, theme);
-        break;
-      default:
-        renderTitleBullets(slide, content, theme);
+      switch (content.layout) {
+        case 'cover':
+          renderCover(pptx, slide, content, theme);
+          break;
+        case 'agenda':
+          renderAgenda(slide, content, theme);
+          break;
+        case 'section-divider':
+          renderSectionDivider(slide, content, theme);
+          break;
+        case 'title-bullets':
+          renderTitleBullets(slide, content, theme);
+          break;
+        case 'two-column':
+          renderTwoColumn(slide, content, theme);
+          break;
+        case 'image-text':
+          renderImageText(slide, content, theme);
+          break;
+        case 'big-statement':
+          renderBigStatement(slide, content, theme);
+          break;
+        case 'comparison':
+          renderComparison(slide, content, theme);
+          break;
+        case 'summary':
+          renderSummary(slide, content, theme);
+          break;
+        case 'closing':
+          renderClosing(slide, content, theme);
+          break;
+        case 'chart':
+          renderChart(slide, content, theme);
+          break;
+        case 'table':
+          renderTable(slide, content, theme);
+          break;
+        case 'timeline':
+          renderTimeline(slide, content, theme);
+          break;
+        case 'kpi':
+          renderKpi(slide, content, theme);
+          break;
+        case 'process':
+          renderProcess(slide, content, theme);
+          break;
+        case 'problem-solution':
+          renderProblemSolution(slide, content, theme);
+          break;
+        case 'recommendations':
+          renderRecommendations(slide, content, theme);
+          break;
+        default:
+          renderTitleBullets(slide, content, theme);
+      }
+    } catch (err) {
+      console.error('Error rendering slide:', err);
+      // Create a fallback slide for errors
+      const errorSlide = pptx.addSlide({ masterName: 'MINDFLOW_DEFAULT' });
+      errorSlide.addText(`Error rendering slide: ${slides.indexOf(content) + 1}`, {
+        x: 1, y: 3, w: 8, h: 1, color: 'FF0000', align: 'center'
+      });
     }
   }
 

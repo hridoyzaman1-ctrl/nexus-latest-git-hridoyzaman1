@@ -186,8 +186,8 @@ export default function MediaGenerationModal({
   // Re-draw preview canvas when currentScene changes (done + video mode)
   useEffect(() => {
     if (stage === 'done' && scenes.length > 0 && previewCanvasRef.current) {
-      previewCanvasRef.current.width = 480;
-      previewCanvasRef.current.height = 270;
+      previewCanvasRef.current.width = 1280;
+      previewCanvasRef.current.height = 720;
       if (customVideoRenderFn) {
         customVideoRenderFn(previewCanvasRef.current, currentScene, 1);
       } else {
@@ -479,8 +479,8 @@ ${truncated}`;
 
         const canvas = canvasRef.current;
         if (canvas && !cancelSignal.current.cancelled) {
-          canvas.width = 480;
-          canvas.height = 270;
+          canvas.width = 1280;
+          canvas.height = 720;
           try {
             const result = await recordVideoScenes(
               canvas,
@@ -568,8 +568,8 @@ ${truncated}`;
 
       const canvas = canvasRef.current;
       if (!canvas) throw new Error('Recording canvas not available.');
-      canvas.width = 480;
-      canvas.height = 270;
+      canvas.width = 1280;
+      canvas.height = 720;
 
       const result = await recordVideoScenes(
         canvas,
@@ -712,7 +712,7 @@ ${truncated}`;
             {/* Recording canvas — always in DOM so captureStream works */}
             <canvas
               ref={canvasRef}
-              width={480} height={270}
+              width={1280} height={720}
               style={{ display: (stage === 'recording' || vfsBusy) ? 'block' : 'none' }}
               className="w-full rounded-xl"
             />

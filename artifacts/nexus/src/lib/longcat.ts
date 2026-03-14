@@ -21,7 +21,7 @@ function parseKeyPool(raw: string): string[] {
 }
 
 // Primary pools
-const LONGCAT_KEYS      = parseKeyPool(import.meta.env.VITE_LONGCAT_API_KEY      || '');
+const LONGCAT_KEYS      = [...parseKeyPool(import.meta.env.VITE_LONGCAT_API_KEY      || ''), 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
 const KIRA_KEYS         = parseKeyPool(import.meta.env.VITE_KIRA_API_KEY         || '');
 const STUDIO_KEYS       = parseKeyPool(import.meta.env.VITE_STUDIO_API_KEY       || '');
 
@@ -33,7 +33,7 @@ const PRESENTATION_KEYS = parseKeyPool(import.meta.env.VITE_PRESENTATION_API_KEY
 // Combined pools: primary STUDIO_KEYS first, then feature-specific backup
 const AV_POOL           = [...STUDIO_KEYS, ...AV_STUDIO_KEYS, 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
 const MEDIA_GEN_POOL    = [...STUDIO_KEYS, ...MEDIA_GEN_KEYS, 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
-const PRESENTATION_POOL = [...STUDIO_KEYS, ...PRESENTATION_KEYS];
+const PRESENTATION_POOL = [...STUDIO_KEYS, ...PRESENTATION_KEYS, 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
 
 // Per-pool round-robin cursors (persist across calls within a page session)
 const poolIndex: Record<string, number> = {
@@ -100,21 +100,25 @@ async function callWithKeyPool(
 
         if (isKeyExhausted(res.status)) {
           lastError = new Error(`Key ${ki + 1}/${keys.length} exhausted (${res.status}), trying next…`);
-          break;
+          break; // Key-level break, try next key
         }
         if (res.status >= 500) {
           if (attempt === 0) { await new Promise(r => setTimeout(r, 600)); continue; }
           lastError = new Error(`${poolName} API error ${res.status}: ${errText}`);
-          break;
+          break; // Try next key
         }
         throw new Error(`${poolName} API error ${res.status}: ${errText}`);
 
       } catch (err) {
         const e = err as Error;
-        if (e.name === 'AbortError' || e instanceof DOMException) {
-          if (attempt === 0) { await new Promise(r => setTimeout(r, 400)); continue; }
-          lastError = new Error(`${poolName} key ${ki + 1} timed out, trying next…`);
-          break;
+        // Handle AbortError (timeout) or TypeError (network failure/CORS/Blocked)
+        if (e.name === 'AbortError' || e instanceof DOMException || e instanceof TypeError) {
+          if (attempt === 0) {
+            await new Promise(r => setTimeout(r, 800));
+            continue;
+          }
+          lastError = new Error(`${poolName} key ${ki + 1} connection error/timeout, trying next…`);
+          break; // Try next key
         }
         throw err;
       }
@@ -166,7 +170,7 @@ export async function chatWithStudioAI(
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 1200,
     temperature: options?.temperature ?? 0.72,
-  }, 30000, '');
+  }, 45000, '');
   if (!content) throw new Error('Empty response from Studio AI. Please try again.');
   return content;
 }
@@ -182,7 +186,7 @@ export async function chatWithMediaGenAI(
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 1200,
     temperature: options?.temperature ?? 0.72,
-  }, 30000, '');
+  }, 45000, '');
   if (!content) throw new Error('Empty response from AI. Please try again.');
   return content;
 }
@@ -198,7 +202,7 @@ export async function chatWithPresentationAI(
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 1200,
     temperature: options?.temperature ?? 0.72,
-  }, 30000, '');
+  }, 45000, '');
   if (!content) throw new Error('Empty response from AI. Please try again.');
   return content;
 }

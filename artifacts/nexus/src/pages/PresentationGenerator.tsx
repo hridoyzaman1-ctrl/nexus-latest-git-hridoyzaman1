@@ -165,7 +165,7 @@ function fileToDataUrl(file: File): Promise<string> {
 
 export default function PresentationGenerator({ embedded }: PresentationGeneratorProps) {
   const [view, setView] = useState<View>('library');
-  const [presentations, setPresentations] = useLocalStorage<PresentationType[]>('presentations', []);
+  const [presentations, setPresentations] = useState<PresentationType[]>([]);
   const [settings, setSettings] = useState<PresentationSettings>({ ...defaultSettings });
   const [sourceType, setSourceType] = useState<SourceType>('topic');
   const [sourceContent, setSourceContent] = useState('');
@@ -219,6 +219,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [presSelectedBgm, setPresSelectedBgm] = useState<string>('none');
   const { toast } = useToast();
 
+  useEffect(() => {
+    refreshList();
+  }, []);
+
   const getStudySessions = (): StudySession[] => {
     return getLocalStorage<StudySession[]>('studySessions', []);
   };
@@ -244,9 +248,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     setStudyPlannerTargetId(null);
   };
 
-  const refreshList = useCallback(() => {
-    setPresentations(getAllPresentations());
-  }, [setPresentations]);
+  const refreshList = useCallback(async () => {
+    const all = await getAllPresentations();
+    setPresentations(all);
+  }, []);
 
   const handleGenerate = async () => {
     if (!settings.title.trim()) {
@@ -357,8 +362,8 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
         updatedAt: now,
       };
 
-      savePresentation(presentation);
-      refreshList();
+      await savePresentation(presentation);
+      await refreshList();
       setEditingPresentation(presentation);
       setEditingSlideIdx(0);
       setView('editor');
@@ -385,9 +390,9 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     }
   };
 
-  const handleDelete = (id: string) => {
-    deletePresentation(id);
-    refreshList();
+  const handleDelete = async (id: string) => {
+    await deletePresentation(id);
+    await refreshList();
     if (editingPresentation?.id === id) {
       setEditingPresentation(null);
       setView('library');
@@ -395,10 +400,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     toast({ title: 'Deleted', description: 'Presentation removed.' });
   };
 
-  const handleDuplicate = (id: string) => {
-    const dup = duplicatePresentation(id);
+  const handleDuplicate = async (id: string) => {
+    const dup = await duplicatePresentation(id);
     if (dup) {
-      refreshList();
+      await refreshList();
       toast({ title: 'Duplicated', description: 'A copy has been created.' });
     }
   };
