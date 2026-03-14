@@ -428,14 +428,6 @@ export default function PresentationCoach() {
       toast({ title: 'Demo mode', description: 'AI script generation is disabled in demo mode.', variant: 'destructive' });
       return;
     }
-    if (!navigator.onLine) {
-      toast({
-        title: "You're offline",
-        description: "AI script generation requires an internet connection. Please check your network and try again.",
-        variant: "destructive",
-      });
-      return;
-    }
     setScriptGenerating(true);
     try {
       const generated = await generateScript({ ...scriptSettings, topic: sessionTopic || scriptSettings.topic, duration: targetDuration });

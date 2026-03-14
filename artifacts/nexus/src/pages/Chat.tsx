@@ -34,18 +34,7 @@ export default function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hasGreeted] = useLocalStorage<boolean>('kira_chat_greeted', false);
   const [, setGreeted] = useLocalStorage<boolean>('kira_chat_greeted', false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   useEffect(() => {
     if (!hasGreeted && messages.length === 0) {
@@ -176,12 +165,6 @@ export default function Chat() {
 
       <PageOnboardingTooltips pageId="chat" />
 
-      {isOffline && (
-        <div className="flex items-center justify-center gap-2 p-2 mx-4 mb-2 text-xs font-semibold text-destructive bg-destructive/10 rounded-xl">
-          <WifiOff className="w-3.5 h-3.5" />
-          <span>You are offline. Chat requires an internet connection.</span>
-        </div>
-      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 mb-4">
         {messages.length === 0 && (
@@ -254,14 +237,14 @@ export default function Chat() {
 
       <div className="flex gap-2">
         <Input
-          placeholder={isDemoMode ? "Interactive Demo - Chat Disabled" : isOffline ? "You are offline..." : "Talk to Kira..."}
+          placeholder={isDemoMode ? "Interactive Demo - Chat Disabled" : "Talk to Kira..."}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send(input)}
           className="bg-secondary border-0 flex-1"
-          disabled={loading || isOffline || isDemoMode}
+          disabled={loading || isDemoMode}
         />
-        <button onClick={() => send(input)} disabled={loading || isOffline || isDemoMode} className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center active:scale-90 disabled:opacity-50">
+        <button onClick={() => send(input)} disabled={loading || isDemoMode} className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center active:scale-90 disabled:opacity-50">
           <Send className="w-4 h-4 text-primary-foreground" />
         </button>
       </div>

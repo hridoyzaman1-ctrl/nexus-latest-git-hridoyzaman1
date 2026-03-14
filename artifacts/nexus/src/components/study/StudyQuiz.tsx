@@ -126,10 +126,6 @@ export default function StudyQuiz({ sessions, materials, quizHistory, onSaveQuiz
   // Generate quiz with rate limiting
   const generateQuiz = async () => {
     // Offline check
-    if (!navigator.onLine) {
-      toast.error("You're offline — AI quiz generation requires an internet connection.");
-      return;
-    }
 
     // Rate limit check: 1 quiz per material/session per 24h
     if (scopeType === 'session' && selectedSessionId && !canTakeQuizForSession(selectedSessionId)) {
@@ -260,7 +256,7 @@ Respond with valid JSON only.`;
       toast.success(`${qs.length} questions generated!`);
     } catch (err) {
       logError('Quiz generation error', err);
-      toast.error('Failed to generate quiz. Check your connection.');
+      toast.error('Failed to generate quiz. Please try again later.');
       setStep('setup');
     }
   };
@@ -319,11 +315,6 @@ Respond with valid JSON only.`;
       setStep('results');
 
       // Get AI feedback
-      if (!navigator.onLine) {
-        setFeedback('Great effort! Keep studying and you\'ll keep improving 💪');
-        setLoadingFeedback(false);
-        return;
-      }
 
       setLoadingFeedback(true);
       const pct = Math.round((obtained / totalMarks) * 100);

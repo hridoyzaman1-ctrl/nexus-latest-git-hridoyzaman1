@@ -1267,10 +1267,6 @@ function BreathingView({ onBack }: { onBack: () => void }) {
   };
 
   const submitFeedback = async () => {
-    if (!navigator.onLine) {
-      toast.error('You are offline. AI analysis requires an internet connection.');
-      return;
-    }
     setAiLoading(true);
     const feedback: BreathingFeedback = {
       id: crypto.randomUUID(),

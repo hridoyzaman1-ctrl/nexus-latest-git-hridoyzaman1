@@ -57,18 +57,7 @@ export default function AISummarizer({ documentId, documentName, getPageText, to
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [editTitleValue, setEditTitleValue] = useState('');
 
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   useEffect(() => {
     const all = getLocalStorage<SavedAISummary[]>('aiSummaries', []);
@@ -78,10 +67,6 @@ export default function AISummarizer({ documentId, documentName, getPageText, to
   const generate = async (selectedMode: 'summary' | 'detailed' | 'simple') => {
     if (isDemoMode) {
       toast.error('AI Summarization is disabled in demo mode.');
-      return;
-    }
-    if (isOffline) {
-      toast.error('AI Summarization requires an active internet connection.');
       return;
     }
     const start = Math.max(1, parseInt(pageStart) || 1);
@@ -264,11 +249,10 @@ export default function AISummarizer({ documentId, documentName, getPageText, to
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
                   Choose Analysis Type
                   {isDemoMode && <span className="text-destructive flex items-center gap-1">Demo Mode</span>}
-                  {isOffline && !isDemoMode && <span className="text-destructive flex items-center gap-1"><WifiOff className="w-3 h-3" /> Offline</span>}
                 </label>
                 <div className="space-y-1.5">
                   {MODES.map(m => (
-                    <button key={m.id} onClick={() => generate(m.id)} disabled={loading || isOffline || isDemoMode}
+                    <button key={m.id} onClick={() => generate(m.id)} disabled={loading || isDemoMode}
                       className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:border-violet-400/50 hover:bg-violet-500/5 transition-all text-left disabled:opacity-50">
                       <div className="p-1.5 rounded-lg bg-violet-500/10 shrink-0"><m.icon className="w-4 h-4 text-violet-500" /></div>
                       <div className="flex-1 min-w-0">

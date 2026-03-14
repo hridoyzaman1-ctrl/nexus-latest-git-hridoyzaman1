@@ -269,10 +269,6 @@ export default function MediaGenerationModal({
   }, [open, preGeneratedScript, stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = useCallback(async () => {
-    if (!navigator.onLine) {
-      toast.error("You're offline. AI media generation requires an internet connection. Please check your network and try again.");
-      return;
-    }
     // Reset generation state, create fresh cancel signal
     cancelSignal.current = { cancelled: false };
     ttsRef.current?.stop();

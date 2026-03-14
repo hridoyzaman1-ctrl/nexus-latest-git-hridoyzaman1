@@ -55,7 +55,7 @@ export default function Weather() {
         setWeather(cached);
         setIsStale(true);
       } else {
-        setError('Could not load weather data. Check your connection.');
+        setError('Could not load weather data. Please try again in a moment.');
       }
     } finally {
       setLoading(false);

@@ -314,15 +314,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       const aiAvailable = isPresentationAIAvailable() && !isDemoMode;
 
       if (aiAvailable) {
-        if (!navigator.onLine) {
-          setGenerating(false);
-          toast({
-            title: "You're offline",
-            description: "AI presentation generation requires an internet connection. Please check your network and try again.",
-            variant: "destructive",
-          });
-          return;
-        }
         setGeneratingStatus('AI is crafting your presentation...');
         try {
           const sectionNames = parsedContent?.sections?.map(s => s.heading).filter(Boolean);
@@ -542,10 +533,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
         renderPresentationSlideToCanvas(c, slide, presTheme, presImageCacheRef.current, prog);
       };
 
-      // Offscreen canvas — same size used by AI video generation
+      // High-resolution canvas for premium video quality (720p)
       const canvas = document.createElement('canvas');
-      canvas.width = 480;
-      canvas.height = 270;
+      canvas.width = 1280;
+      canvas.height = 720;
 
       const result = await recordVideoWithUserAudio(
         canvas,
@@ -603,10 +594,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const handlePresGenerateAIScript = async () => {
     const pres = presentations.find(p => p.id === videoPresId);
     if (!pres) return;
-    if (!navigator.onLine) {
-      toast({ title: 'Offline', description: 'You are offline. AI script generation requires an internet connection.', variant: 'destructive' });
-      return;
-    }
     setPresGeneratingScript(true);
     setPresAiScript(null);
     setPresScriptError(null);
@@ -684,14 +671,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       handleRegenerateFallback();
       return;
     }
-    if (!navigator.onLine) {
-      toast({
-        title: "You're offline",
-        description: "AI regeneration requires an internet connection.",
-        variant: "destructive",
-      });
-      return;
-    }
     setRegenerating(true);
     try {
       const aiResult = await regenerateFullDeck(editingPresentation.slides, editingPresentation.settings);
@@ -739,14 +718,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       toast({ title: isDemoMode ? 'Demo mode' : 'AI unavailable', description: isDemoMode ? 'AI features are disabled in demo mode.' : 'Style regeneration requires AI.', variant: 'destructive' });
       return;
     }
-    if (!navigator.onLine) {
-      toast({
-        title: "You're offline",
-        description: "Style regeneration requires an internet connection.",
-        variant: "destructive",
-      });
-      return;
-    }
     setRegenerating(true);
     try {
       const aiResult = await regenerateFullDeck(editingPresentation.slides, editingPresentation.settings, style);
@@ -772,14 +743,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const handleRegenerateCurrentSlide = async () => {
     if (!editingPresentation || !isPresentationAIAvailable() || isDemoMode) {
       toast({ title: isDemoMode ? 'Demo mode' : 'AI unavailable', description: isDemoMode ? 'AI features are disabled in demo mode.' : 'Slide regeneration requires AI.', variant: 'destructive' });
-      return;
-    }
-    if (!navigator.onLine) {
-      toast({
-        title: "You're offline",
-        description: "AI slide regeneration requires an internet connection.",
-        variant: "destructive",
-      });
       return;
     }
     const currentSlide = editingPresentation.slides[editingSlideIdx];

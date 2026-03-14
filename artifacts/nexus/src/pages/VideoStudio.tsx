@@ -112,10 +112,6 @@ export default function VideoStudio() {
   };
 
   const handleDescribeEnhance = async () => {
-    if (!navigator.onLine) {
-      setError('You are offline. AI script generation requires an internet connection.');
-      return;
-    }
     setAiEnhancing(true); setAiHint(null); setError(null);
     try {
       const raw = await chatWithStudioAI([
@@ -145,7 +141,7 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
       setDescribeText('');
       setInputMode('upload');
     } catch {
-      setError('AI generation failed. Check your connection and try again, or use your description as-is.');
+      setError('AI generation failed. Please try again in a moment, or use your description as-is.');
     } finally { setAiEnhancing(false); }
   };
 
@@ -158,10 +154,6 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
   };
 
   const handleGenerateAIScript = async () => {
-    if (!navigator.onLine) {
-      setScriptError('You are offline. AI script generation requires an internet connection.');
-      return;
-    }
     setGeneratingScript(true);
     setAiScript(null);
     setScriptError(null);

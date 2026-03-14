@@ -63,13 +63,35 @@ function roundRectPath(
  * @param imageCache - Map returned by preloadSlideImages()
  * @param progress   - 0..1 — drives the thin progress bar at the bottom
  */
-function getTextAreaWidth(layout: SlideLayoutType, images: SlideImage[]): number {
-  if (!images || images.length === 0) return 100;
-  // If images are placed on the right (x >= 55), constrain text to the left
-  const hasUploadedOrPlaceholder = images.some(img => img.x >= 55);
-  if (!hasUploadedOrPlaceholder) return 100;
-  const minX = Math.min(...images.filter(img => img.x >= 55).map(img => img.x));
-  return Math.max(45, minX - 4);
+interface TextAreaConfig {
+  x: number;     // percentage (0..100)
+  width: number; // percentage (0..100)
+  hasPanel: boolean;
+}
+
+function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[]): TextAreaConfig {
+  if (!images || images.length === 0) return { x: 0, width: 100, hasPanel: false };
+
+  // Heuristic: Is there a large image covering the left or right side?
+  const leftBusy = images.some(img => img.x < 30 && img.width > 40);
+  const rightBusy = images.some(img => img.x > 40 && img.width > 40);
+
+  if (rightBusy && !leftBusy) {
+    const minX = Math.min(...images.filter(img => img.x > 40).map(img => img.x));
+    return { x: 0, width: Math.max(40, minX - 2), hasPanel: true };
+  }
+  
+  if (leftBusy && !rightBusy) {
+    const maxX = Math.max(...images.filter(img => img.x < 30).map(img => img.x + img.width));
+    return { x: maxX + 2, width: 100 - (maxX - 2), hasPanel: true };
+  }
+
+  // If both sides are busy or it's a complex layout, use a full-width reading panel
+  if (leftBusy && rightBusy) {
+    return { x: 5, width: 90, hasPanel: true };
+  }
+
+  return { x: 0, width: 100, hasPanel: false };
 }
 
 export function renderPresentationSlideToCanvas(
@@ -151,20 +173,17 @@ export function renderPresentationSlideToCanvas(
     ctx.restore();
   }
 
-  // ── Text readability panel (when images are present) ───────────────────────
-  // No longer hardcoded. We use getTextAreaWidth to match the UI perfectly.
-  const textWidthPct = getTextAreaWidth(slide.layout, slide.images || []);
-  const panelW = (textWidthPct / 100) * W;
-  const hasLargeImages = (slide.images?.length ?? 0) > 0 &&
-    slide.images!.some(img => (img.width ?? 0) > 10 && (img.height ?? 0) > 10);
+  // ── Text readability panel ────────────────────────────────────────────────
+  const textCfg = getTextAreaConfig(slide.layout, slide.images || []);
+  const panelX = (textCfg.x / 100) * W;
+  const panelW = (textCfg.width / 100) * W;
 
-  if (hasLargeImages && textWidthPct < 100) {
-    const panelAlpha = theme.darkTheme ? 0.62 : 0.65;
+  if (textCfg.hasPanel) {
+    const panelAlpha = theme.darkTheme ? 0.72 : 0.75; // Increased opacity for better legibility
     ctx.save();
     ctx.globalAlpha = panelAlpha;
     ctx.fillStyle = bg;
-    // Cover the text area with a readability panel
-    ctx.fillRect(0, 0, panelW, H);
+    ctx.fillRect(panelX, 0, panelW, H);
     ctx.restore();
 
     // Accent stripe still visible on top
@@ -174,39 +193,39 @@ export function renderPresentationSlideToCanvas(
     }
   }
 
-  // ── Text helpers ───────────────────────────────────────────────────────────
   // Scale font sizes proportionally to the canvas width.
-  // ThemeConfig sizes were designed for a ~960 px wide slide.
-  const scale = W / 960;
+  // We use a baseline of 1280 (720p) for scaling calculations.
+  const scale = W / 1280;
 
   const titleSize = Math.round(
-    Math.max(13, (
+    Math.max(16, (
       slide.layout === 'cover'            ? theme.coverTitleSize
       : slide.layout === 'section-divider' ? theme.sectionTitleSize
       : theme.titleFontSize
-    ) * scale * 1.4),
+    ) * scale * 1.55), // Increased scale for more impact at 720p
   );
-  const bodySize  = Math.round(Math.max(9,  theme.bodyFontSize   * scale * 1.25));
-  const bulletSize = Math.round(Math.max(8,  theme.bulletFontSize * scale * 1.25));
+  const bodySize  = Math.round(Math.max(12, theme.bodyFontSize   * scale * 1.4));
+  const bulletSize = Math.round(Math.max(11, theme.bulletFontSize * scale * 1.4));
 
   const tf = `"${theme.titleFont}", sans-serif`;
   const bf = `"${theme.bodyFont}", sans-serif`;
 
-  const mx = Math.round(W * 0.048);   // horizontal margin
-  const my = Math.round(H * 0.07);    // vertical margin
+  const mx = Math.round(W * 0.05);   // horizontal margin inside panel
+  const my = Math.round(H * 0.08);    // vertical margin
 
   // Text Styling from slide object
   const sStyle = slide.textStyle;
-  const contentMaxW = (textWidthPct / 100) * W - mx * 2;
+  const contentMaxW = panelW - mx * 2;
   
   // Custom colors if defined
   const finalTitleColor = sStyle?.titleColor ? `#${sStyle.titleColor}` : tc;
   const finalBodyColor = sStyle?.bodyColor ? `#${sStyle.bodyColor}` : bc;
 
   function getAlignmentX(align: string | undefined): number {
-    if (align === 'center') return panelW / 2;
-    if (align === 'right') return panelW - mx;
-    return mx;
+    const base = panelX + mx;
+    if (align === 'center') return panelX + panelW / 2;
+    if (align === 'right') return panelX + panelW - mx;
+    return base;
   }
 
   /** Measure and truncate a line to fit maxW pixels. */

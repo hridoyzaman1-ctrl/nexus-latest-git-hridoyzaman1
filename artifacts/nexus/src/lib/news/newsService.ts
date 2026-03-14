@@ -40,17 +40,22 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise
 
     return { articles, fromCache: false };
   } catch (err: any) {
+    const isNetworkError = err instanceof TypeError || err.name === 'AbortError' || (typeof navigator !== 'undefined' && !navigator.onLine);
+    const msg = isNetworkError 
+      ? 'Unable to connect to news server. Please check your internet.' 
+      : 'News service is temporarily unavailable. Please try again in a moment.';
+
     if (cached) {
       return {
         articles: cached.articles,
         fromCache: true,
-        error: 'Showing last loaded news due to connection issue.',
+        error: `Showing cached news. ${msg}`,
       };
     }
     return {
       articles: [],
       fromCache: false,
-      error: 'Unable to load news. Please check your connection and try again.',
+      error: msg,
     };
   }
 }

@@ -438,10 +438,6 @@ export default function Analytics() {
   const deleteReport = (id: string) => setSavedReports(prev => prev.filter(r => r.id !== id));
 
   const generateAIReport = async () => {
-    if (!navigator.onLine) {
-      import('sonner').then(({ toast }) => toast.error('You are offline. AI report generation requires an internet connection.'));
-      return;
-    }
     if (isDemoMode) { setReportLoading(false); return; }
     setReportLoading(true);
     setAiReport(null);
