@@ -128,23 +128,54 @@ export default function NewsPortal() {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {isBreakingNews(selectedArticle) && (
                 <span className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1"><Zap size={10} />BREAKING</span>
               )}
-              <span>{selectedArticle.source}</span>
+              <span className="font-semibold">{selectedArticle.source}</span>
               <span>·</span>
               <span>{formatTimeAgo(selectedArticle.publishedAt)}</span>
             </div>
-            <h2 className="text-xl font-bold leading-tight">{selectedArticle.title}</h2>
-            {selectedArticle.summary && (
-              <p className="text-muted-foreground text-sm leading-relaxed">{selectedArticle.summary}</p>
-            )}
-            <a href={selectedArticle.url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-primary/20 text-primary font-semibold text-sm hover:bg-primary/30 transition-colors">
-              <ExternalLink size={16} /> Read Full Article
-            </a>
+            
+            <h2 className="text-xl sm:text-2xl font-bold leading-tight">{selectedArticle.title}</h2>
+            
+            <div className="flex gap-2">
+              <a href={selectedArticle.url} target="_blank" rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:shadow-lg transition-all active:scale-[0.98]">
+                <ExternalLink size={16} /> Open Extension
+              </a>
+              <button onClick={() => setSelectedArticle(null)}
+                className="px-6 py-3 rounded-xl bg-secondary text-secondary-foreground font-semibold text-sm hover:bg-secondary/80 transition-colors">
+                Close
+              </button>
+            </div>
+
+            {/* In-App Reading View */}
+            <div className="relative glass rounded-2xl overflow-hidden min-h-[500px] border border-border/30">
+              <div className="absolute top-0 left-0 right-0 bg-background/80 backdrop-blur-md px-4 py-2 border-b border-border/20 z-10 flex items-center justify-between">
+                <span className="text-[10px] font-mono text-muted-foreground truncate">{selectedArticle.url}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success font-bold">IN-APP VIEW</span>
+              </div>
+              <iframe 
+                src={selectedArticle.url} 
+                className="w-full h-[600px] pt-10"
+                title={selectedArticle.title}
+                sandbox="allow-scripts allow-same-origin allow-popups"
+                loading="lazy"
+              />
+              {/* Fallback Summary in Case Iframe fails (CORS) or loads slowly */}
+              <div className="p-6 pt-12 space-y-4 max-h-[600px] overflow-y-auto">
+                <p className="text-[10px] text-muted-foreground italic mb-4">Note: If the website above doesn't load, you can read the summary below or use the 'Open Extension' button.</p>
+                {selectedArticle.imageUrl && !selectedArticle.url.includes('news') && (
+                  <img src={selectedArticle.imageUrl} alt="" className="w-full h-48 object-cover rounded-xl mb-4" />
+                )}
+                <div 
+                  className="text-foreground/90 text-sm leading-relaxed prose prose-invert max-w-none"
+                  dangerouslySetInnerHTML={{ __html: selectedArticle.summary || '' }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </PageTransition>

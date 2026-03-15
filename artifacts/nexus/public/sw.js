@@ -5,7 +5,20 @@ const ASSETS_TO_CACHE = [
   '/manifest.json',
   '/pwa-192.png',
   '/pwa-512.png',
-  '/audio/alarm-chime.mp3'
+  '/audio/alarm-chime.mp3',
+  '/audio/Melody.mp3',
+  '/audio/Chill.mp3',
+  '/audio/Cafe.mp3',
+  '/audio/Peaceful%20Piano.mp3',
+  '/audio/Flute.mp3',
+  '/audio/Gentle%20Rain.mp3',
+  '/audio/Ocean%20Waves.mp3',
+  '/audio/Meditation.mp3',
+  '/audio/Yoga.mp3',
+  '/audio/Quietphase%20Meditation.mp3',
+  '/audio/Ambient%20Background.mp3',
+  '/audio/Believer.mp3',
+  '/audio/Stronger%20Every%20Day.mp3'
 ];
 
 self.addEventListener('install', (event) => {

@@ -1,10 +1,113 @@
 import { NewsArticle, NewsMode, NewsCategory } from '@/types/news';
 import { getCachedNews, setCachedNews, isCacheValid } from './cache';
+import { NEWS_SOURCES } from './sources';
+import { deduplicateArticles } from './deduplicator';
 
-const API_BASE = '/api/news';
+// Use a CORS proxy to fetch RSS feeds directly from the client
+// CORS proxies to fetch RSS feeds directly from the client
+const PROXIES = [
+  'https://api.allorigins.win/get?url=',
+  'https://corsproxy.io/?',
+  'https://api.codetabs.com/v1/proxy?quest='
+];
 
 let lastFetchTime = 0;
 const DEBOUNCE_MS = 3000;
+
+function extractText(xml: string, tag: string): string {
+  const cdataMatch = xml.match(new RegExp(`<${tag}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tag}>`));
+  if (cdataMatch) return cdataMatch[1].trim();
+  const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
+  return match ? match[1].replace(/<[^>]+>/g, '').trim() : '';
+}
+
+function extractImage(itemXml: string): string | null {
+  const mediaThumbnail = itemXml.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/);
+  if (mediaThumbnail) return mediaThumbnail[1];
+  const mediaContent = itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/);
+  if (mediaContent) return mediaContent[1];
+  const enclosure = itemXml.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]*type=["']image/);
+  if (enclosure) return enclosure[1];
+  const contentEncoded = itemXml.match(/<content:encoded>([\s\S]*?)<\/content:encoded>/);
+  if (contentEncoded) {
+    const imgInContent = contentEncoded[1].match(/<img[^>]+src=["']([^"']+)["']/);
+    if (imgInContent) return imgInContent[1];
+  }
+  const imgTag = itemXml.match(/<img[^>]+src=["']([^"']+)["']/);
+  if (imgTag) return imgTag[1];
+  return null;
+}
+
+function parseRSSItems(xml: string, sourceName: string, category: string, region: string, language: string): NewsArticle[] {
+  const articles: NewsArticle[] = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const itemXml = match[1];
+    const title = extractText(itemXml, 'title');
+    const link = extractText(itemXml, 'link');
+    const pubDate = extractText(itemXml, 'pubDate');
+    const description = extractText(itemXml, 'description');
+    const imageUrl = extractImage(itemXml);
+    if (title && link) {
+      const id = `news_${Math.abs(title.length + link.length).toString(36)}_${Date.now().toString(36)}`;
+      articles.push({
+        id,
+        title,
+        url: link,
+        source: sourceName,
+        publishedAt: (() => {
+          if (!pubDate) return new Date().toISOString();
+          const t = Date.parse(pubDate);
+          return isNaN(t) ? new Date().toISOString() : new Date(t).toISOString();
+        })(),
+        summary: description, // Keep full description for in-app reading
+        imageUrl,
+        category: category as NewsCategory,
+        region,
+        language
+      });
+    }
+  }
+  return articles;
+}
+
+async function fetchFeed(source: any): Promise<NewsArticle[]> {
+  // Try direct fetch first
+  try {
+    const res = await fetch(source.feedUrl, { headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' } });
+    if (res.ok) {
+      const xml = await res.text();
+      return parseRSSItems(xml, source.name, source.category, source.region, source.language);
+    }
+  } catch (err) {
+    // Fallback to proxies
+  }
+
+  // Try proxies sequentially
+  for (const proxy of PROXIES) {
+    try {
+      const url = `${proxy}${encodeURIComponent(source.feedUrl)}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      
+      let xml = '';
+      if (proxy.includes('allorigins')) {
+        const data = await res.json();
+        xml = data.contents;
+      } else {
+        xml = await res.text();
+      }
+
+      if (xml) {
+        return parseRSSItems(xml, source.name, source.category, source.region, source.language);
+      }
+    } catch (err) {
+      console.warn(`Proxy ${proxy} failed for ${source.name}:`, err);
+    }
+  }
+  return [];
+}
 
 export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise<{
   articles: NewsArticle[];
@@ -14,36 +117,57 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise
   const now = Date.now();
   const cached = getCachedNews(mode, category);
 
+  // Return cache if valid
+  if (isCacheValid(cached)) {
+    return { articles: cached!.articles, fromCache: true };
+  }
+
   // If offline, return cache immediately if available
   if (typeof navigator !== 'undefined' && !navigator.onLine && cached) {
     return { articles: cached.articles, fromCache: true, error: 'Offline: showing saved headlines.' };
   }
 
-  if (now - lastFetchTime < DEBOUNCE_MS) {
-    if (cached) return { articles: cached.articles, fromCache: true };
-  }
-
-  if (isCacheValid(cached)) {
-    return { articles: cached!.articles, fromCache: true };
+  if (now - lastFetchTime < DEBOUNCE_MS && cached) {
+    return { articles: cached.articles, fromCache: true };
   }
 
   try {
     lastFetchTime = now;
-    const url = `${API_BASE}?mode=${mode}&category=${category}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    
+    // Select sources
+    let sources = NEWS_SOURCES.filter(s => s.mode === mode);
+    if (category !== 'top') {
+      const catSources = sources.filter(s => s.category === category);
+      if (catSources.length > 0) sources = catSources;
+    }
 
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
+    // Limit to 8 random sources per request to avoid overwhelming the proxy
+    if (sources.length > 8) {
+      sources = sources.sort(() => Math.random() - 0.5).slice(0, 8);
+    }
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const feedResults = await Promise.allSettled(sources.map(s => fetchFeed(s)));
+    let allArticles: NewsArticle[] = [];
 
-    const data = await res.json();
-    const articles: NewsArticle[] = data.articles || [];
+    for (const result of feedResults) {
+      if (result.status === 'fulfilled') {
+        allArticles = [...allArticles, ...result.value];
+      }
+    }
 
-    setCachedNews(mode, category, articles);
+    if (allArticles.length === 0) {
+      throw new Error('No news articles found');
+    }
 
-    return { articles, fromCache: false };
+    // Deduplicate and sort
+    const deduplicated = deduplicateArticles(allArticles);
+    const sorted = deduplicated.sort((a, b) => 
+      new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    ).slice(0, 60);
+
+    setCachedNews(mode, category, sorted);
+
+    return { articles: sorted, fromCache: false };
   } catch (err: any) {
     if (cached) {
       return {
@@ -55,7 +179,7 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise
     return {
       articles: [],
       fromCache: false,
-      error: 'Unable to load news. Please check your connection and try again.',
+      error: 'Unable to load live news. Please check your connection.',
     };
   }
 }

@@ -59,6 +59,7 @@ export function useReminderEngine() {
 
   const checkReminders = useCallback(() => {
     const now = new Date();
+    const defaultAlarm = getLocalStorage<AlarmSoundType>('defaultAlarmSound', 'chime');
 
     // ── Tasks ──
     const tasks = getLocalStorage<Task[]>('tasks', []);
@@ -77,7 +78,7 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         tasksChanged = true;
         if (task.alarmEnabled) {
-          playAlarmSound(task.alarmSound || 'chime');
+          playAlarmSound(task.alarmSound || defaultAlarm);
         } else {
           playNotificationChime();
         }
@@ -110,7 +111,7 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         todosChanged = true;
         if (todo.alarmEnabled) {
-          playAlarmSound(todo.alarmSound || 'chime');
+          playAlarmSound(todo.alarmSound || defaultAlarm);
         } else {
           playNotificationChime();
         }
@@ -141,7 +142,7 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         notesChanged = true;
         if (note.alarmEnabled) {
-          playAlarmSound(note.alarmSound || 'chime');
+          playAlarmSound(note.alarmSound || defaultAlarm);
         } else {
           playNotificationChime();
         }
@@ -174,7 +175,7 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         sessionsChanged = true;
         if (session.alarmEnabled) {
-          playAlarmSound(session.alarmSound || 'chime');
+          playAlarmSound(session.alarmSound || defaultAlarm);
         } else {
           playNotificationChime();
         }
@@ -207,7 +208,7 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         goalsChanged = true;
         if (goal.alarmEnabled) {
-          playAlarmSound(goal.alarmSound || 'chime');
+          playAlarmSound(goal.alarmSound || defaultAlarm);
         } else {
           playNotificationChime();
         }

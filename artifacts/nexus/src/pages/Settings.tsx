@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import PageOnboardingTooltips from '@/components/PageOnboardingTooltips';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { syncSafetyDataToSW } from '@/hooks/useActivityTracker';
-import { UserProfile, SafetySettings, defaultSafetySettings, EmergencyContact } from '@/types';
+import { UserProfile, SafetySettings, defaultSafetySettings, EmergencyContact, AlarmSoundType } from '@/types';
 import { avatars, avatarColors } from '@/lib/avatars';
-import { Sun, Moon, Monitor, Download, Upload, Trash2, Bell, Camera, X, ImagePlus, LayoutGrid, Volume2, Smartphone, ShieldAlert, Accessibility, Type, Eye as EyeIcon, Zap, BoldIcon, Eclipse, BookOpen, HelpCircle, Globe, Share2, ChevronRight, Sparkles } from 'lucide-react';
+import { Sun, Moon, Monitor, Download, Upload, Trash2, Bell, Camera, X, ImagePlus, LayoutGrid, Volume2, Smartphone, ShieldAlert, Accessibility, Type, Eye as EyeIcon, Zap, BoldIcon, Eclipse, BookOpen, HelpCircle, Globe, Share2, ChevronRight, Sparkles, Music2, ArrowLeft, User, Palette, Shield, Info, Github, ExternalLink } from 'lucide-react';
 import { TimePicker } from '@/components/TimePicker';
 import { useNavigate } from 'react-router-dom';
 import { AudioPreferences, DEFAULT_AUDIO_PREFS, BUILTIN_TRACKS, useMusicPlayer } from '@/contexts/MusicPlayerContext';
@@ -12,10 +12,11 @@ import { useAccessibility, defaultAccessibility } from '@/hooks/useAccessibility
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { ALARM_SOUNDS, previewAlarmSound } from '@/lib/alarm';
 import { NotificationSettings, defaultNotificationSettings, buildWeeklySummary } from '@/hooks/useNotificationReminders';
 import { Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -582,6 +583,9 @@ export default function SettingsPage() {
       {/* Audio Preferences */}
       <AudioPreferencesSection />
 
+      {/* Alarm Settings */}
+      <AlarmSettingsSection />
+
       {/* Symmetry & Order Mode */}
       <SymmetryModeSection />
 
@@ -943,6 +947,45 @@ function AudioPreferencesSection() {
           <p className="text-[10px] text-muted-foreground">Plays default track when app loads</p>
         </div>
         <Switch checked={prefs.autoplay} onCheckedChange={v => update({ autoplay: v })} />
+      </div>
+    </div>
+  );
+}
+
+function AlarmSettingsSection() {
+  const [pref, setPref] = useLocalStorage<AlarmSoundType>('defaultAlarmSound', 'chime');
+
+  const update = (v: AlarmSoundType) => {
+    setPref(v);
+    previewAlarmSound(v);
+    toast.success(`Default alarm set to ${ALARM_SOUNDS.find(s => s.value === v)?.label}`);
+  };
+
+  return (
+    <div className="glass rounded-2xl p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <Bell className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-muted-foreground">Alarm Settings</h2>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs text-muted-foreground">Default Alarm Sound</label>
+        <div className="grid grid-cols-2 gap-2">
+          {ALARM_SOUNDS.map(sound => (
+            <button
+              key={sound.value}
+              onClick={() => update(sound.value)}
+              className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${pref === sound.value
+                ? 'bg-primary/10 border-primary text-primary shadow-sm'
+                : 'bg-secondary/50 border-transparent text-muted-foreground hover:bg-secondary hover:scale-[1.02]'
+              }`}
+            >
+              <span className="text-lg">{sound.emoji}</span>
+              <span className="text-xs font-medium">{sound.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground text-center">Selecting a sound plays a short preview</p>
       </div>
     </div>
   );

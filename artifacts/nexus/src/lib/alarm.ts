@@ -7,10 +7,10 @@ let isPlaying = false;
 let warnedPlayback = false;
 
 const ALARM_FILES: Record<AlarmSoundType, string> = {
-  chime: '/audio/alarm-chime.mp3',
-  bells: '/audio/alarm-bells.mp3',
-  nature: '/audio/alarm-nature.mp3',
-  urgent: '/audio/alarm-urgent.mp3',
+  chime: '/audio/Melody.mp3',
+  bells: '/audio/Believer.mp3',
+  nature: '/audio/Gentle Rain.mp3',
+  urgent: '/audio/Stronger Every Day.mp3',
 };
 
 export const ALARM_SOUNDS: { value: AlarmSoundType; label: string; emoji: string }[] = [
@@ -37,7 +37,9 @@ function createAudio(src: string, volume: number) {
 export function playAlarmSound(type: AlarmSoundType = 'chime'): void {
   stopAlarmSound();
 
-  const audio = createAudio(ALARM_FILES[type], 0.85);
+  const src = ALARM_FILES[type];
+  const audio = createAudio(src, 0.85);
+
   audio.addEventListener('ended', () => {
     isPlaying = false;
     currentAudio = null;
@@ -49,10 +51,17 @@ export function playAlarmSound(type: AlarmSoundType = 'chime'): void {
       isPlaying = true;
       currentAudio = audio;
     })
-    .catch(() => {
+    .catch((err) => {
+      console.warn(`Failed to play alarm sound ${src}:`, err);
+      // Fallback if specific file fails
+      if (src !== '/audio/Chill.mp3') {
+        const fallback = createAudio('/audio/Chill.mp3', 0.85);
+        fallback.play().catch(() => notifyPlaybackIssue());
+      } else {
+        notifyPlaybackIssue();
+      }
       isPlaying = false;
       currentAudio = null;
-      notifyPlaybackIssue();
     });
 }
 
@@ -71,7 +80,7 @@ export function stopAlarmSound(): void {
 }
 
 export function playNotificationChime(): void {
-  const audio = createAudio('/audio/notification.mp3', 0.5);
+  const audio = createAudio('/audio/Cafe.mp3', 0.5);
   void audio.play()
     .then(() => {
       warnedPlayback = false;
