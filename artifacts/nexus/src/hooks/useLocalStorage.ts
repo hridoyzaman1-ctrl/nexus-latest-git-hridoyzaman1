@@ -1,6 +1,14 @@
 import { useState, useCallback, useEffect } from 'react';
 import { exampleGoals, exampleHabits, exampleTodos } from '@/lib/examples';
 
+// Request persistent storage to prevent browser from clearing data
+if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().then(persistent => {
+    if (persistent) console.log("Storage will not be cleared except by explicit user action");
+    else console.warn("Storage may be cleared under storage pressure");
+  });
+}
+
 const urlDemo = new URLSearchParams(window.location.search).get('demo') === 'true';
 if (urlDemo) {
   try { window.sessionStorage.setItem('mindflow_isDemoMode', 'true'); } catch (e) { }
@@ -93,4 +101,37 @@ export function setLocalStorage<T>(key: string, value: T): void {
     window.localStorage.setItem(prefixedKey, JSON.stringify(value));
   }
   window.dispatchEvent(new CustomEvent('local-storage', { detail: { key: prefixedKey, newValue: value } }));
+}
+
+// Data Export/Import for Persistence across uninstalls
+export function exportAppData() {
+  const data: Record<string, any> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('mindflow_')) {
+      data[key] = localStorage.getItem(key);
+    }
+  }
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mindflow_backup_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function importAppData(jsonString: string) {
+  try {
+    const data = JSON.parse(jsonString);
+    Object.entries(data).forEach(([key, value]) => {
+      if (key.startsWith('mindflow_')) {
+        localStorage.setItem(key, value as string);
+      }
+    });
+    window.location.reload();
+  } catch (e) {
+    console.error("Failed to import data", e);
+    alert("Invalid backup file");
+  }
 }

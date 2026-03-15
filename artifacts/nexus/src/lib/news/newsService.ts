@@ -119,7 +119,7 @@ async function fetchFeed(source: any, signal?: AbortSignal): Promise<NewsArticle
   return [];
 }
 
-export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?: AbortSignal): Promise<{
+export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?: AbortSignal, forceFresh = false): Promise<{
   articles: NewsArticle[];
   fromCache: boolean;
   error?: string;
@@ -127,8 +127,8 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?:
   const now = Date.now();
   const cached = getCachedNews(mode, category);
 
-  // Return cache if valid
-  if (isCacheValid(cached)) {
+  // Return cache if valid (unless forced)
+  if (!forceFresh && isCacheValid(cached)) {
     return { articles: cached!.articles, fromCache: true };
   }
 
@@ -137,7 +137,7 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?:
     return { articles: cached.articles, fromCache: true, error: 'Offline: showing saved headlines.' };
   }
 
-  if (now - lastFetchTime < DEBOUNCE_MS && cached) {
+  if (!forceFresh && now - lastFetchTime < DEBOUNCE_MS && cached) {
     return { articles: cached.articles, fromCache: true };
   }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import PageOnboardingTooltips from '@/components/PageOnboardingTooltips';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useLocalStorage, exportAppData, importAppData } from '@/hooks/useLocalStorage';
 import { syncSafetyDataToSW } from '@/hooks/useActivityTracker';
 import { UserProfile, SafetySettings, defaultSafetySettings, EmergencyContact, AlarmSoundType } from '@/types';
 import { avatars, avatarColors } from '@/lib/avatars';
@@ -145,46 +145,16 @@ export default function SettingsPage() {
     setNotifSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const exportData = () => {
-    const data: Record<string, string> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        data[key] = localStorage.getItem(key) || '';
-      }
-    }
-    // Include app version for future schema compatibility
-    data['__mindflow_backup_version__'] = '2.0.0';
-    data['__mindflow_backup_date__'] = new Date().toISOString();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0];
-    a.href = url; a.download = `mindflow-backup-${dateStr}.json`; a.click();
-    URL.revokeObjectURL(url);
-    localStorage.setItem('mindflow_lastExportDate', new Date().toISOString());
-    toast.success('Data exported! Keep this backup file safe for restoring later.');
-    toast('Note: Imported PDFs & study files are stored locally and cannot be backed up.', { duration: 5000 });
+  const handleExportData = () => {
+    exportAppData();
+    toast.success('Data exported! Keep this backup file safe.');
   };
 
-  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result as string);
-        let count = 0;
-        Object.entries(data).forEach(([k, v]) => {
-          if (k !== '__mindflow_backup_version__' && k !== '__mindflow_backup_date__') {
-            localStorage.setItem(k, v as string);
-            count++;
-          }
-        });
-        toast.success(`${count} items imported! Refreshing...`);
-        setTimeout(() => window.location.reload(), 1000);
-      } catch { toast.error('Invalid backup file. Please use a MindFlow JSON backup.'); }
-    };
+    reader.onload = () => importAppData(reader.result as string);
     reader.readAsText(file);
     e.target.value = '';
   };
@@ -534,10 +504,10 @@ export default function SettingsPage() {
         <h2 className="text-sm font-semibold text-muted-foreground">Data Management</h2>
         <p className="text-[10px] text-muted-foreground">Export your data as a backup file. Import it after reinstalling to restore all settings, sessions, notes, highlights, and more.</p>
         <div className="flex gap-2">
-          <Button onClick={exportData} variant="secondary" size="sm" className="flex-1"><Download className="w-4 h-4 mr-1" /> Export Backup</Button>
+          <Button onClick={handleExportData} variant="secondary" size="sm" className="flex-1"><Download className="w-4 h-4 mr-1" /> Export Backup</Button>
           <label className="flex-1">
             <Button variant="secondary" size="sm" className="w-full" asChild><span><Upload className="w-4 h-4 mr-1" /> Import Backup</span></Button>
-            <input type="file" accept=".json" className="hidden" onChange={importData} />
+            <input type="file" accept=".json" className="hidden" onChange={handleImportData} />
           </label>
         </div>
         <p className="text-[10px] text-muted-foreground">📌 Study files (PDFs, videos, slides) are stored locally and persist across sessions. Re-import them if you clear all data.</p>

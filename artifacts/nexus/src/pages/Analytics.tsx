@@ -584,7 +584,29 @@ export default function Analytics() {
       }
     } catch { }
 
-    const dataSummary = `${profileContext}${periodLabel} | P:${productivityScore} W:${wellnessScoreWithSleep || wellnessScore} C:${consistencyScore}\nTasks:${tasksDone}/${periodTasks.length} Focus:${periodFocusMin}m Med:${periodMedMin}m Goals:${avgGoalProgress}%\nHabits:${activeHabits}/${habits.length} Streak:${bestHabitStreak}d Lvl:${gamification.level}(${gamification.totalXp}XP)\nBreathing:${breathingSessions.length}(${avgBreathingImprovement}) Time:${Math.floor(totalTimeTracked / 60)}h${totalTimeTracked % 60}m${sleepSummary}${waterSummary}${habitStreakSummary}${notesSummary}${booksSummary}${weatherContext}${wellnessExtra}${studySummary}${presentationSummary}${coachSummary}${nutritionSummary}${fitnessSummary}${newsSummary}${mediaSummary}`;
+    const dataSummary = `OVERALL LIFE PERFORMANCE DATA SUMMARY FOR ${userProfile?.name?.toUpperCase() || 'USER'}:
+TRANSCRIPT OF RECENT ACTIVITY:
+${profileContext}
+PERIOD: ${periodLabel}
+HIGHSCORES -> P:${productivityScore} W:${wellnessScoreWithSleep || wellnessScore} C:${consistencyScore}
+CORE STATS -> Tasks Done:${tasksDone}/${periodTasks.length} | Focus Time:${periodFocusMin}m | Meditation:${periodMedMin}m | Avg Goal Progress:${avgGoalProgress}%
+STATUS -> Habits Active:${activeHabits}/${habits.length} | Best Streak:${bestHabitStreak}d | Gamification Level:${gamification.level} (${gamification.totalXp} XP)
+WELLNESS -> Breathing Mindfulness Sessions:${breathingSessions.length} (Avg Calmness Gain: ${avgBreathingImprovement}) | Total Life-Time Tracked:${Math.floor(totalTimeTracked / 60)}h ${totalTimeTracked % 60}m
+HEALTH -> ${sleepSummary} | ${waterSummary} | ${habitStreakSummary}
+SYSTEMS -> Notes:${notesAll.length} | Books In Progress:${booksReading}/${booksAll.length} | ${weatherContext}
+MENTAL HEALTH -> ${wellnessExtra}
+ACADEMIC/STUDY -> ${studySummary}
+WORK/PRESENTATIONS -> ${presentationSummary} | ${coachSummary}
+LIFESTYLE -> ${nutritionSummary} | ${fitnessSummary}
+ENGAGEMENT -> ${newsSummary} | ${mediaSummary}
+
+INSTRUCTIONS FOR KIRA (AI ANALYST):
+1. Analyze correlations between different modules (e.g., how does sleep/water impact productivity or focus?).
+2. If this is an ACADEMIC user, provide specific strategy feedback for their quizzes and study distribution.
+3. Be professional yet encouraging. Address the user by name if available.
+4. If productivity is high but wellness is low, warn about burnout.
+5. Provide 3 actionable, high-impact suggestions for the NEXT period.`;
+
     try {
       const messages: LongCatMessage[] = [
         { role: 'system', content: ANALYTICS_SYSTEM_PROMPT },
@@ -594,7 +616,7 @@ export default function Analytics() {
       if (!navigator.onLine) {
         return "Offline: Please connect to the internet to generate AI insights and suggestions for your performance.";
       }
-      return chatWithLongCat(messages, { maxTokens: 1800, temperature: 0.6 });
+      return chatWithLongCat(messages, { maxTokens: 2000, temperature: 0.7 });
       })();
       setAiReport(result);
     } catch {

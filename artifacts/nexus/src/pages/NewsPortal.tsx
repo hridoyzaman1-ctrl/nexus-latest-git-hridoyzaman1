@@ -14,6 +14,7 @@ import { fetchNews, searchArticles, isBreakingNews, formatTimeAgo } from '@/lib/
 import {
   getBookmarks, addBookmark, removeBookmark, isBookmarked,
   getSelectedMode, setSelectedMode, getSelectedCategory, setSelectedCategory,
+  getCachedNews, isCacheValid
 } from '@/lib/news/cache';
 
 export default function NewsPortal() {
@@ -32,29 +33,46 @@ export default function NewsPortal() {
   const [bookmarkIds, setBookmarkIds] = useState<Set<string>>(() => new Set(getBookmarks().map(b => b.articleId)));
 
   const loadNews = useCallback(async (isRefresh = false, signal?: AbortSignal) => {
+    // 1. Check for cache first for instant UI update
+    const cached = getCachedNews(mode, category);
+    if (cached && !isRefresh) {
+      setArticles(cached.articles);
+      setFromCache(true);
+      setLoading(false);
+      // Determine if we need a background refresh
+      if (isCacheValid(cached)) return;
+    } else if (!isRefresh) {
+      setLoading(true);
+    }
+
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
     setError(null);
 
     try {
-      const result = await fetchNews(mode, category, signal);
+      const result = await fetchNews(mode, category, signal, isRefresh || (cached && !isCacheValid(cached)));
       setArticles(result.articles);
       setFromCache(result.fromCache);
-      if (result.error) setError(result.error);
+      if (result.error && !result.articles.length) setError(result.error);
     } catch (err: any) {
       if (err.message === 'AbortError') return;
-      setError('Unable to load live news. Please check your connection.');
+      if (!articles.length) {
+        setError('Unable to load live news. Please check your connection.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [mode, category]);
+  }, [mode, category, articles.length]);
 
   useEffect(() => {
     const controller = new AbortController();
     loadNews(false, controller.signal);
     return () => controller.abort();
   }, [loadNews]);
+
+  // Remove the "fromCache" message if it's annoying - the user hates it.
+  // We'll only show error messages if we have NO articles.
+
 
   const handleModeChange = (newMode: NewsMode) => {
     setMode(newMode);
@@ -202,10 +220,6 @@ export default function NewsPortal() {
             <WifiOff size={14} />
             <span>{error}</span>
           </div>
-        )}
-
-        {fromCache && !error && !loading && (
-          <div className="text-xs text-muted-foreground text-center">Showing cached news · Pull down to refresh</div>
         )}
 
         {refreshing && (
