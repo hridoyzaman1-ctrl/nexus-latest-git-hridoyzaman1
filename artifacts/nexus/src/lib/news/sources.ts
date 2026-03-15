@@ -222,7 +222,7 @@ export const NEWS_SOURCES: NewsSource[] = [
     name: 'The Daily Star Bangladesh',
     feedUrl: 'https://www.thedailystar.net/country/rss.xml',
     mode: 'national',
-    category: 'bangladesh',
+    category: 'top',
     language: 'en',
     region: 'bangladesh',
   },
@@ -286,7 +286,7 @@ export const NEWS_SOURCES: NewsSource[] = [
     name: 'Dhaka Tribune Bangladesh',
     feedUrl: 'https://www.dhakatribune.com/articles/bangladesh/rss.xml',
     mode: 'national',
-    category: 'bangladesh',
+    category: 'top',
     language: 'en',
     region: 'bangladesh',
   },
@@ -358,7 +358,6 @@ export const NEWS_SOURCES: NewsSource[] = [
 
 export const NEWS_CATEGORIES: { value: string; label: string; modes: string[] }[] = [
   { value: 'top', label: 'Top', modes: ['international', 'national'] },
-  { value: 'bangladesh', label: 'Bangladesh', modes: ['national'] },
   { value: 'politics', label: 'Politics', modes: ['international', 'national'] },
   { value: 'world', label: 'World', modes: ['international', 'national'] },
   { value: 'business', label: 'Business', modes: ['international', 'national'] },

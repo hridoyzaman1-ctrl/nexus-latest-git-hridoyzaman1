@@ -31,22 +31,29 @@ export default function NewsPortal() {
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [bookmarkIds, setBookmarkIds] = useState<Set<string>>(() => new Set(getBookmarks().map(b => b.articleId)));
 
-  const loadNews = useCallback(async (isRefresh = false) => {
+  const loadNews = useCallback(async (isRefresh = false, signal?: AbortSignal) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
 
-    const result = await fetchNews(mode, category);
-    setArticles(result.articles);
-    setFromCache(result.fromCache);
-    if (result.error) setError(result.error);
-
-    setLoading(false);
-    setRefreshing(false);
+    try {
+      const result = await fetchNews(mode, category, signal);
+      setArticles(result.articles);
+      setFromCache(result.fromCache);
+      if (result.error) setError(result.error);
+    } catch (err: any) {
+      if (err.message === 'AbortError') return;
+      setError('Unable to load live news. Please check your connection.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [mode, category]);
 
   useEffect(() => {
-    loadNews();
+    const controller = new AbortController();
+    loadNews(false, controller.signal);
+    return () => controller.abort();
   }, [loadNews]);
 
   const handleModeChange = (newMode: NewsMode) => {

@@ -3,8 +3,6 @@ import { getCachedNews, setCachedNews, isCacheValid } from './cache';
 import { NEWS_SOURCES } from './sources';
 import { deduplicateArticles } from './deduplicator';
 
-// Use a CORS proxy to fetch RSS feeds directly from the client
-// CORS proxies to fetch RSS feeds directly from the client
 const PROXIES = [
   'https://api.allorigins.win/get?url=',
   'https://corsproxy.io/?',
@@ -12,7 +10,7 @@ const PROXIES = [
 ];
 
 let lastFetchTime = 0;
-const DEBOUNCE_MS = 3000;
+const DEBOUNCE_MS = 2000;
 
 function extractText(xml: string, tag: string): string {
   const cdataMatch = xml.match(new RegExp(`<${tag}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tag}>`));
@@ -61,7 +59,7 @@ function parseRSSItems(xml: string, sourceName: string, category: string, region
           const t = Date.parse(pubDate);
           return isNaN(t) ? new Date().toISOString() : new Date(t).toISOString();
         })(),
-        summary: description, // Keep full description for in-app reading
+        summary: description,
         imageUrl,
         category: category as NewsCategory,
         region,
@@ -72,44 +70,56 @@ function parseRSSItems(xml: string, sourceName: string, category: string, region
   return articles;
 }
 
-async function fetchFeed(source: any): Promise<NewsArticle[]> {
-  // Try direct fetch first
-  try {
-    const res = await fetch(source.feedUrl, { headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' } });
-    if (res.ok) {
-      const xml = await res.text();
-      return parseRSSItems(xml, source.name, source.category, source.region, source.language);
-    }
-  } catch (err) {
-    // Fallback to proxies
+async function fetchWithProxy(baseUrl: string, feedUrl: string, signal?: AbortSignal): Promise<string> {
+  const url = `${baseUrl}${encodeURIComponent(feedUrl)}`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`Proxy ${baseUrl} failed`);
+  
+  if (baseUrl.includes('allorigins')) {
+    const data = await res.json();
+    return data.contents;
   }
+  return await res.text();
+}
 
-  // Try proxies sequentially
-  for (const proxy of PROXIES) {
+async function fetchFeed(source: any, signal?: AbortSignal): Promise<NewsArticle[]> {
+  try {
+    // Try direct fetch with short timeout
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 2000);
+    const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    
     try {
-      const url = `${proxy}${encodeURIComponent(source.feedUrl)}`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      
-      let xml = '';
-      if (proxy.includes('allorigins')) {
-        const data = await res.json();
-        xml = data.contents;
-      } else {
-        xml = await res.text();
-      }
-
-      if (xml) {
+      const res = await fetch(source.feedUrl, { 
+        headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' },
+        signal: combinedSignal
+      });
+      clearTimeout(id);
+      if (res.ok) {
+        const xml = await res.text();
         return parseRSSItems(xml, source.name, source.category, source.region, source.language);
       }
     } catch (err) {
-      console.warn(`Proxy ${proxy} failed for ${source.name}:`, err);
+      clearTimeout(id);
+    }
+
+    // Try all proxies in parallel - win with the first one that returns valid XML
+    const proxyResults = await Promise.any(
+      PROXIES.map(proxy => fetchWithProxy(proxy, source.feedUrl, signal))
+    );
+
+    if (proxyResults) {
+      return parseRSSItems(proxyResults, source.name, source.category, source.region, source.language);
+    }
+  } catch (err) {
+    if ((err as Error).name !== 'AbortError') {
+      console.warn(`All fetch attempts failed for ${source.name}`);
     }
   }
   return [];
 }
 
-export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise<{
+export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?: AbortSignal): Promise<{
   articles: NewsArticle[];
   fromCache: boolean;
   error?: string;
@@ -141,12 +151,12 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise
       if (catSources.length > 0) sources = catSources;
     }
 
-    // Limit to 8 random sources per request to avoid overwhelming the proxy
-    if (sources.length > 8) {
-      sources = sources.sort(() => Math.random() - 0.5).slice(0, 8);
+    // Limit to 12 random sources per request to avoid overwhelming but ensure coverage
+    if (sources.length > 12) {
+      sources = sources.sort(() => Math.random() - 0.5).slice(0, 12);
     }
 
-    const feedResults = await Promise.allSettled(sources.map(s => fetchFeed(s)));
+    const feedResults = await Promise.allSettled(sources.map(s => fetchFeed(s, signal)));
     let allArticles: NewsArticle[] = [];
 
     for (const result of feedResults) {
@@ -156,10 +166,10 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise
     }
 
     if (allArticles.length === 0) {
+      if (signal?.aborted) throw new Error('AbortError');
       throw new Error('No news articles found');
     }
 
-    // Deduplicate and sort
     const deduplicated = deduplicateArticles(allArticles);
     const sorted = deduplicated.sort((a, b) => 
       new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
@@ -169,6 +179,8 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise
 
     return { articles: sorted, fromCache: false };
   } catch (err: any) {
+    if (err.message === 'AbortError') throw err;
+    
     if (cached) {
       return {
         articles: cached.articles,
