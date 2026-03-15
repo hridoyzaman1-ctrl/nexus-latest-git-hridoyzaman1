@@ -106,8 +106,10 @@ async function fetchFeed(source: any, signal?: AbortSignal): Promise<NewsArticle
     }
 
     // Try all proxies in parallel - win with the first one that returns valid XML
+    // Add cache-busting timestamp to bypass proxy/server caching
+    const bustUrl = `${source.feedUrl}${source.feedUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
     const proxyResults = await Promise.any(
-      PROXIES.map(proxy => fetchWithProxy(proxy, source.feedUrl, signal))
+      PROXIES.map(proxy => fetchWithProxy(proxy, bustUrl, signal))
     );
 
     if (proxyResults) {
@@ -178,7 +180,14 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?:
 
     for (const result of feedResults) {
       if (result.status === 'fulfilled') {
-        allArticles = [...allArticles, ...result.value];
+        const processed = result.value.filter(article => {
+          // STRICT POST-FETCH VALIDATION
+          // Ensure article region matches the mode (national -> bangladesh, international -> global)
+          if (mode === 'national' && article.region !== 'bangladesh') return false;
+          if (mode === 'international' && article.region === 'bangladesh') return false;
+          return true;
+        });
+        allArticles = [...allArticles, ...processed];
       }
     }
 

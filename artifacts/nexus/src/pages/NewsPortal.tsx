@@ -87,6 +87,11 @@ export default function NewsPortal() {
 
 
   const handleModeChange = (newMode: NewsMode) => {
+    // ABORT PREVIOUS FETCH AND CLEAR UI IMMEDIATELY
+    setArticles([]);
+    setError(null);
+    setLoading(true);
+
     setMode(newMode);
     setSelectedMode(newMode);
     const cats = NEWS_CATEGORIES.filter(c => c.modes.includes(newMode));
@@ -97,6 +102,11 @@ export default function NewsPortal() {
   };
 
   const handleCategoryChange = (newCat: NewsCategory) => {
+    // CLEAR UI IMMEDIATELY
+    setArticles([]);
+    setError(null);
+    setLoading(true);
+
     setCategory(newCat);
     setSelectedCategory(newCat);
   };

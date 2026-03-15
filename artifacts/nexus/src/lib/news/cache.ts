@@ -1,6 +1,6 @@
 import { NewsArticle, NewsMode, NewsCategory, NewsCache, NewsBookmark } from '@/types/news';
 
-const CACHE_PREFIX = 'newsCache_v3_';
+const CACHE_PREFIX = 'newsCache_v5_';
 const BOOKMARK_KEY = 'newsBookmarks';
 const CACHE_TTL = 3 * 60 * 1000; // 3 minutes for lightning fast updates
 
