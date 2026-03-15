@@ -125,8 +125,10 @@ export default function StudyQuiz({ sessions, materials, quizHistory, onSaveQuiz
 
   // Generate quiz with rate limiting
   const generateQuiz = async () => {
-    // Offline check
-
+    if (!navigator.onLine) {
+      toast.error('No internet connection. Please connect to generate a quiz.');
+      return;
+    }
     // Rate limit check: 1 quiz per material/session per 24h
     if (scopeType === 'session' && selectedSessionId && !canTakeQuizForSession(selectedSessionId)) {
       toast.error('You already took a quiz for this session today. Try again in 24 hours or choose a different subject.');

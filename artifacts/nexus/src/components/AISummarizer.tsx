@@ -65,6 +65,10 @@ export default function AISummarizer({ documentId, documentName, getPageText, to
   }, [documentId]);
 
   const generate = async (selectedMode: 'summary' | 'detailed' | 'simple') => {
+    if (!navigator.onLine) {
+      toast.error('No internet connection. Please connect to use AI summarization.');
+      return;
+    }
     if (isDemoMode) {
       toast.error('AI Summarization is disabled in demo mode.');
       return;

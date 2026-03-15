@@ -5,7 +5,9 @@ import { trimToLastSentence } from '@/lib/contentMediaEngine';
 const LONGCAT_KEY = import.meta.env.VITE_LONGCAT_API_KEY || '';
 
 export function isScriptGenerationAvailable(): boolean {
-  return LONGCAT_KEY.length > 0;
+  const hasKey = LONGCAT_KEY.length > 0;
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  return hasKey && isOnline;
 }
 
 function estimateWordCount(durationSeconds: number): number {

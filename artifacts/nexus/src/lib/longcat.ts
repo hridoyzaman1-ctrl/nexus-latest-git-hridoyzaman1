@@ -171,6 +171,9 @@ export async function chatWithStudioAI(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
+  if (!navigator.onLine) {
+    throw new Error('Please connect to the internet to use Studio AI.');
+  }
   if (AV_POOL.length === 0) throw new Error('No Studio API keys configured.');
   const content = await callWithKeyPool('av', AV_POOL, {
     model: MODEL, messages,
@@ -187,6 +190,9 @@ export async function chatWithMediaGenAI(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
+  if (!navigator.onLine) {
+    throw new Error('Please connect to the internet for media generation.');
+  }
   if (MEDIA_GEN_POOL.length === 0) throw new Error('No Media Gen API keys configured.');
   const content = await callWithKeyPool('mediaGen', MEDIA_GEN_POOL, {
     model: MODEL, messages,
@@ -203,6 +209,9 @@ export async function chatWithPresentationAI(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
+  if (!navigator.onLine) {
+    throw new Error('Please connect to the internet to use Presentation AI.');
+  }
   if (PRESENTATION_POOL.length === 0) throw new Error('No Presentation API keys configured.');
   const content = await callWithKeyPool('presentation', PRESENTATION_POOL, {
     model: MODEL, messages,
