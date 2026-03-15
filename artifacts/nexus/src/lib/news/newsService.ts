@@ -10,6 +10,8 @@ const PROXIES = [
 ];
 
 let lastFetchTime = 0;
+let lastFetchMode: string | null = null;
+let lastFetchCat: string | null = null;
 const DEBOUNCE_MS = 2000;
 
 function extractText(xml: string, tag: string): string {
@@ -137,18 +139,33 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?:
     return { articles: cached.articles, fromCache: true, error: 'Offline: showing saved headlines.' };
   }
 
-  if (!forceFresh && now - lastFetchTime < DEBOUNCE_MS && cached) {
+  // Bypass debounce if mode or category has changed (user explicitly switched)
+  const isDifferentTarget = mode !== lastFetchMode || category !== lastFetchCat;
+  
+  if (!forceFresh && !isDifferentTarget && now - lastFetchTime < DEBOUNCE_MS && cached) {
     return { articles: cached.articles, fromCache: true };
   }
 
   try {
     lastFetchTime = now;
+    lastFetchMode = mode;
+    lastFetchCat = category;
     
-    // Select sources
+    // Select sources - STRICT FILTERING
     let sources = NEWS_SOURCES.filter(s => s.mode === mode);
+    
+    // If a specific category is selected, we STRICTLY filter for it.
+    // We do NOT fall back to 'top' if catSources is empty; we want truth, not fillers.
     if (category !== 'top') {
-      const catSources = sources.filter(s => s.category === category);
-      if (catSources.length > 0) sources = catSources;
+      sources = sources.filter(s => s.category === category);
+    } else {
+      // In 'top' mode, we only want the 'top' category sources.
+      sources = sources.filter(s => s.category === 'top');
+    }
+
+    if (sources.length === 0) {
+      if (signal?.aborted) throw new Error('AbortError');
+      return { articles: [], fromCache: false, error: `No news available for this ${category} category in ${mode} mode.` };
     }
 
     // Limit to 12 random sources per request to avoid overwhelming but ensure coverage

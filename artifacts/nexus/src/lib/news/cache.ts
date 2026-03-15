@@ -1,10 +1,11 @@
 import { NewsArticle, NewsMode, NewsCategory, NewsCache, NewsBookmark } from '@/types/news';
 
-const CACHE_PREFIX = 'newsCache_';
+const CACHE_PREFIX = 'newsCache_v3_';
 const BOOKMARK_KEY = 'newsBookmarks';
-const CACHE_TTL = 10 * 60 * 1000;
+const CACHE_TTL = 3 * 60 * 1000; // 3 minutes for lightning fast updates
 
 function getCacheKey(mode: NewsMode, category: NewsCategory): string {
+  // Use mode + category in key to prevent regional data leakage
   return `${CACHE_PREFIX}${mode}_${category}`;
 }
 

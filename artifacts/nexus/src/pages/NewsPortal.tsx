@@ -33,36 +33,48 @@ export default function NewsPortal() {
   const [bookmarkIds, setBookmarkIds] = useState<Set<string>>(() => new Set(getBookmarks().map(b => b.articleId)));
 
   const loadNews = useCallback(async (isRefresh = false, signal?: AbortSignal) => {
-    // 1. Check for cache first for instant UI update
+    // 1. Clear previous errors and indicate loading
+    setError(null);
+
+    // 2. Check for cache first for instant UI update
     const cached = getCachedNews(mode, category);
     if (cached && !isRefresh) {
       setArticles(cached.articles);
       setFromCache(true);
       setLoading(false);
-      // Determine if we need a background refresh
+      // Determine if we need a background refresh (Strict SWR)
       if (isCacheValid(cached)) return;
     } else if (!isRefresh) {
+      // If no valid cache, show skeletons
       setLoading(true);
+      setArticles([]); 
     }
 
     if (isRefresh) setRefreshing(true);
-    setError(null);
 
     try {
-      const result = await fetchNews(mode, category, signal, isRefresh || (cached && !isCacheValid(cached)));
-      setArticles(result.articles);
-      setFromCache(result.fromCache);
-      if (result.error && !result.articles.length) setError(result.error);
+      const result = await fetchNews(mode, category, signal, isRefresh || !isCacheValid(cached));
+      
+      // Update UI with fresh results
+      if (!signal?.aborted) {
+        setArticles(result.articles);
+        setFromCache(result.fromCache);
+        if (result.error && !result.articles.length) {
+          setError(result.error);
+        }
+      }
     } catch (err: any) {
-      if (err.message === 'AbortError') return;
+      if (err.message === 'AbortError' || signal?.aborted) return;
       if (!articles.length) {
         setError('Unable to load live news. Please check your connection.');
       }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [mode, category, articles.length]);
+  }, [mode, category]); // Removed articles.length to fix the dependency loop
 
   useEffect(() => {
     const controller = new AbortController();
