@@ -27,7 +27,7 @@ export default function NewsPortal() {
   const [fromCache, setFromCache] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
+  const [expandedArticleId, setExpandedArticleId] = useState<string | null>(null);
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [bookmarkIds, setBookmarkIds] = useState<Set<string>>(() => new Set(getBookmarks().map(b => b.articleId)));
 
@@ -108,79 +108,6 @@ export default function NewsPortal() {
       loadNews(true);
     }
   };
-
-  if (selectedArticle) {
-    return (
-      <PageTransition>
-        <div className="px-4 pt-12 pb-24 space-y-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSelectedArticle(null)} className="text-muted-foreground"><ChevronLeft className="w-5 h-5" /></button>
-            <h1 className="text-lg font-bold font-display truncate flex-1">{selectedArticle.source}</h1>
-            <button onClick={() => handleBookmarkToggle(selectedArticle)} className="text-muted-foreground">
-              {bookmarkIds.has(selectedArticle.id) ? <BookmarkCheck className="w-5 h-5 text-primary" /> : <Bookmark className="w-5 h-5" />}
-            </button>
-            <button onClick={() => handleShare(selectedArticle)} className="text-muted-foreground"><Share2 className="w-5 h-5" /></button>
-          </div>
-
-          {selectedArticle.imageUrl && (
-            <div className="rounded-2xl overflow-hidden">
-              <img src={selectedArticle.imageUrl} alt="" className="w-full h-48 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {isBreakingNews(selectedArticle) && (
-                <span className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1"><Zap size={10} />BREAKING</span>
-              )}
-              <span className="font-semibold">{selectedArticle.source}</span>
-              <span>·</span>
-              <span>{formatTimeAgo(selectedArticle.publishedAt)}</span>
-            </div>
-            
-            <h2 className="text-xl sm:text-2xl font-bold leading-tight">{selectedArticle.title}</h2>
-            
-            <div className="flex gap-2">
-              <a href={selectedArticle.url} target="_blank" rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:shadow-lg transition-all active:scale-[0.98]">
-                <ExternalLink size={16} /> Open Extension
-              </a>
-              <button onClick={() => setSelectedArticle(null)}
-                className="px-6 py-3 rounded-xl bg-secondary text-secondary-foreground font-semibold text-sm hover:bg-secondary/80 transition-colors">
-                Close
-              </button>
-            </div>
-
-            {/* In-App Reading View */}
-            <div className="relative glass rounded-2xl overflow-hidden min-h-[500px] border border-border/30">
-              <div className="absolute top-0 left-0 right-0 bg-background/80 backdrop-blur-md px-4 py-2 border-b border-border/20 z-10 flex items-center justify-between">
-                <span className="text-[10px] font-mono text-muted-foreground truncate">{selectedArticle.url}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success font-bold">IN-APP VIEW</span>
-              </div>
-              <iframe 
-                src={selectedArticle.url} 
-                className="w-full h-[600px] pt-10"
-                title={selectedArticle.title}
-                sandbox="allow-scripts allow-same-origin allow-popups"
-                loading="lazy"
-              />
-              {/* Fallback Summary in Case Iframe fails (CORS) or loads slowly */}
-              <div className="p-6 pt-12 space-y-4 max-h-[600px] overflow-y-auto">
-                <p className="text-[10px] text-muted-foreground italic mb-4">Note: If the website above doesn't load, you can read the summary below or use the 'Open Extension' button.</p>
-                {selectedArticle.imageUrl && !selectedArticle.url.includes('news') && (
-                  <img src={selectedArticle.imageUrl} alt="" className="w-full h-48 object-cover rounded-xl mb-4" />
-                )}
-                <div 
-                  className="text-foreground/90 text-sm leading-relaxed prose prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedArticle.summary || '' }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </PageTransition>
-    );
-  }
 
   return (
     <PageTransition>
@@ -299,11 +226,13 @@ export default function NewsPortal() {
           </div>
         ) : (
           <div className="space-y-3">
-            {displayArticles.map((article, idx) => (
+            {displayArticles.map((article, idx) => {
+              const isExpanded = expandedArticleId === article.id;
+              return (
               <motion.div key={article.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(idx * 0.03, 0.3) }}>
-                <div className="glass rounded-2xl overflow-hidden hover:bg-muted/10 transition-colors">
-                  <button onClick={() => setSelectedArticle(article)} className="w-full text-left p-4">
+                <div className={`glass rounded-2xl overflow-hidden transition-all duration-300 ${isExpanded ? 'ring-1 ring-primary/30' : 'hover:bg-muted/10'}`}>
+                  <button onClick={() => setExpandedArticleId(isExpanded ? null : article.id)} className="w-full text-left p-4">
                     <div className="flex gap-2.5 sm:gap-3">
                       <div className="flex-1 min-w-0 space-y-1.5">
                         <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-muted-foreground">
@@ -313,17 +242,15 @@ export default function NewsPortal() {
                             </span>
                           )}
                           <span className="font-medium truncate">{article.source}</span>
+                          <span>·</span>
+                          <span className="flex items-center gap-1"><Clock size={10} />{formatTimeAgo(article.publishedAt)}</span>
                         </div>
-                        <h3 className="text-sm font-semibold leading-snug line-clamp-3">{article.title}</h3>
-                        {article.summary && (
+                        <h3 className={`text-sm font-semibold leading-snug ${isExpanded ? '' : 'line-clamp-3'}`}>{article.title}</h3>
+                        {!isExpanded && article.summary && (
                           <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed hidden sm:block">{article.summary}</p>
                         )}
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground pt-0.5">
-                          <Clock size={10} />
-                          <span>{formatTimeAgo(article.publishedAt)}</span>
-                        </div>
                       </div>
-                      {article.imageUrl && (
+                      {article.imageUrl && !isExpanded && (
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden flex-shrink-0 bg-muted/30">
                           <img src={article.imageUrl} alt="" className="w-full h-full object-cover"
                             onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }} />
@@ -331,21 +258,54 @@ export default function NewsPortal() {
                       )}
                     </div>
                   </button>
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                        <div className="px-4 pb-4 space-y-4">
+                          {article.imageUrl && (
+                            <div className="rounded-xl overflow-hidden">
+                              <img src={article.imageUrl} alt="" className="w-full h-40 object-cover" />
+                            </div>
+                          )}
+                          <div 
+                            className="text-foreground/90 text-sm leading-relaxed prose prose-invert max-w-none"
+                            dangerouslySetInnerHTML={{ __html: article.summary || '' }}
+                          />
+                          <div className="flex gap-2">
+                            <a href={article.url} target="_blank" rel="noopener noreferrer"
+                              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:shadow-lg transition-all active:scale-[0.98]">
+                              <ExternalLink size={14} /> Read Full Article
+                            </a>
+                            <button onClick={() => setExpandedArticleId(null)}
+                              className="px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-semibold text-xs hover:bg-secondary/80 transition-colors">
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   <div className="flex items-center gap-1 px-4 pb-3 -mt-1">
-                    <button onClick={() => handleBookmarkToggle(article)} className="p-1.5 rounded-lg hover:bg-muted/30 text-muted-foreground">
+                    <button onClick={(e) => { e.stopPropagation(); handleBookmarkToggle(article); }} className="p-1.5 rounded-lg hover:bg-muted/30 text-muted-foreground">
                       {bookmarkIds.has(article.id) ? <BookmarkCheck size={14} className="text-primary" /> : <Bookmark size={14} />}
                     </button>
-                    <button onClick={() => handleShare(article)} className="p-1.5 rounded-lg hover:bg-muted/30 text-muted-foreground">
+                    <button onClick={(e) => { e.stopPropagation(); handleShare(article); }} className="p-1.5 rounded-lg hover:bg-muted/30 text-muted-foreground">
                       <Share2 size={14} />
                     </button>
-                    <a href={article.url} target="_blank" rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg hover:bg-muted/30 text-muted-foreground ml-auto">
-                      <ExternalLink size={14} />
-                    </a>
+                    {!isExpanded && (
+                      <a href={article.url} target="_blank" rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 rounded-lg hover:bg-muted/30 text-muted-foreground ml-auto" title="Open Full News">
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
                   </div>
                 </div>
               </motion.div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
