@@ -33,29 +33,37 @@ export default function NewsPortal() {
   const [bookmarkIds, setBookmarkIds] = useState<Set<string>>(() => new Set(getBookmarks().map(b => b.articleId)));
 
   const loadNews = useCallback(async (isRefresh = false, signal?: AbortSignal) => {
-    // 1. Clear previous errors and indicate loading
     setError(null);
 
-    // 2. Check for cache first for instant UI update
+    // 1. Instant Cache Retrieval
     const cached = getCachedNews(mode, category);
-    if (cached && !isRefresh) {
+    const hasCache = !!(cached && cached.articles.length > 0);
+
+    if (hasCache) {
       setArticles(cached.articles);
       setFromCache(true);
-      setLoading(false);
-      // Determine if we need a background refresh (Strict SWR)
-      if (isCacheValid(cached)) return;
-    } else if (!isRefresh) {
-      // If no valid cache, show skeletons
-      setLoading(true);
-      setArticles([]); 
+      // If cache is still valid and not a manual refresh, we can stop here
+      if (!isRefresh && isCacheValid(cached)) {
+        setLoading(false);
+        return;
+      }
     }
 
-    if (isRefresh) setRefreshing(true);
+    // 2. Determine Loading State
+    // Only show full-screen skeletons if we have NO cache at all
+    if (!hasCache) {
+      setLoading(true);
+      setArticles([]);
+    } else {
+      // If we have cache, we are "refreshing" in the background
+      setRefreshing(true);
+    }
 
     try {
-      const result = await fetchNews(mode, category, signal, isRefresh || !isCacheValid(cached));
+      // Force fresh if manual refresh or stale cache
+      const shouldForce = isRefresh || (cached ? !isCacheValid(cached) : true);
+      const result = await fetchNews(mode, category, signal, shouldForce);
       
-      // Update UI with fresh results
       if (!signal?.aborted) {
         setArticles(result.articles);
         setFromCache(result.fromCache);
@@ -65,7 +73,7 @@ export default function NewsPortal() {
       }
     } catch (err: any) {
       if (err.message === 'AbortError' || signal?.aborted) return;
-      if (!articles.length) {
+      if (!hasCache) {
         setError('Unable to load live news. Please check your connection.');
       }
     } finally {
@@ -74,7 +82,7 @@ export default function NewsPortal() {
         setRefreshing(false);
       }
     }
-  }, [mode, category]); // Removed articles.length to fix the dependency loop
+  }, [mode, category]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -87,10 +95,18 @@ export default function NewsPortal() {
 
 
   const handleModeChange = (newMode: NewsMode) => {
-    // ABORT PREVIOUS FETCH AND CLEAR UI IMMEDIATELY
-    setArticles([]);
     setError(null);
-    setLoading(true);
+    const cached = getCachedNews(newMode, category);
+    
+    // If we don't have cache for the new mode, show loading
+    if (!cached || cached.articles.length === 0) {
+      setArticles([]);
+      setLoading(true);
+    } else {
+      // If we HAVE cache, show it immediately!
+      setArticles(cached.articles);
+      setLoading(false);
+    }
 
     setMode(newMode);
     setSelectedMode(newMode);
@@ -102,10 +118,17 @@ export default function NewsPortal() {
   };
 
   const handleCategoryChange = (newCat: NewsCategory) => {
-    // CLEAR UI IMMEDIATELY
-    setArticles([]);
     setError(null);
-    setLoading(true);
+    const cached = getCachedNews(mode, newCat);
+
+    // Instant transition if cache exists
+    if (!cached || cached.articles.length === 0) {
+      setArticles([]);
+      setLoading(true);
+    } else {
+      setArticles(cached.articles);
+      setLoading(false);
+    }
 
     setCategory(newCat);
     setSelectedCategory(newCat);

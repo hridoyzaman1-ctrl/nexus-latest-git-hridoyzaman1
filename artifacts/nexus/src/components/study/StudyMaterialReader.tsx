@@ -234,6 +234,7 @@ export default function StudyMaterialReader({ material, onBack, onPageUpdate, ti
   const [zoom, setZoom] = useState(1);
   const contentRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [currentPageInput, setCurrentPageInput] = useState(String(material.currentPage || 1));
   const pinchStartRef = useRef<number | null>(null);
   const pinchZoomStartRef = useRef<number>(1);
 
@@ -296,8 +297,18 @@ export default function StudyMaterialReader({ material, onBack, onPageUpdate, ti
   const goToPage = useCallback((p: number) => {
     const clamped = Math.max(1, Math.min(p, effectiveTotal));
     setCurrentPage(clamped);
+    setCurrentPageInput(String(clamped));
     onPageUpdate?.(clamped);
   }, [effectiveTotal, onPageUpdate]);
+
+  const handlePageInputBlur = () => {
+    const p = parseInt(currentPageInput);
+    if (isNaN(p)) {
+      setCurrentPageInput(String(currentPage));
+    } else {
+      goToPage(p);
+    }
+  };
 
   // Touch swipe
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -657,7 +668,18 @@ export default function StudyMaterialReader({ material, onBack, onPageUpdate, ti
               </button>
               <div className="flex items-center gap-2">
                 <span className="text-xs" style={{ color: mutedColor }}>Page</span>
-                <input type="number" value={currentPage} onChange={e => goToPage(parseInt(e.target.value) || 1)} min={1} max={effectiveTotal} className="w-12 text-center text-sm font-mono bg-transparent border rounded px-1 py-0.5" style={{ borderColor: borderCol, color: textColor }} />
+                <input 
+                  type="number" 
+                  value={currentPageInput} 
+                  onChange={e => setCurrentPageInput(e.target.value)}
+                  onBlur={handlePageInputBlur}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handlePageInputBlur();
+                  }}
+                  min={1} max={effectiveTotal} 
+                  className="w-12 text-center text-sm font-mono bg-transparent border rounded px-1 py-0.5" 
+                  style={{ borderColor: borderCol, color: textColor }} 
+                />
                 <span className="text-xs" style={{ color: mutedColor }}>of {effectiveTotal}</span>
               </div>
               <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= effectiveTotal} className="p-2 rounded-lg disabled:opacity-20 hover:bg-black/10" style={{ color: textColor }}>

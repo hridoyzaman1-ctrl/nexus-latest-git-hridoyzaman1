@@ -21,14 +21,15 @@ export default function StudyTimer({ sessionId, sessionSubject, sessionDuration,
   const [isRunning, setIsRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0); // seconds
   const [showSetup, setShowSetup] = useState(false);
-  const [customMinutes, setCustomMinutes] = useState(sessionDuration);
+  const [customMinutes, setCustomMinutes] = useState<number | string>(sessionDuration);
+  const [customMinutesInput, setCustomMinutesInput] = useState(String(sessionDuration));
   const [useAlarm, setUseAlarm] = useState(alarmEnabled);
   const [sound, setSound] = useState<AlarmSoundType>(alarmSound);
   const [alarmFired, setAlarmFired] = useState(false);
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const totalSeconds = customMinutes * 60;
+  const totalSeconds = Number(customMinutes) * 60;
   const remaining = Math.max(0, totalSeconds - elapsed);
   const progress = totalSeconds > 0 ? ((totalSeconds - remaining) / totalSeconds) * 100 : 0;
 
@@ -76,7 +77,7 @@ export default function StudyTimer({ sessionId, sessionSubject, sessionDuration,
     if (elapsed >= totalSeconds && totalSeconds > 0 && !alarmFired && isRunning) {
       setAlarmFired(true);
       setIsRunning(false);
-      onTimeLogged(customMinutes);
+      onTimeLogged(Number(customMinutes));
 
       if (useAlarm) {
         playAlarmSound(sound);
@@ -92,6 +93,15 @@ export default function StudyTimer({ sessionId, sessionSubject, sessionDuration,
       }
     }
   }, [elapsed, totalSeconds, alarmFired, isRunning, useAlarm, sound, sessionSubject, nextSessionSubject, customMinutes, onTimeLogged]);
+
+  const handleMinutesBlur = () => {
+    let m = parseInt(customMinutesInput);
+    if (isNaN(m)) m = sessionDuration;
+    const finalM = Math.max(1, Math.min(m, 600));
+    setCustomMinutes(finalM);
+    setCustomMinutesInput(String(finalM));
+    reset();
+  };
 
   // Cleanup
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); stopAlarmSound(); }, []);
@@ -134,7 +144,17 @@ export default function StudyTimer({ sessionId, sessionSubject, sessionDuration,
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="glass rounded-xl p-3 space-y-2 overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
               <label className="text-xs text-muted-foreground flex-1">Duration (min)</label>
-              <input type="number" value={customMinutes} onChange={e => { setCustomMinutes(Math.max(1, parseInt(e.target.value) || 1)); reset(); }} min={1} max={600} className="w-full sm:w-16 text-xs text-center bg-secondary rounded px-2 py-1 border-0" />
+              <input 
+                type="number" 
+                value={customMinutesInput} 
+                onChange={e => setCustomMinutesInput(e.target.value)}
+                onBlur={handleMinutesBlur}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleMinutesBlur();
+                }}
+                min={1} max={600} 
+                className="w-full sm:w-16 text-xs text-center bg-secondary rounded px-2 py-1 border-0" 
+              />
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">🔔 Alarm when done</span>

@@ -243,9 +243,31 @@ export default function AISummarizer({ documentId, documentName, getPageText, to
               <div className="space-y-1.5">
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Page Range (max 30 pages)</label>
                 <div className="flex items-center gap-2">
-                  <Input type="number" value={pageStart} onChange={e => setPageStart(e.target.value)} min={1} max={totalPages} className="h-8 text-xs w-20 bg-background border border-border text-foreground focus-visible:ring-1" placeholder="From" />
+                  <Input 
+                    type="number" 
+                    value={pageStart} 
+                    onChange={e => setPageStart(e.target.value)} 
+                    onBlur={() => {
+                      const v = Math.max(1, Math.min(parseInt(pageStart) || 1, totalPages));
+                      setPageStart(String(v));
+                    }}
+                    min={1} max={totalPages} 
+                    className="h-8 text-xs w-20 bg-background border border-border text-foreground focus-visible:ring-1" 
+                    placeholder="From" 
+                  />
                   <span className="text-xs text-muted-foreground">to</span>
-                  <Input type="number" value={pageEnd} onChange={e => setPageEnd(e.target.value)} min={1} max={totalPages} className="h-8 text-xs w-20 bg-background border border-border text-foreground focus-visible:ring-1" placeholder="To" />
+                  <Input 
+                    type="number" 
+                    value={pageEnd} 
+                    onChange={e => setPageEnd(e.target.value)} 
+                    onBlur={() => {
+                      const v = Math.max(1, Math.min(parseInt(pageEnd) || totalPages, totalPages));
+                      setPageEnd(String(v));
+                    }}
+                    min={1} max={totalPages} 
+                    className="h-8 text-xs w-20 bg-background border border-border text-foreground focus-visible:ring-1" 
+                    placeholder="To" 
+                  />
                   <span className="text-[10px] text-muted-foreground">of {totalPages}</span>
                 </div>
               </div>

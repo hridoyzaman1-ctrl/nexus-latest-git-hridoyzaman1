@@ -86,39 +86,40 @@ async function fetchWithProxy(baseUrl: string, feedUrl: string, signal?: AbortSi
 
 async function fetchFeed(source: any, signal?: AbortSignal): Promise<NewsArticle[]> {
   try {
-    // Try direct fetch with short timeout
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 2000);
-    const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
-    
-    try {
-      // Add cache-busting to direct fetch as well
+    // Race direct fetch against proxies for maximum speed
+    const fetchPromises: Promise<string>[] = [];
+
+    // 1. Direct fetch (fastest if CORS allows)
+    const directFetch = async () => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 2000);
+      const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      
       const bustUrl = `${source.feedUrl}${source.feedUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
       const res = await fetch(bustUrl, { 
         headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' },
         signal: combinedSignal
       });
       clearTimeout(id);
-      if (res.ok) {
-        const xml = await res.text();
-        return parseRSSItems(xml, source.name, source.category, source.region, source.language);
-      }
-    } catch (err) {
-      clearTimeout(id);
-    }
+      if (!res.ok) throw new Error('Direct fetch failed');
+      return await res.text();
+    };
+    fetchPromises.push(directFetch());
 
-    // Try all proxies in parallel - win with the first one that returns valid XML
-    // Add cache-busting timestamp to bypass proxy/server caching
+    // 2. Proxies
     const bustUrl = `${source.feedUrl}${source.feedUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-    const proxyResults = await Promise.any(
-      PROXIES.map(proxy => fetchWithProxy(proxy, bustUrl, signal))
-    );
+    PROXIES.forEach(proxy => {
+      fetchPromises.push(fetchWithProxy(proxy, bustUrl, signal));
+    });
 
-    if (proxyResults) {
-      return parseRSSItems(proxyResults, source.name, source.category, source.region, source.language);
+    // Win with the first one that returns valid XML
+    const rawXml = await Promise.any(fetchPromises);
+    
+    if (rawXml) {
+      return parseRSSItems(rawXml, source.name, source.category, source.region, source.language);
     }
   } catch (err) {
-    if ((err as Error).name !== 'AbortError') {
+    if ((err as Error).name !== 'AbortError' && !(err instanceof AggregateError)) {
       console.warn(`All fetch attempts failed for ${source.name}`);
     }
   }

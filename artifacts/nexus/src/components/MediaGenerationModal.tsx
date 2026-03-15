@@ -93,8 +93,8 @@ export default function MediaGenerationModal({
   const [narrationVolume, setNarrationVolume] = useState(1.0);
   const [bgmPreviewing, setBgmPreviewing] = useState<string | null>(null);
   const bgmPreviewRef = useRef<{ stop: () => void } | null>(null);
-  const [fromPage, setFromPage] = useState(1);
-  const [toPage, setToPage] = useState(() => totalPages > 0 ? Math.min(totalPages, 20) : 1);
+  const [fromPage, setFromPage] = useState<number | string>(1);
+  const [toPage, setToPage] = useState<number | string>(() => totalPages > 0 ? Math.min(totalPages, 20) : 1);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceUri, setSelectedVoiceUri] = useState('');
@@ -333,8 +333,8 @@ export default function MediaGenerationModal({
 
         let rawText = '';
         if (totalPages > 0) {
-          const effectiveTo = Math.min(toPage, fromPage + limits.maxPages - 1);
-          rawText = await getSourceText(fromPage, effectiveTo);
+          const effectiveTo = Math.min(Number(toPage), Number(fromPage) + limits.maxPages - 1);
+          rawText = await getSourceText(Number(fromPage), effectiveTo);
         } else {
           rawText = await getSourceText(1, 1);
         }
@@ -537,6 +537,24 @@ ${truncated}`;
       setStage('error');
     }
   }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript, selectedBgm, bgmVolume, customVideoRenderFn]);
+
+  // Validation on Blur
+  const handlePageBlur = useCallback(() => {
+    const limits = getLimits(sourceModule, mode);
+    const maxPg = limits.maxPages === 999 ? totalPages : limits.maxPages;
+    
+    let f = typeof fromPage === 'string' ? parseInt(fromPage) : fromPage;
+    let t = typeof toPage === 'string' ? parseInt(toPage) : toPage;
+
+    if (isNaN(f)) f = 1;
+    if (isNaN(t)) t = f;
+
+    const finalFrom = Math.max(1, Math.min(f, totalPages));
+    const finalTo = Math.max(finalFrom, Math.min(t, finalFrom + maxPg - 1, totalPages));
+
+    setFromPage(finalFrom);
+    setToPage(finalTo);
+  }, [fromPage, toPage, totalPages, sourceModule, mode]);
 
   // Auto-start when pre-generated script is provided
   const autoStartedRef = useRef(false);
@@ -794,7 +812,7 @@ ${truncated}`;
               {/* Page range picker (paginated sources only) */}
               {totalPages > 0 && (() => {
                 const maxPg = limits.maxPages === 999 ? totalPages : limits.maxPages;
-                const spanPages = toPage - fromPage + 1;
+                const spanPages = Number(toPage) - Number(fromPage) + 1;
                 const needsBlocks = totalPages > maxPg;
                 const blockCount = Math.ceil(totalPages / maxPg);
                 const shownBlocks = Math.min(blockCount, 10);
@@ -847,31 +865,25 @@ ${truncated}`;
                       <span className="text-[10px] text-muted-foreground">From pg</span>
                       <input
                         type="number" min={1} max={totalPages} value={fromPage}
-                        onChange={e => {
-                          const v = Math.max(1, Math.min(Number(e.target.value), totalPages));
-                          setFromPage(v);
-                          setToPage(prev => Math.max(v, Math.min(prev, v + maxPg - 1, totalPages)));
-                        }}
+                        onChange={e => setFromPage(e.target.value)}
+                        onBlur={handlePageBlur}
                         disabled={isBusy}
                         className="w-14 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
                       />
                       <span className="text-[10px] text-muted-foreground">to</span>
                       <input
-                        type="number" min={fromPage} max={Math.min(totalPages, fromPage + maxPg - 1)} value={toPage}
-                        onChange={e => {
-                          const maxTo = Math.min(totalPages, fromPage + maxPg - 1);
-                          const v = Math.max(fromPage, Math.min(Number(e.target.value), maxTo));
-                          setToPage(v);
-                        }}
+                        type="number" min={1} max={totalPages} value={toPage}
+                        onChange={e => setToPage(e.target.value)}
+                        onBlur={handlePageBlur}
                         disabled={isBusy}
                         className="w-14 text-[11px] bg-secondary/40 rounded-lg px-2 py-1 border border-border/40 text-center disabled:opacity-50"
                       />
                       <span className="text-[10px] text-muted-foreground">/ {totalPages}</span>
                       <span className={cn(
                         'text-[10px] ml-auto font-medium',
-                        spanPages >= maxPg ? 'text-amber-400' : 'text-muted-foreground'
+                        Number(toPage) - Number(fromPage) + 1 >= maxPg ? 'text-amber-400' : 'text-muted-foreground'
                       )}>
-                        {spanPages} pg{spanPages !== 1 ? 's' : ''}{spanPages >= maxPg ? ' (max)' : ''}
+                        {Number(toPage) - Number(fromPage) + 1} pg{Number(toPage) - Number(fromPage) + 1 !== 1 ? 's' : ''}{Number(toPage) - Number(fromPage) + 1 >= maxPg ? ' (max)' : ''}
                       </span>
                     </div>
 
