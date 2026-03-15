@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import Layout from "@/components/Layout";
+import SplashScreen from "@/components/SplashScreen";
+import OfflineBanner from "@/components/OfflineBanner";
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Modules = lazy(() => import("@/pages/Modules"));
 const Goals = lazy(() => import("@/pages/Goals"));
@@ -45,8 +47,7 @@ const KiraGreetingPopup = lazy(() => import("@/components/KiraGreetingPopup"));
 const DataRestorePromptLazy = lazy(() => import("@/components/DataRestorePrompt"));
 const MiniMusicPlayer = lazy(() => import("@/components/MiniMusicPlayer"));
 const KiraChatFAB = lazy(() => import("@/components/KiraChatFAB"));
-const OfflineBanner = lazy(() => import("@/components/OfflineBanner"));
-const SplashScreen = lazy(() => import("@/components/SplashScreen"));
+// Critical components are now statically imported
 const TutorialDialog = lazy(() => import("@/components/TutorialDialog"));
 import ScrollToTop from "@/components/ScrollToTop";
 import { MusicPlayerProvider } from "@/contexts/MusicPlayerContext";
@@ -243,7 +244,7 @@ function AppInner() {
   }
 
   if (!splashDone) {
-    return <Suspense fallback={<div className="min-h-screen" />}><SplashScreen onFinish={() => setSplashDone(true)} /></Suspense>;
+    return <SplashScreen onFinish={() => setSplashDone(true)} />;
   }
 
   if (showRestorePrompt) {
@@ -256,7 +257,7 @@ function AppInner() {
 
   return (
     <>
-      <Suspense fallback={null}><OfflineBanner /></Suspense>
+      <OfflineBanner />
       {!showTutorial && <Suspense fallback={null}><KiraGreetingPopup disabled={kiraDisabled} /></Suspense>}
       <Layout>
         <AnimatedRoutes />
