@@ -92,7 +92,9 @@ async function fetchFeed(source: any, signal?: AbortSignal): Promise<NewsArticle
     const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
     
     try {
-      const res = await fetch(source.feedUrl, { 
+      // Add cache-busting to direct fetch as well
+      const bustUrl = `${source.feedUrl}${source.feedUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+      const res = await fetch(bustUrl, { 
         headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' },
         signal: combinedSignal
       });
