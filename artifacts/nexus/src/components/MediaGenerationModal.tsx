@@ -75,7 +75,6 @@ function splitScriptIntoNParts(script: string, n: number): string[] {
 const MODE_INFO: Record<MediaMode, { label: string; desc: string; icon: typeof Headphones; color: string }> = {
   summary:  { label: 'Summary',   desc: 'Concise key-point overview',    icon: FileText,  color: 'hsl(199,89%,48%)' },
   explainer:{ label: 'Explainer', desc: 'Structured concept walkthrough', icon: BookOpen,  color: 'hsl(245,58%,62%)' },
-  podcast:  { label: 'Podcast',   desc: 'Conversational deep-dive',      icon: Mic,       color: 'hsl(340,82%,52%)' },
   video:    { label: 'Video',     desc: 'Scene-by-scene visual slides',   icon: Video,     color: 'hsl(291,64%,42%)' },
 };
 
@@ -276,6 +275,11 @@ export default function MediaGenerationModal({
   }, [narrationVolume]);
 
   const handleGenerate = useCallback(async () => {
+    if (!navigator.onLine) {
+      setErrorMsg('Network connection required. Please connect to the internet to generate AI media.');
+      setStage('error');
+      return;
+    }
     // Reset generation state, create fresh cancel signal
     cancelSignal.current = { cancelled: false };
     ttsRef.current?.stop();
@@ -354,8 +358,7 @@ export default function MediaGenerationModal({
         if (isStudioModule) {
           const modePrompts: Record<MediaMode, string> = {
             summary:  'Write a concise spoken summary of 300–400 words. Cover all main points in continuous natural prose — no bullet points, no heading or section labels.',
-            explainer:'Write a clear spoken explainer of 500–650 words. Walk through key concepts in continuous natural prose — no section labels, no numbered steps.',
-            podcast:  'Write an engaging conversational monologue of 700–850 words. Sound natural and enthusiastic — no topic headers, just flowing conversation.',
+            explainer:'Write a clear spoken explainer of 550–700 words. Walk through key concepts in continuous natural prose — no section labels, no numbered steps.',
             video:    'Write flowing spoken narration of 400–500 words. Flow naturally through the main ideas — no section labels, no spoken headings, just continuous prose.',
           };
           const langInstruction = language === 'bn'
@@ -382,9 +385,9 @@ ${truncated}`;
           // than English. We multiply the budget so the full script is generated.
           const isBangla = language === 'bn';
           const maxTokensByMode: Record<MediaMode, number> = isBangla ? {
-            summary: 3500, explainer: 6000, podcast: 7500, video: 5000,
+            summary: 3500, explainer: 6000, video: 5000,
           } : {
-            summary: 900, explainer: 1400, podcast: 1800, video: 1100,
+            summary: 900, explainer: 1400, video: 1100,
           };
 
           try {
@@ -988,7 +991,7 @@ ${truncated}`;
                     <p className="text-[11px] leading-relaxed flex-1 text-amber-300">
                       <span className="font-semibold">Best results tip:</span> For uploaded files, generating an AI{' '}
                       <span className="font-semibold">Summary</span>, <span className="font-semibold">Explainer</span>, or{' '}
-                      <span className="font-semibold">Podcast</span> first — then creating audio from that output — gives the most accurate and natural-sounding audio.
+                      Generating an audio script first — then creating audio from that output — gives the most accurate and natural-sounding audio.
                       Swipe or tap ✕ to dismiss.
                     </p>
                     <button

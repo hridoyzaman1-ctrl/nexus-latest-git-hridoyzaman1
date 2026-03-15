@@ -66,6 +66,11 @@ export default function KiraStudyBuddy({ materialContext, materialName, landscap
     if (!text) return;
     if (loading) return;
 
+    if (!navigator.onLine) {
+      toast.error('Please connect to the internet to chat with Study AI.');
+      return;
+    }
+
 
     // Build user message
     const userContent = text;

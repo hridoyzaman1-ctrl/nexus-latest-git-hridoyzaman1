@@ -61,7 +61,7 @@ export const pageTooltipConfigs: Record<string, TooltipStep[]> = {
     { target: '[data-tour="audio-studio-header"]', title: 'Audio Studio 🎧', description: 'Create narrated audio content from any text, PDF, or topic description. Powered entirely by your device — no uploads, no subscriptions.', placement: 'bottom' },
     { target: '[data-tour="audio-studio-input-tabs"]', title: 'Three Ways to Add Content', description: 'Upload a file, paste text directly, or use Describe mode to tell Kira what you want and she\'ll write the full script for you!', placement: 'bottom' },
     { target: '[data-tour="audio-studio-describe"]', title: 'AI Script Generation ✨', description: 'Type a description like "A 5-minute intro to machine learning for beginners" and tap Generate Script — Kira writes the complete script for you.', placement: 'bottom' },
-    { target: '[data-tour="audio-studio-generate"]', title: 'Generate Audio', description: 'Choose your format (Summary, Explainer, Podcast, or Video) and your content is generated instantly using your device\'s speech engine.', placement: 'top' },
+    { target: '[data-tour="audio-studio-generate"]', title: 'Generate Audio', description: 'Choose your format (Summary, Explainer, or Video) and your content is generated instantly using your device\'s speech engine.', placement: 'top' },
   ],
   'video-studio': [
     { target: '[data-tour="video-studio-header"]', title: 'Video Studio 🎬', description: 'Turn any text or idea into an animated slideshow video. Rendered frame by frame using Canvas API — 100% offline and private.', placement: 'bottom' },
@@ -70,7 +70,7 @@ export const pageTooltipConfigs: Record<string, TooltipStep[]> = {
     { target: '[data-tour="video-studio-generate"]', title: 'Generate Your Video', description: 'Tap to launch the media generator. Select Video mode and your content becomes a downloadable WebM video file saved to Media Library.', placement: 'top' },
   ],
   'media-library': [
-    { target: '[data-tour="media-library-header"]', title: 'Media Library 🎵', description: 'All your generated audio summaries, podcast episodes, explainers, and slideshow videos — in one place. Organized by source module.', placement: 'bottom' },
+    { target: '[data-tour="media-library-header"]', title: 'Media Library 🎵', description: 'All your generated audio summaries, explainers, and slideshow videos — in one place. Organized by source module.', placement: 'bottom' },
     { target: '[data-tour="media-library-filters"]', title: 'Filter by Source', description: 'Tap All, Books, Notes, Study, Presentations, Audio Studio, or Video Studio to see media from that specific module.', placement: 'bottom' },
     { target: '[data-tour="media-library-player"]', title: 'Built-in Player 🎧', description: 'Tap any item to expand its player. Audio plays inline; video slideshows play frame by frame. Both can be downloaded as WebM files.', placement: 'bottom' },
   ],
@@ -145,7 +145,7 @@ export const pageTooltipConfigs: Record<string, TooltipStep[]> = {
     { target: '[data-tour="generator-themes"]', title: 'Themes 🎭', description: 'Choose from multiple professional themes to style your presentation. Preview changes in real-time.', placement: 'bottom' },
     { target: '[data-tour="generator-export"]', title: 'Export PPTX 📥', description: 'Download your finished presentation as a PowerPoint file ready to present anywhere.', placement: 'bottom' },
     { target: '[data-tour="generator-notes"]', title: 'Speaker Notes 🗒️', description: 'Each slide includes AI-generated speaker notes to help guide your delivery during the actual presentation.', placement: 'bottom' },
-    { target: '[data-tour="generator-create-video"]', title: 'Create Video from Presentation 🎬', description: 'Tap the purple film icon on any presentation to open the Video Studio creator. Pick a mode (Video, Summary, Explainer, Podcast), choose English or বাংলা, preview the AI script, then generate a full animated video with smooth slide transitions — saved directly to Video Studio!', placement: 'left' },
+    { target: '[data-tour="generator-create-video"]', title: 'Create Video from Presentation 🎬', description: 'Tap the purple film icon on any presentation to open the Video Studio creator. Pick a mode (Video, Summary, or Explainer), choose English or বাংলা, preview the AI script, then generate a full animated video with smooth slide transitions — saved directly to Video Studio!', placement: 'left' },
     { target: '[data-tour="viewer-record-btn"]', title: 'Record Your Own Narration 🎙️', description: 'Tap "Record" when viewing any presentation to open the split-screen Narration Recorder — slides on top, teleprompter with your speaker notes below. Record your voice as you present!', placement: 'bottom' },
     { target: '[data-tour="generator-create-video"]', title: 'Generate Video with Your Voice 🎤', description: 'After recording your narration, open the Video Creator and switch Narration Source to "My Voice". Tap "Generate with My Voice" to produce a video that uses your real recorded audio — perfectly timed to each slide!', placement: 'left' },
   ],

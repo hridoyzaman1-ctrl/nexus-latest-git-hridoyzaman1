@@ -8,7 +8,7 @@
 // VITE_KIRA_API_KEY      → Kira chat assistant
 // VITE_STUDIO_API_KEY    → Audio Studio + Video Studio narration/scripts (primary)
 // VITE_AV_STUDIO_API_KEY → Audio Studio + Video Studio fallback key
-// VITE_MEDIA_GEN_API_KEY → Media Generation (Summary/Explainer/Podcast/Video modal) fallback
+// VITE_MEDIA_GEN_API_KEY → Media Generation (Summary/Explainer/Video modal) fallback
 // VITE_PRESENTATION_API_KEY → Presentation video script generation fallback
 
 const LONGCAT_API_URL = 'https://api.longcat.chat/openai/v1/chat/completions';
@@ -140,6 +140,9 @@ export async function chatWithLongCat(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
+  if (!navigator.onLine) {
+    throw new Error('Please connect to the internet to use this AI feature.');
+  }
   return callWithKeyPool('longcat', LONGCAT_KEYS, {
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 300,
@@ -152,6 +155,9 @@ export async function chatWithKira(
   messages: LongCatMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
+  if (!navigator.onLine) {
+    throw new Error('Please connect to the internet to chat with Kira AI.');
+  }
   return callWithKeyPool('kira', KIRA_KEYS, {
     model: MODEL, messages,
     max_tokens:  options?.maxTokens  ?? 300,
@@ -175,7 +181,7 @@ export async function chatWithStudioAI(
   return content;
 }
 
-/** Media Generation modal (Summary / Explainer / Podcast / Video modes).
+/** Media Generation modal (Summary / Explainer / Video modes).
  *  Primary pool: VITE_STUDIO_API_KEY  •  Fallback: VITE_MEDIA_GEN_API_KEY */
 export async function chatWithMediaGenAI(
   messages: LongCatMessage[],

@@ -8,7 +8,7 @@ import { renderBgmBuffer, BGM_VOLUME, BGM_FADE_SECS } from './bgmEngine';
 
 // ── Limits config ─────────────────────────────────────────────────────────────
 
-export type MediaMode = 'summary' | 'explainer' | 'podcast' | 'video';
+export type MediaMode = 'summary' | 'explainer' | 'video';
 export type SourceModule = 'books' | 'study' | 'notes' | 'presentations' | 'coach' | 'audio-studio' | 'video-studio' | 'other';
 
 export interface ModeLimits {
@@ -22,49 +22,41 @@ const LIMITS: Record<SourceModule, Record<MediaMode, ModeLimits>> = {
   books: {
     summary:  { maxWords: 12000, maxPages: 20, maxAudioSeconds: 240, maxVideoSeconds: 180 },
     explainer:{ maxWords: 9000,  maxPages: 15, maxAudioSeconds: 360, maxVideoSeconds: 180 },
-    podcast:  { maxWords: 7500,  maxPages: 12, maxAudioSeconds: 480, maxVideoSeconds: 180 },
     video:    { maxWords: 4500,  maxPages: 8,  maxAudioSeconds: 240, maxVideoSeconds: 180 },
   },
   study: {
     summary:  { maxWords: 15000, maxPages: 25, maxAudioSeconds: 300, maxVideoSeconds: 240 },
     explainer:{ maxWords: 10000, maxPages: 20, maxAudioSeconds: 420, maxVideoSeconds: 240 },
-    podcast:  { maxWords: 8000,  maxPages: 15, maxAudioSeconds: 600, maxVideoSeconds: 240 },
     video:    { maxWords: 5000,  maxPages: 10, maxAudioSeconds: 300, maxVideoSeconds: 240 },
   },
   notes: {
     summary:  { maxWords: 6000,  maxPages: 999, maxAudioSeconds: 240, maxVideoSeconds: 180 },
     explainer:{ maxWords: 5000,  maxPages: 999, maxAudioSeconds: 360, maxVideoSeconds: 180 },
-    podcast:  { maxWords: 4000,  maxPages: 999, maxAudioSeconds: 480, maxVideoSeconds: 180 },
     video:    { maxWords: 2500,  maxPages: 999, maxAudioSeconds: 240, maxVideoSeconds: 180 },
   },
   presentations: {
     summary:  { maxWords: 6000,  maxPages: 20, maxAudioSeconds: 240, maxVideoSeconds: 180 },
     explainer:{ maxWords: 5000,  maxPages: 15, maxAudioSeconds: 360, maxVideoSeconds: 180 },
-    podcast:  { maxWords: 4000,  maxPages: 12, maxAudioSeconds: 480, maxVideoSeconds: 180 },
     video:    { maxWords: 3000,  maxPages: 10, maxAudioSeconds: 180, maxVideoSeconds: 180 },
   },
   coach: {
     summary:  { maxWords: 3000,  maxPages: 999, maxAudioSeconds: 180, maxVideoSeconds: 180 },
     explainer:{ maxWords: 3000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
-    podcast:  { maxWords: 3000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
     video:    { maxWords: 3000,  maxPages: 999, maxAudioSeconds: 180, maxVideoSeconds: 180 },
   },
   'audio-studio': {
     summary:  { maxWords: 12000, maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
     explainer:{ maxWords: 10000, maxPages: 999, maxAudioSeconds: 420, maxVideoSeconds: 180 },
-    podcast:  { maxWords: 8000,  maxPages: 999, maxAudioSeconds: 600, maxVideoSeconds: 180 },
     video:    { maxWords: 5000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 180 },
   },
   'video-studio': {
     summary:  { maxWords: 8000,  maxPages: 999, maxAudioSeconds: 240, maxVideoSeconds: 240 },
     explainer:{ maxWords: 7000,  maxPages: 999, maxAudioSeconds: 360, maxVideoSeconds: 240 },
-    podcast:  { maxWords: 6000,  maxPages: 999, maxAudioSeconds: 480, maxVideoSeconds: 240 },
     video:    { maxWords: 5000,  maxPages: 999, maxAudioSeconds: 300, maxVideoSeconds: 300 },
   },
   other: {
     summary:  { maxWords: 3000,  maxPages: 10,  maxAudioSeconds: 180, maxVideoSeconds: 90 },
     explainer:{ maxWords: 3000,  maxPages: 10,  maxAudioSeconds: 180, maxVideoSeconds: 90 },
-    podcast:  { maxWords: 3000,  maxPages: 10,  maxAudioSeconds: 180, maxVideoSeconds: 90 },
     video:    { maxWords: 2000,  maxPages: 8,   maxAudioSeconds: 90,  maxVideoSeconds: 90 },
   },
 };
@@ -140,7 +132,7 @@ export function sanitiseAIScript(raw: string): string {
     // Strip metadata lines (duration, word count)
     .replace(/^\*?\(?(duration|word count|~?\d+\s*min|~?\d+\s*words?)[^)\n]*\)?\*?\n?/gim, '')
     // Strip section/label headers like "Introduction:", "Key Points:", "Conclusion:", "Summary:", "Overview:", "Section 1:", "Part 1:", etc.
-    .replace(/^(introduction|summary|overview|conclusion|outro|intro|key\s*points?|key\s*takeaways?|takeaways?|highlights?|topics?\s*covered|section\s*\d*|part\s*\d*|chapter\s*\d*|segment\s*\d*|narration|script|podcast|explainer|video)\s*:?\s*$/gim, '')
+    .replace(/^(introduction|summary|overview|conclusion|outro|intro|key\s*points?|key\s*takeaways?|takeaways?|highlights?|topics?\s*covered|section\s*\d*|part\s*\d*|chapter\s*\d*|segment\s*\d*|narration|script|explainer|video)\s*:?\s*$/gim, '')
     // Strip numbered/lettered standalone section markers ("1.", "2.", "A.", "B.", etc.)
     .replace(/^(\d+\.|\([a-zA-Z]\)|\([0-9]+\))\s*$/gm, '')
     // Strip ALL-CAPS lines that are short standalone headings (e.g. "KEY POINTS", "INTRODUCTION")
@@ -245,15 +237,6 @@ const BN = {
   point: (i: number) => `বিষয় ${i + 1}:`,
   letsReview: 'আসুন পুনরালোচনা করি।',
   fullExplainer: (t: string) => `এটি "${t}"-এর সম্পূর্ণ ব্যাখ্যা। শুনার জন্য ধন্যবাদ।`,
-  podcastIntro: (t: string) => `নমস্কার! আবারও স্বাগতম। আজ আমরা "${t}" নিয়ে আলোচনা করব। এটি একটি চমৎকার পর্ব হতে চলেছে, তাই চলুন শুরু করি।`,
-  coveringToday: (h: string) => `আজ আমরা যা নিয়ে আলোচনা করব: ${h}। দারুণ বিষয়!`,
-  richInsights: 'আজকের বিষয়টি অনেক তথ্যসমৃদ্ধ। চলুন সবচেয়ে আকর্ষণীয় বিষয়গুলি নিয়ে আলোচনা করি।',
-  connectors: ['তাই,', 'এখন,', 'আকর্ষণীয়ভাবে,', 'বিষয়টি হল,', 'যা আশ্চর্যজনক তা হল'],
-  keyTakeaways: 'এখন মূল শিক্ষণীয় বিষয়গুলি জানাই।',
-  number: (i: number) => `নম্বর ${i + 1}:`,
-  sumUp: 'সবচেয়ে গুরুত্বপূর্ণ বিষয়গুলি সংক্ষেপে জানাই।',
-  wrapUp: (t: string, h: string) => `ঠিক আছে, শেষ করা যাক। আজ আমরা "${t}" নিয়ে আলোচনা করলাম। ${h ? `মূল বিষয়গুলি ছিল: ${h}।` : ''} আশা করি আপনি এটি মূল্যবান মনে করেছেন!`,
-  outro: 'শুনার জন্য ধন্যবাদ! আবার দেখা হবে।',
   keyConceptsInsights: 'মূল ধারণা ও অন্তর্দৃষ্টি',
   topicsCovered: 'আলোচিত বিষয়সমূহ',
   keyPoints: (idx: number) => `মূল বিষয়সমূহ${idx > 0 ? ` (${idx + 1})` : ''}`,
@@ -296,27 +279,6 @@ export function buildExplainerScript(rawText: string, title: string, lang = 'en'
   ].filter(Boolean).join(' '));
 }
 
-export function buildPodcastScript(rawText: string, title: string, lang = 'en'): string {
-  const bn = lang === 'bn';
-  const text = cleanText(rawText);
-  const sentences = extractSentences(text);
-  const bullets = extractBulletPoints(text);
-  const paragraphs = extractTopParagraphs(text, 8);
-
-  const connectors = bn
-    ? BN.connectors
-    : ['So,', 'Now,', 'Interestingly,', "Here's the thing,", "What's fascinating is that"];
-
-  const mainContent = paragraphs.length > 0
-    ? paragraphs.map((p, i) => `${connectors[i % connectors.length]} ${p}`).join(' ')
-    : sentences.slice(0, 25).join(' ');
-
-  const keyTakeaways = bullets.length > 0
-    ? bullets.slice(0, 6).map(b => /[.!?]$/.test(b.trim()) ? b : b + '.').join(' ')
-    : sentences.slice(-8).join(' ');
-
-  return trimToLastSentence([mainContent, keyTakeaways].filter(Boolean).join(' '));
-}
 
 export function buildVideoScenes(rawText: string, title: string, lang = 'en'): VideoScene[] {
   const bn = lang === 'bn';
@@ -424,8 +386,6 @@ export function buildScriptForMode(
       return { script: buildSummaryScript(rawText, title, lang) };
     case 'explainer':
       return { script: buildExplainerScript(rawText, title, lang) };
-    case 'podcast':
-      return { script: buildPodcastScript(rawText, title, lang) };
     case 'video': {
       const scenes = buildVideoScenes(rawText, title, lang);
       const sceneScripts = scenes.map((s, i) => {

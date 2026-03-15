@@ -15,7 +15,7 @@ export interface GeneratedMediaItem {
   sourceModule: string; // 'books' | 'notes' | 'study' | 'presentations' | 'coach'
   sourceId: string;
   sourceName: string;
-  mode: 'summary' | 'explainer' | 'podcast' | 'video';
+  mode: 'summary' | 'explainer' | 'video';
   script: string;
   language: string;
   voiceName: string;

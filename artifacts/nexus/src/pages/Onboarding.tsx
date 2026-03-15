@@ -170,7 +170,7 @@ const slides = [
     color: 'hsl(217, 91%, 60%)',
     title: 'Audio & Video Studio',
     subtitle: 'Create Narrated Content • AI Script Writer • 100% Offline',
-    description: 'Turn any text, PDF, or idea into narrated audio summaries, podcast-style episodes, or animated slideshow videos — all generated locally in your browser. Use the Describe mode to have Kira write a full script from just a sentence. No uploads, no servers, no cost.',
+    description: 'Turn any text, PDF, or idea into narrated audio summaries, targeted explainers, or animated slideshow videos — all generated locally in your browser. Use the Describe mode to have Kira write a full script from just a sentence. No uploads, no servers, no cost.',
     previews: [
       { emoji: '🎧', label: 'Audio Studio' },
       { emoji: '🎬', label: 'Video Studio' },

@@ -65,7 +65,7 @@ export default function VideoStudio() {
   const [language, setLanguage] = useState<'en' | 'bn'>('en');
 
   // Two-step script preview
-  const [selectedMode, setSelectedMode] = useState<'video' | 'summary' | 'explainer' | 'podcast'>('video');
+  const [selectedMode, setSelectedMode] = useState<'video' | 'summary' | 'explainer'>('video');
   const [aiScript, setAiScript] = useState<string | null>(null);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [scriptError, setScriptError] = useState<string | null>(null);
@@ -128,6 +128,10 @@ export default function VideoStudio() {
   };
 
   const handleDescribeEnhance = async () => {
+    if (!navigator.onLine) {
+      setError('Please connect to the internet to use AI features.');
+      return;
+    }
     setAiEnhancing(true); setAiHint(null); setError(null);
     try {
       const raw = await chatWithStudioAI([
@@ -170,6 +174,10 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
   };
 
   const handleGenerateAIScript = async () => {
+    if (!navigator.onLine) {
+      setScriptError('Network connection required to preview AI script.');
+      return;
+    }
     setGeneratingScript(true);
     setAiScript(null);
     setScriptError(null);
@@ -177,7 +185,6 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
       video:    'Write flowing spoken narration of 400–500 words for a visual slideshow. Flow naturally through the main topics using smooth spoken transitions — no section labels or spoken headings.',
       summary:  'Write a concise spoken summary of 350–450 words. Cover all main points in continuous natural prose — no bullet points, no heading labels.',
       explainer:'Write a clear spoken explainer of 550–700 words. Walk through key concepts in continuous natural prose — no section labels or numbered steps.',
-      podcast:  'Write an engaging conversational monologue of 700–850 words. Sound natural and enthusiastic — no topic headers, just flowing conversation.',
     };
     const langNote = language === 'bn' ? '\nWrite ENTIRELY in Bangla (বাংলা). Every single word must be in Bangla script.' : '';
     try {
@@ -419,7 +426,6 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
                   { id: 'video',    label: 'Video',    icon: Film },
                   { id: 'summary',  label: 'Summary',  icon: FileText },
                   { id: 'explainer',label: 'Explain',  icon: Play },
-                  { id: 'podcast',  label: 'Podcast',  icon: Sparkles },
                 ] as const).map(m => (
                   <button
                     key={m.id}

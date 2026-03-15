@@ -201,7 +201,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [studyPlannerTargetId, setStudyPlannerTargetId] = useState<string | null>(null);
   const [mediaModalPresId, setMediaModalPresId] = useState<string | null>(null);
   const [videoPresId, setVideoPresId] = useState<string | null>(null);
-  const [presVideoMode, setPresVideoMode] = useState<'video' | 'summary' | 'explainer' | 'podcast'>('video');
+  const [presVideoMode, setPresVideoMode] = useState<'video' | 'summary' | 'explainer'>('video');
   const [presScriptSource, setPresScriptSource] = useState<'speaker-notes' | 'slide-words' | 'ai-script'>('slide-words');
   const [presAiScript, setPresAiScript] = useState<string | null>(null);
   const [presGeneratingScript, setPresGeneratingScript] = useState(false);
@@ -605,7 +605,6 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       video: `Write flowing spoken narration for a visual presentation video (3-4 minutes when read aloud). Cover each slide topic naturally.`,
       summary: `Write a concise spoken summary (2-3 minutes). Hit the key points clearly and efficiently.`,
       explainer: `Write a structured spoken explainer (4-5 minutes). Walk through concepts step-by-step for clarity.`,
-      podcast: `Write an engaging conversational podcast episode (6-8 minutes). Sound natural and add context.`,
     };
     const langNote = presVideoLanguage === 'bn' ? ' Write entirely in Bengali (বাংলা) script.' : '';
     const prompt = `You are a professional scriptwriter.\n\nPresentation title: "${pres.settings.title}"\nPurpose: ${pres.settings.purpose}\nSlides:\n\n${text}\n\n${modeInstructions[presVideoMode]}${langNote}\n\nWrite only the narration script. No stage directions, no slide numbers, no meta-commentary. Start immediately with the spoken content.\n\nCRITICAL: Your script MUST end with a complete, properly punctuated sentence. The very last character must be a period, exclamation mark, question mark, or (if writing in Bangla) a danda (।). Never cut off mid-sentence, mid-word, or mid-thought. If you are running short on space, add one final concluding sentence and stop.`;
@@ -2592,11 +2591,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     if (!pres) return null;
     const slideText = extractPresText(pres);
     const wordCount = slideText.trim().split(/\s+/).length;
-    const modes: { id: 'video' | 'summary' | 'explainer' | 'podcast'; label: string; icon: React.ReactNode; desc: string }[] = [
+    const modes: { id: 'video' | 'summary' | 'explainer'; label: string; icon: React.ReactNode; desc: string }[] = [
       { id: 'video', label: 'Video', icon: <Video className="w-3.5 h-3.5" />, desc: 'Visual narration' },
       { id: 'summary', label: 'Summary', icon: <Sparkles className="w-3.5 h-3.5" />, desc: 'Key points only' },
       { id: 'explainer', label: 'Explainer', icon: <MessageSquare className="w-3.5 h-3.5" />, desc: 'Step-by-step' },
-      { id: 'podcast', label: 'Podcast', icon: <Mic className="w-3.5 h-3.5" />, desc: 'Conversational' },
     ];
     const closeFn = () => { setVideoPresId(null); setPresAiScript(null); setPresScriptError(null); setPresVideoModalOpen(false); };
     return (

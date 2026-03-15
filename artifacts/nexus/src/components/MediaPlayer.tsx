@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Square, Pause, RotateCcw, Download, Trash2, Edit3, Check, X, Video, Headphones, Mic, FileText, Loader2 } from 'lucide-react';
+import { Play, Square, Pause, RotateCcw, Download, Trash2, Edit3, Check, X, Video, Headphones, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { TTSController, getAvailableVoices } from '@/lib/contentMediaEngine';
@@ -22,14 +22,12 @@ interface MediaPlayerProps {
 const MODE_ICONS = {
   summary:   FileText,
   explainer: Headphones,
-  podcast:   Mic,
   video:     Video,
 };
 
 const MODE_COLORS = {
   summary:   'hsl(199,89%,48%)',
   explainer: 'hsl(245,58%,62%)',
-  podcast:   'hsl(340,82%,52%)',
   video:     'hsl(291,64%,42%)',
 };
 

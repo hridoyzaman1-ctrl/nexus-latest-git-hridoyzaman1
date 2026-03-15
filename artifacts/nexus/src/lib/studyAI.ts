@@ -12,6 +12,9 @@ export async function studyAIChat(
   messages: StudyAIMessage[],
   options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
+  if (!navigator.onLine) {
+    throw new Error('Please connect to the internet to use Study AI.');
+  }
   const maxRetries = 2;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

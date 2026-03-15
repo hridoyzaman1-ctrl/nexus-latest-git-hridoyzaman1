@@ -11,11 +11,11 @@ import { toast } from 'sonner';
 import { getAllMediaItems, deleteMediaItem, deleteAllMedia, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import MediaPlayer from '@/components/MediaPlayer';
 
-type FilterMode = 'all' | 'summary' | 'explainer' | 'podcast' | 'video';
+type FilterMode = 'all' | 'summary' | 'explainer' | 'video';
 type FilterModule = 'all' | 'books' | 'notes' | 'study' | 'presentations' | 'coach' | 'audio-studio' | 'video-studio';
 
 const MODE_LABELS: Record<string, string> = {
-  summary: 'Summary', explainer: 'Explainer', podcast: 'Podcast', video: 'Video',
+  summary: 'Summary', explainer: 'Explainer', video: 'Video',
 };
 const MODULE_LABELS: Record<string, string> = {
   books: 'Books', notes: 'Notes', study: 'Study', presentations: 'Presentations', coach: 'Coach',
@@ -26,10 +26,10 @@ const MODULE_ICONS: Record<string, typeof BookOpen> = {
   'audio-studio': Headphones, 'video-studio': Film,
 };
 const MODE_ICONS: Record<string, typeof Headphones> = {
-  summary: FileText, explainer: Headphones, podcast: Mic, video: Video,
+  summary: FileText, explainer: Headphones, video: Video,
 };
 const MODE_COLORS: Record<string, string> = {
-  summary: 'hsl(199,89%,48%)', explainer: 'hsl(245,58%,62%)', podcast: 'hsl(340,82%,52%)', video: 'hsl(291,64%,42%)',
+  summary: 'hsl(199,89%,48%)', explainer: 'hsl(245,58%,62%)', video: 'hsl(291,64%,42%)',
 };
 
 export default function MediaLibrary() {
@@ -170,7 +170,7 @@ export default function MediaLibrary() {
               <div>
                 <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wide">Mode</p>
                 <div className="flex gap-1.5 flex-wrap">
-                  {(['all', 'summary', 'explainer', 'podcast', 'video'] as FilterMode[]).map(m => {
+                  {(['all', 'summary', 'explainer', 'video'] as FilterMode[]).map(m => {
                     const Icon = m === 'all' ? Library : MODE_ICONS[m];
                     return (
                       <button
@@ -224,7 +224,7 @@ export default function MediaLibrary() {
         {/* Stats bar */}
         {items.length > 0 && (
           <div className="grid grid-cols-4 gap-2">
-            {(['summary', 'explainer', 'podcast', 'video'] as const).map(m => {
+            {(['summary', 'explainer', 'video'] as const).map(m => {
               const count = items.filter(x => x.mode === m).length;
               const Icon = MODE_ICONS[m];
               return (
