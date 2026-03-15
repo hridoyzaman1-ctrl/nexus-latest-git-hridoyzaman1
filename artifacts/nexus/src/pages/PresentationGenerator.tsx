@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PageOnboardingTooltips from '@/components/PageOnboardingTooltips';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -164,6 +165,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 export default function PresentationGenerator({ embedded }: PresentationGeneratorProps) {
+  const navigate = useNavigate();
   const [view, setView] = useState<View>('library');
   const [presentations, setPresentations] = useState<PresentationType[]>([]);
   const [settings, setSettings] = useState<PresentationSettings>({ ...defaultSettings });
@@ -1105,7 +1107,16 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const renderLibrary = () => (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className={embedded ? 'space-y-4' : 'px-4 pt-12 pb-24'}>
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold font-display" data-testid="text-presentations-title" data-tour="generator-header">Presentations</h1>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => navigate(-1)} 
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="button-back-to-dashboard"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-2xl font-bold font-display" data-testid="text-presentations-title" data-tour="generator-header">Presentations</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode(v => v === 'grid' ? 'list' : 'grid')}

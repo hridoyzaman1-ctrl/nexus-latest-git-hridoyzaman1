@@ -155,13 +155,19 @@ export default function NewsPortal() {
         {!showBookmarks && (
           <>
             <div data-tour="news-mode" className="flex gap-2">
-              <button onClick={() => handleModeChange('international')}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${mode === 'international' ? 'bg-primary text-primary-foreground shadow-lg' : 'glass'}`}>
-                <Globe size={14} className="sm:w-4 sm:h-4 flex-shrink-0" /> International
+              <button 
+                onClick={() => handleModeChange('international')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold transition-all ${mode === 'international' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 ring-2 ring-primary/20' : 'glass hover:bg-muted/10 text-muted-foreground'}`}
+              >
+                <Globe size={16} className={mode === 'international' ? 'animate-pulse' : ''} />
+                International
               </button>
-              <button onClick={() => handleModeChange('national')}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${mode === 'national' ? 'bg-primary text-primary-foreground shadow-lg' : 'glass'}`}>
-                <Flag size={14} className="sm:w-4 sm:h-4 flex-shrink-0" /> Bangladesh
+              <button 
+                onClick={() => handleModeChange('national')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold transition-all ${mode === 'national' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 ring-2 ring-primary/20' : 'glass hover:bg-muted/10 text-muted-foreground'}`}
+              >
+                <Flag size={16} className={mode === 'national' ? 'animate-pulse' : ''} />
+                Bangladesh
               </button>
             </div>
 
@@ -274,11 +280,11 @@ export default function NewsPortal() {
                           />
                           <div className="flex gap-2">
                             <a href={article.url} target="_blank" rel="noopener noreferrer"
-                              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:shadow-lg transition-all active:scale-[0.98]">
-                              <ExternalLink size={14} /> Read Full Article
+                              className="w-12 h-12 flex items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                              <ExternalLink size={20} />
                             </a>
                             <button onClick={() => setExpandedArticleId(null)}
-                              className="px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-semibold text-xs hover:bg-secondary/80 transition-colors">
+                              className="flex-1 py-2.5 rounded-xl bg-secondary/50 text-secondary-foreground font-bold text-xs hover:bg-secondary transition-colors">
                               Close
                             </button>
                           </div>
