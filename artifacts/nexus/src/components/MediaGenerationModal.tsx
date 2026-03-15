@@ -491,6 +491,11 @@ ${truncated}`;
               generatedSceneScripts,
               customVideoRenderFn,
               bgmVolume,
+              {
+                voice: selectedVoice ?? undefined,
+                rate,
+                pitch
+              }
             );
             if (!cancelSignal.current.cancelled) {
               await saveVideoBlob(id, result.blob);
@@ -580,6 +585,11 @@ ${truncated}`;
         vSS,
         customVideoRenderFn,
         bgmVolume,
+        {
+          voice: selectedVoice ?? undefined,
+          rate,
+          pitch
+        }
       );
 
       if (!cancelSignal.current.cancelled) {

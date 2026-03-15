@@ -927,13 +927,16 @@ export interface VideoRecordResult {
  * Speak text via the browser's SpeechSynthesis API and return a Promise that
  * resolves when the utterance ends. Resolves immediately if TTS is unavailable.
  */
-function speakAndWait(text: string): Promise<void> {
+function speakAndWait(text: string, voice?: SpeechSynthesisVoice, rate: number = 1, pitch: number = 1): Promise<void> {
   return new Promise(resolve => {
     if (!text.trim() || typeof window === 'undefined' || !window.speechSynthesis) {
       resolve();
       return;
     }
     const utt = new SpeechSynthesisUtterance(text);
+    if (voice) utt.voice = voice;
+    utt.rate = rate;
+    utt.pitch = pitch;
     utt.onend = () => resolve();
     utt.onerror = () => resolve();
     window.speechSynthesis.speak(utt);
@@ -956,6 +959,7 @@ export async function recordVideoScenes(
   sceneScripts?: string[],
   customRenderFn?: (canvas: HTMLCanvasElement, sceneIdx: number, progress: number) => void,
   bgmVolume?: number,
+  voiceSettings?: { voice?: SpeechSynthesisVoice; rate?: number; pitch?: number },
 ): Promise<VideoRecordResult> {
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
@@ -1065,7 +1069,12 @@ export async function recordVideoScenes(
       // The slide must stay on screen until speech completes — never before.
       let ttsFinished = !useTTS;
       if (useTTS) {
-        speakAndWait(sceneText).then(() => { ttsFinished = true; });
+        speakAndWait(
+          sceneText,
+          voiceSettings?.voice,
+          voiceSettings?.rate ?? 1,
+          voiceSettings?.pitch ?? 1
+        ).then(() => { ttsFinished = true; });
       }
 
       // ── Fade in from black (skip for first scene) ────────────────────────

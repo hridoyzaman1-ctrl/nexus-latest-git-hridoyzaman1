@@ -22,31 +22,44 @@ interface ResolvedTextStyle {
 
 function resolveTextStyle(theme: ThemeConfig, textStyle?: TextStyle): ResolvedTextStyle {
   const ts = textStyle || {};
+  const safeTheme = theme || {
+    titleFontSize: 24,
+    titleColor: '000000',
+    titleFont: 'Arial',
+    bodyFontSize: 16,
+    bodyColor: '333333',
+    bodyFont: 'Arial',
+    bulletFontSize: 14,
+    accentColor: '3B82F6',
+    bulletColor: '333333',
+  };
+
   return {
-    titleFontSize: ts.titleFontSize || theme.titleFontSize,
-    titleColor: stripHash(ts.titleColor || theme.titleColor),
+    titleFontSize: ts.titleFontSize || safeTheme.titleFontSize,
+    titleColor: stripHash(ts.titleColor || safeTheme.titleColor),
     titleBold: (ts.titleBold || 'bold') === 'bold',
     titleItalic: (ts.titleItalic || 'normal') === 'italic',
     titleAlign: ts.titleAlign || 'left',
-    titleFontFamily: ts.titleFontFamily || theme.titleFont,
-    bodyFontSize: ts.bodyFontSize || theme.bodyFontSize,
-    bodyColor: stripHash(ts.bodyColor || theme.bodyColor),
+    titleFontFamily: ts.titleFontFamily || safeTheme.titleFont,
+    bodyFontSize: ts.bodyFontSize || safeTheme.bodyFontSize,
+    bodyColor: stripHash(ts.bodyColor || safeTheme.bodyColor),
     bodyBold: (ts.bodyBold || 'normal') === 'bold',
     bodyItalic: (ts.bodyItalic || 'normal') === 'italic',
     bodyAlign: ts.bodyAlign || 'left',
-    bodyFontFamily: ts.bodyFontFamily || theme.bodyFont,
-    bulletFontSize: ts.bulletFontSize || theme.bulletFontSize,
-    bulletColor: stripHash(ts.bulletColor || ts.bodyColor || theme.bodyColor),
-    accentColor: stripHash(ts.accentColor || theme.accentColor),
+    bodyFontFamily: ts.bodyFontFamily || safeTheme.bodyFont,
+    bulletFontSize: ts.bulletFontSize || safeTheme.bulletFontSize,
+    bulletColor: stripHash(ts.bulletColor || ts.bodyColor || ('bulletColor' in safeTheme ? (safeTheme as any).bulletColor : safeTheme.bodyColor)),
+    accentColor: stripHash(ts.accentColor || safeTheme.accentColor),
   };
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const h = hex.replace('#', '');
+  const h = (hex || '000000').replace('#', '');
+  if (h.length < 6) return { r: 0, g: 0, b: 0 };
   return {
-    r: parseInt(h.substring(0, 2), 16),
-    g: parseInt(h.substring(2, 4), 16),
-    b: parseInt(h.substring(4, 6), 16),
+    r: parseInt(h.substring(0, 2), 16) || 0,
+    g: parseInt(h.substring(2, 4), 16) || 0,
+    b: parseInt(h.substring(4, 6), 16) || 0,
   };
 }
 
@@ -70,6 +83,7 @@ function lighten(hex: string, amount: number): string {
 }
 
 function stripHash(color: string): string {
+  if (!color || typeof color !== 'string') return '000000';
   return color.replace('#', '');
 }
 
