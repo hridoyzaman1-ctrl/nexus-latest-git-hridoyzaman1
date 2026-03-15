@@ -35,6 +35,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
+  const url = new URL(event.request.url);
+
   // Handle navigation requests (SPA routing)
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -45,25 +47,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for images and audio, Network-first (stale-while-revalidate) for others
-  const url = new URL(event.request.url);
-  const isStaticAsset = url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|mp3|wav|ogg|woff|woff2)$/) || url.pathname.includes('/assets/');
+  // Aggressive Stale-While-Revalidate for all application assets (JS, CSS, images, audio)
+  const isAppAsset = 
+    url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|mp3|wav|ogg|woff|woff2)$/) || 
+    url.pathname.includes('/assets/') ||
+    url.origin === self.location.origin;
 
-  if (isStaticAsset) {
+  if (isAppAsset) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) return cachedResponse;
-        return fetch(event.request).then((networkResponse) => {
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
           }
           return networkResponse;
         });
+        return cachedResponse || fetchPromise;
       })
     );
   } else {
-    // Network-first with cache fallback
+    // Network-first with cache fallback for everything else (API calls, etc.)
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {

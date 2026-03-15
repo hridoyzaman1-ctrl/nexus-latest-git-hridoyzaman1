@@ -60,12 +60,12 @@ import { hasExistingData, clearAllMindflowData } from "@/lib/dataRestoreHelpers"
 
 const queryClient = new QueryClient();
 
-// Replaced ScrollToTop with AnimatePresence onExitComplete for proper timing
+import ChunkLoadErrorBoundary from "@/components/ChunkLoadErrorBoundary";
 
 function AnimatedRoutes() {
   const location = useLocation();
   return (
-    <>
+    <ChunkLoadErrorBoundary>
       <AnimatePresence mode="wait">
         <Suspense fallback={
           <div className="min-h-screen flex items-center justify-center animate-in fade-in duration-300">
@@ -74,6 +74,7 @@ function AnimatedRoutes() {
         }>
           <Routes location={location} key={location.pathname}>
             <Route path="/" element={<Dashboard />} />
+            {/* ... other routes ... */}
             <Route path="/modules" element={<Modules />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/habits" element={<Habits />} />
@@ -109,7 +110,7 @@ function AnimatedRoutes() {
           </Routes>
         </Suspense>
       </AnimatePresence>
-    </>
+    </ChunkLoadErrorBoundary>
   );
 }
 

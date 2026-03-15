@@ -5,7 +5,9 @@ const PRESENTATION_AI_KEY = import.meta.env.VITE_PRESENTATION_AI_KEY || '';
 const MODEL = 'LongCat-Flash-Chat';
 
 export function isPresentationAIAvailable(): boolean {
-  return PRESENTATION_AI_KEY.length > 0;
+  const hasKey = PRESENTATION_AI_KEY.length > 0;
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  return hasKey && isOnline;
 }
 
 interface AIMessage {

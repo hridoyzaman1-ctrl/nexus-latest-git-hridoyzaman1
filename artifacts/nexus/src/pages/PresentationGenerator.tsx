@@ -614,7 +614,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
       const raw = await chatWithPresentationAI([{ role: 'user', content: prompt }], { maxTokens: presVideoLanguage === 'bn' ? 6000 : 1500 });
       setPresAiScript(sanitiseAIScript(raw));
     } catch {
-      setPresScriptError('AI generation failed. You can still generate video directly.');
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      setPresScriptError(isOffline 
+        ? 'Network unavailable. You can still generate video using visible slide words.'
+        : 'AI generation failed. You can still generate video directly.');
     } finally {
       setPresGeneratingScript(false);
     }

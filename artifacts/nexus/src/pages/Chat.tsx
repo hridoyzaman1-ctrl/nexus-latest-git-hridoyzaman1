@@ -126,9 +126,12 @@ export default function Chat() {
       setMessages(prev => [...prev, reply]);
     } catch (err) {
       logError('Chat API error', err);
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
       const errorReply: ChatMessage = {
         id: crypto.randomUUID(), role: 'assistant',
-        content: "I'm having a little trouble connecting right now. 💜 Please try again in a moment — I'm still here for you!",
+        content: isOffline 
+          ? "I'm having trouble reaching the network right now. 💜 Check your connection, and I'll be ready to chat as soon as you're back!"
+          : "I'm having a little trouble connecting right now. 💜 Please try again in a moment — I'm still here for you!",
         createdAt: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorReply]);

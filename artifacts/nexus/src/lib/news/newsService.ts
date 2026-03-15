@@ -12,12 +12,17 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory): Promise
   error?: string;
 }> {
   const now = Date.now();
+  const cached = getCachedNews(mode, category);
+
+  // If offline, return cache immediately if available
+  if (typeof navigator !== 'undefined' && !navigator.onLine && cached) {
+    return { articles: cached.articles, fromCache: true, error: 'Offline: showing saved headlines.' };
+  }
+
   if (now - lastFetchTime < DEBOUNCE_MS) {
-    const cached = getCachedNews(mode, category);
     if (cached) return { articles: cached.articles, fromCache: true };
   }
 
-  const cached = getCachedNews(mode, category);
   if (isCacheValid(cached)) {
     return { articles: cached!.articles, fromCache: true };
   }
