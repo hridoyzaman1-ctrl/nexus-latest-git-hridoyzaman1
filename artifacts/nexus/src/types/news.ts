@@ -12,32 +12,38 @@ export type NewsCategory =
   | 'bangladesh';
 
 export interface NewsArticle {
-  id: string;
+  id: string; // generated locally
   title: string;
-  source: string;
+  sourceName: string;
   publishedAt: string;
-  url: string;
+  url: string; // original article link
+  link: string; // alias for url for various parsers
   imageUrl: string | null;
   summary: string;
-  category: NewsCategory;
-  language: string;
-  region: string;
+  mainCategory: NewsMode;
+  subCategory: NewsCategory;
 }
+
+export interface FeedState {
+  items: NewsArticle[];
+  isLoading: boolean;
+  isRefreshing: boolean;
+  error: string | null;
+  fromCache: boolean;
+  hasLoadedOnce: boolean;
+  lastUpdated: number;
+}
+
+export type FeedStore = Record<string, FeedState>;
 
 export interface NewsSource {
   name: string;
   feedUrl: string;
-  mode: NewsMode;
-  category: NewsCategory;
-  language: string;
-  region: string;
 }
 
 export interface NewsCache {
-  articles: NewsArticle[];
+  items: NewsArticle[];
   fetchedAt: number;
-  mode: NewsMode;
-  category: NewsCategory;
 }
 
 export interface NewsBookmark {

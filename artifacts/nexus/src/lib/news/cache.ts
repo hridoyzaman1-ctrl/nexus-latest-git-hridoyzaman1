@@ -1,22 +1,30 @@
 import { NewsArticle, NewsMode, NewsCategory, NewsCache, NewsBookmark } from '@/types/news';
+import { getFeedKey } from './engine';
 
-const CACHE_PREFIX = 'newsCache_v5_';
-const BOOKMARK_KEY = 'newsBookmarks';
-const CACHE_TTL = 3 * 60 * 1000; // 3 minutes for lightning fast updates
-
-function getCacheKey(mode: NewsMode, category: NewsCategory): string {
-  // Use mode + category in key to prevent regional data leakage
-  return `${CACHE_PREFIX}${mode}_${category}`;
-}
+const CACHE_PREFIX = 'news_feed_v6_';
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 export function getCachedNews(mode: NewsMode, category: NewsCategory): NewsCache | null {
   try {
-    const raw = localStorage.getItem(getCacheKey(mode, category));
-    if (!raw) return null;
-    const cache: NewsCache = JSON.parse(raw);
-    return cache;
+    const key = getFeedKey(mode, category);
+    const data = localStorage.getItem(`${CACHE_PREFIX}${key}`);
+    if (!data) return null;
+    return JSON.parse(data);
   } catch {
     return null;
+  }
+}
+
+export function setCachedNews(mode: NewsMode, category: NewsCategory, items: NewsArticle[]): void {
+  try {
+    const key = getFeedKey(mode, category);
+    const cache: NewsCache = {
+      items,
+      fetchedAt: Date.now()
+    };
+    localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('Failed to save news cache:', e);
   }
 }
 
@@ -25,23 +33,36 @@ export function isCacheValid(cache: NewsCache | null): boolean {
   return Date.now() - cache.fetchedAt < CACHE_TTL;
 }
 
-export function setCachedNews(mode: NewsMode, category: NewsCategory, articles: NewsArticle[]): void {
-  try {
-    const cache: NewsCache = {
-      articles,
-      fetchedAt: Date.now(),
-      mode,
-      category,
-    };
-    localStorage.setItem(getCacheKey(mode, category), JSON.stringify(cache));
-  } catch {
-  }
+export function clearAllNewsCache(): void {
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('news_feed_')) {
+      localStorage.removeItem(key);
+    }
+  });
 }
 
+// Preference Helpers
+export function getSelectedMode(): NewsMode {
+  return (localStorage.getItem('news_selected_mode') as NewsMode) || 'international';
+}
+
+export function setSelectedMode(mode: NewsMode): void {
+  localStorage.setItem('news_selected_mode', mode);
+}
+
+export function getSelectedCategory(): NewsCategory {
+  return (localStorage.getItem('news_selected_category') as NewsCategory) || 'top';
+}
+
+export function setSelectedCategory(category: NewsCategory): void {
+  localStorage.setItem('news_selected_category', category);
+}
+
+// Bookmarks
 export function getBookmarks(): NewsBookmark[] {
   try {
-    const raw = localStorage.getItem(BOOKMARK_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const data = localStorage.getItem('news_bookmarks');
+    return data ? JSON.parse(data) : [];
   } catch {
     return [];
   }
@@ -49,44 +70,17 @@ export function getBookmarks(): NewsBookmark[] {
 
 export function addBookmark(article: NewsArticle): void {
   const bookmarks = getBookmarks();
-  if (bookmarks.some(b => b.articleId === article.id)) return;
-  bookmarks.unshift({
-    articleId: article.id,
-    article,
-    savedAt: new Date().toISOString(),
-  });
-  localStorage.setItem(BOOKMARK_KEY, JSON.stringify(bookmarks));
+  if (!bookmarks.find(b => b.articleId === article.id)) {
+    bookmarks.push({
+      articleId: article.id,
+      article,
+      savedAt: new Date().toISOString()
+    });
+    localStorage.setItem('news_bookmarks', JSON.stringify(bookmarks));
+  }
 }
 
 export function removeBookmark(articleId: string): void {
   const bookmarks = getBookmarks().filter(b => b.articleId !== articleId);
-  localStorage.setItem(BOOKMARK_KEY, JSON.stringify(bookmarks));
-}
-
-export function isBookmarked(articleId: string): boolean {
-  return getBookmarks().some(b => b.articleId === articleId);
-}
-
-export function getSelectedMode(): NewsMode {
-  try {
-    return (localStorage.getItem('newsSelectedMode') as NewsMode) || 'international';
-  } catch {
-    return 'international';
-  }
-}
-
-export function setSelectedMode(mode: NewsMode): void {
-  localStorage.setItem('newsSelectedMode', mode);
-}
-
-export function getSelectedCategory(): NewsCategory {
-  try {
-    return (localStorage.getItem('newsSelectedCategory') as NewsCategory) || 'top';
-  } catch {
-    return 'top';
-  }
-}
-
-export function setSelectedCategory(category: NewsCategory): void {
-  localStorage.setItem('newsSelectedCategory', category);
+  localStorage.setItem('news_bookmarks', JSON.stringify(bookmarks));
 }
