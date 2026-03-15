@@ -451,6 +451,7 @@ export interface TTSOptions {
   voice?: SpeechSynthesisVoice | null;
   rate?: number;
   pitch?: number;
+  volume?: number;
   lang?: string;
   onChunkStart?: (index: number, total: number, text: string) => void;
   onEnd?: () => void;
@@ -511,6 +512,7 @@ export class TTSController {
     if (this.opts.lang) utt.lang = this.opts.lang;
     utt.rate = this.opts.rate ?? 1;
     utt.pitch = this.opts.pitch ?? 1;
+    utt.volume = this.opts.volume ?? 1;
 
     utt.onstart = () => {
       this.opts.onChunkStart?.(this.currentIdx, this.chunks.length, chunk);
@@ -557,6 +559,10 @@ export class TTSController {
   restart(script: string) {
     this.stop();
     setTimeout(() => this.start(script), 100);
+  }
+
+  setVolume(v: number) {
+    this.opts.volume = v;
   }
 
   get totalChunks() { return this.chunks.length; }

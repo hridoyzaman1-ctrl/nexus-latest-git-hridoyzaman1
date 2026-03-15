@@ -35,10 +35,12 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [landscapeMode, setLandscapeMode] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [lastVolume, setLastVolume] = useState(1);
 
   // TTS narration alongside video playback
   const ttsRef = useRef<TTSController | null>(null);
@@ -79,7 +81,9 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
     if (!item.script) return;
     if (isPlaying && narrationOn) {
       if (!ttsRef.current) {
-        ttsRef.current = new TTSController({});
+        ttsRef.current = new TTSController({
+          volume: isMuted ? 0 : volume
+        });
         ttsStartedRef.current = false;
       }
       if (!ttsStartedRef.current) {
@@ -164,7 +168,9 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
       ttsRef.current = null;
       ttsStartedRef.current = false;
       if (isPlaying) {
-        const ctrl = new TTSController({});
+        const ctrl = new TTSController({
+          volume: isMuted ? 0 : volume
+        });
         ttsRef.current = ctrl;
         ttsStartedRef.current = true;
         ctrl.start(item.script);
@@ -174,14 +180,52 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
 
   const skip = (secs: number) => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + secs));
+    const newTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + secs));
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+    setProgress(duration > 0 ? (newTime / duration) * 100 : 0);
     showControlsFor();
+
+    // Restart TTS from beginning on skip to maintain sync (current TTSController doesn't support seeking)
+    if (narrationOn && item.script) {
+      ttsRef.current?.stop();
+      ttsRef.current = null;
+      ttsStartedRef.current = false;
+      if (isPlaying) {
+        const ctrl = new TTSController({
+          volume: isMuted ? 0 : volume
+        });
+        ttsRef.current = ctrl;
+        ttsStartedRef.current = true;
+        ctrl.start(item.script);
+      }
+    }
   };
 
   const toggleMute = () => {
     if (!videoRef.current) return;
-    videoRef.current.muted = !isMuted;
-    setIsMuted(!isMuted);
+    const newMuted = !isMuted;
+    videoRef.current.muted = newMuted;
+    setIsMuted(newMuted);
+    if (newMuted) {
+      setLastVolume(volume);
+      setVolume(0);
+    } else {
+      setVolume(lastVolume > 0 ? lastVolume : 1);
+    }
+    showControlsFor();
+  };
+
+  const handleVolumeChange = (vals: number[]) => {
+    const v = vals[0];
+    setVolume(v);
+    if (videoRef.current) {
+      videoRef.current.volume = v;
+      videoRef.current.muted = v === 0;
+    }
+    ttsRef.current?.setVolume(v);
+    setIsMuted(v === 0);
+    if (v > 0) setLastVolume(v);
     showControlsFor();
   };
 
@@ -381,9 +425,20 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
                   <button onClick={togglePlay} className="p-2 text-white hover:text-primary transition-colors">
                     {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
                   </button>
-                  <button onClick={toggleMute} className="p-2 text-white hover:text-primary transition-colors">
-                    {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                  </button>
+                  <div className="flex items-center gap-1 group/vol">
+                    <button onClick={toggleMute} className="p-2 text-white hover:text-primary transition-colors">
+                      {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                    </button>
+                    <div className="w-0 overflow-hidden group-hover/vol:w-20 group-hover/vol:ml-1 group-hover/vol:mr-2 transition-all duration-300 flex items-center">
+                      <Slider
+                        value={[volume]}
+                        max={1}
+                        step={0.01}
+                        onValueChange={handleVolumeChange}
+                        className="w-20 cursor-pointer"
+                      />
+                    </div>
+                  </div>
                   {item.script && (
                     <button
                       onClick={() => setNarrationOn(v => !v)}
