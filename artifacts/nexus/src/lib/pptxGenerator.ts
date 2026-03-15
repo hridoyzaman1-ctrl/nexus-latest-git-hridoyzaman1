@@ -34,22 +34,25 @@ function resolveTextStyle(theme: ThemeConfig, textStyle?: TextStyle): ResolvedTe
     bulletColor: '333333',
   };
 
+  const titleFont = ts.titleFontFamily || safeTheme.titleFont || 'Arial';
+  const bodyFont = ts.bodyFontFamily || safeTheme.bodyFont || 'Arial';
+
   return {
-    titleFontSize: ts.titleFontSize || safeTheme.titleFontSize,
-    titleColor: stripHash(ts.titleColor || safeTheme.titleColor),
+    titleFontSize: ts.titleFontSize || safeTheme.titleFontSize || 24,
+    titleColor: stripHash(ts.titleColor || safeTheme.titleColor || '000000'),
     titleBold: (ts.titleBold || 'bold') === 'bold',
     titleItalic: (ts.titleItalic || 'normal') === 'italic',
     titleAlign: ts.titleAlign || 'left',
-    titleFontFamily: ts.titleFontFamily || safeTheme.titleFont,
-    bodyFontSize: ts.bodyFontSize || safeTheme.bodyFontSize,
-    bodyColor: stripHash(ts.bodyColor || safeTheme.bodyColor),
+    titleFontFamily: titleFont,
+    bodyFontSize: ts.bodyFontSize || safeTheme.bodyFontSize || 16,
+    bodyColor: stripHash(ts.bodyColor || safeTheme.bodyColor || '333333'),
     bodyBold: (ts.bodyBold || 'normal') === 'bold',
     bodyItalic: (ts.bodyItalic || 'normal') === 'italic',
     bodyAlign: ts.bodyAlign || 'left',
-    bodyFontFamily: ts.bodyFontFamily || safeTheme.bodyFont,
-    bulletFontSize: ts.bulletFontSize || safeTheme.bulletFontSize,
-    bulletColor: stripHash(ts.bulletColor || ts.bodyColor || ('bulletColor' in safeTheme ? (safeTheme as any).bulletColor : safeTheme.bodyColor)),
-    accentColor: stripHash(ts.accentColor || safeTheme.accentColor),
+    bodyFontFamily: bodyFont,
+    bulletFontSize: ts.bulletFontSize || safeTheme.bulletFontSize || 14,
+    bulletColor: stripHash(ts.bulletColor || ts.bodyColor || (safeTheme as any).bulletColor || safeTheme.bodyColor || '333333'),
+    accentColor: stripHash(ts.accentColor || safeTheme.accentColor || '3B82F6'),
   };
 }
 
@@ -857,11 +860,11 @@ function renderTable(slide: PptxGenJS.Slide, content: SlideContent, theme: Theme
     },
   }));
 
-  const dataRows = cfg.rows.map((row, rowIdx) =>
-    row.map(cell => ({
-      text: cell,
+  const dataRows = (cfg.rows || []).map((row, rowIdx) =>
+    (row || []).map(cell => ({
+      text: String(cell || ''),
       options: {
-        fontSize: s.bulletFontSize - 1,
+        fontSize: (s.bulletFontSize || 14) - 1,
         fontFace: s.bodyFontFamily,
         color: s.bodyColor,
         fill: { color: rowIdx % 2 === 0 ? stripHash(theme.bgColor) : darken(theme.bgColor, 0.03) },

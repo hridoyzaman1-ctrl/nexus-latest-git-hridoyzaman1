@@ -258,15 +258,22 @@ export default function MediaGenerationModal({
     }
   }, [open]);
 
-  // Auto-start when pre-generated script is provided
-  const autoStartedRef = useRef(false);
   useEffect(() => {
-    if (open && preGeneratedScript && !autoStartedRef.current && stage === 'idle') {
-      autoStartedRef.current = true;
-      setTimeout(() => handleGenerate(), 80);
-    }
     if (!open) autoStartedRef.current = false;
-  }, [open, preGeneratedScript, stage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Sync rate/pitch to active TTS controller
+  useEffect(() => {
+    if (ttsRef.current) ttsRef.current.setRate(rate);
+  }, [rate]);
+
+  useEffect(() => {
+    if (ttsRef.current) ttsRef.current.setPitch(pitch);
+  }, [pitch]);
+
+  useEffect(() => {
+    if (ttsRef.current) ttsRef.current.setVolume(narrationVolume);
+  }, [narrationVolume]);
 
   const handleGenerate = useCallback(async () => {
     // Reset generation state, create fresh cancel signal
@@ -527,6 +534,15 @@ ${truncated}`;
       setStage('error');
     }
   }, [sourceModule, mode, totalPages, fromPage, toPage, getSourceText, sourceName, sourceId, selectedVoice, rate, pitch, language, isStudioModule, preGeneratedScript, selectedBgm, bgmVolume, customVideoRenderFn]);
+
+  // Auto-start when pre-generated script is provided
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (open && preGeneratedScript && !autoStartedRef.current && stage === 'idle') {
+      autoStartedRef.current = true;
+      setTimeout(() => handleGenerate(), 80);
+    }
+  }, [open, preGeneratedScript, stage, handleGenerate]);
 
   // ── Generate video from an already-produced script (VFS path) ────────────────────────────────
   const handleGenerateVideoFromScript = useCallback(async () => {

@@ -563,6 +563,15 @@ export class TTSController {
 
   setVolume(v: number) {
     this.opts.volume = v;
+    // Note: Web Speech API doesn't support changing volume of an active utterance mid-speech reliably in all browsers.
+  }
+
+  setRate(r: number) {
+    this.opts.rate = r;
+  }
+
+  setPitch(p: number) {
+    this.opts.pitch = p;
   }
 
   get totalChunks() { return this.chunks.length; }

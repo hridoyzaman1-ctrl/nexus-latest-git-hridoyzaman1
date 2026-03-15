@@ -259,8 +259,15 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                 <div className="w-full h-full relative flex flex-col" style={{ boxSizing: 'border-box', padding: theme.shapeAccent ? '36px 32px 28px 36px' : '32px' }}>
                     {/* ── Text zone (capped when visual data is present) ── */}
                     <div
-                        className="relative z-[1] flex-shrink-0 overflow-hidden"
-                        style={{ ...textWidthStyle, maxHeight: hasVisualData ? '52%' : undefined }}
+                        className={`${(currentSlide.textX !== undefined || currentSlide.textY !== undefined) ? 'absolute' : 'relative z-[1] flex-shrink-0'} overflow-hidden`}
+                        style={{
+                            ...((currentSlide.textX !== undefined || currentSlide.textY !== undefined) ? {
+                                left: `${currentSlide.textX}%`,
+                                top: `${currentSlide.textY}%`,
+                                width: `${currentSlide.textWidth}%`,
+                                height: `${currentSlide.textHeight}%`,
+                            } : { ...textWidthStyle, maxHeight: hasVisualData ? '52%' : undefined })
+                        }}
                     >
                         <p style={{ ...titleStyle, marginBottom: '10px' }}>{renderTextWithBreaks(currentSlide.title)}</p>
                         {currentSlide.subtitle && (
@@ -317,11 +324,26 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                         )}
                     </div>
 
-                    {/* ── Visual data zone (chart / table / timeline / KPI) — separate from text ── */}
+                    {/* Visual data zone (chart / table / timeline / KPI) */}
                     {hasVisualData && (
-                        <div className="relative z-[1] mt-4 flex-1 min-h-0 overflow-hidden" style={textWidthStyle}>
-                            {renderSlidePreviewContent(currentSlide, theme, true)}
-                        </div>
+                        (() => {
+                            const config = currentSlide.chartConfig || currentSlide.tableConfig || currentSlide.timelineConfig || currentSlide.kpiConfig;
+                            const hasCustomPos = config && (config.x !== undefined || config.y !== undefined);
+                            
+                            return (
+                                <div 
+                                    className={`${hasCustomPos ? 'absolute' : 'relative mt-4 flex-1 min-h-0'} z-[1] overflow-hidden rounded-lg`} 
+                                    style={hasCustomPos ? {
+                                        left: `${config.x}%`,
+                                        top: `${config.y}%`,
+                                        width: `${config.width}%`,
+                                        height: `${config.height}%`,
+                                    } : textWidthStyle}
+                                >
+                                    {renderSlidePreviewContent(currentSlide, theme, true)}
+                                </div>
+                            );
+                        })()
                     )}
                 </div>
 

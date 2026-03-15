@@ -82,7 +82,10 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
     if (isPlaying && narrationOn) {
       if (!ttsRef.current) {
         ttsRef.current = new TTSController({
-          volume: isMuted ? 0 : volume
+          volume: isMuted ? 0 : volume,
+          rate: item.voiceRate ?? 1,
+          pitch: item.voicePitch ?? 1,
+          lang: item.language ?? 'en-US'
         });
         ttsStartedRef.current = false;
       }
@@ -169,7 +172,10 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
       ttsStartedRef.current = false;
       if (isPlaying) {
         const ctrl = new TTSController({
-          volume: isMuted ? 0 : volume
+          volume: isMuted ? 0 : volume,
+          rate: item.voiceRate ?? 1,
+          pitch: item.voicePitch ?? 1,
+          lang: item.language ?? 'en-US'
         });
         ttsRef.current = ctrl;
         ttsStartedRef.current = true;
@@ -193,7 +199,10 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
       ttsStartedRef.current = false;
       if (isPlaying) {
         const ctrl = new TTSController({
-          volume: isMuted ? 0 : volume
+          volume: isMuted ? 0 : volume,
+          rate: item.voiceRate ?? 1,
+          pitch: item.voicePitch ?? 1,
+          lang: item.language ?? 'en-US'
         });
         ttsRef.current = ctrl;
         ttsStartedRef.current = true;
@@ -210,8 +219,11 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
     if (newMuted) {
       setLastVolume(volume);
       setVolume(0);
+      ttsRef.current?.setVolume(0);
     } else {
-      setVolume(lastVolume > 0 ? lastVolume : 1);
+      const v = lastVolume > 0 ? lastVolume : 1;
+      setVolume(v);
+      ttsRef.current?.setVolume(v);
     }
     showControlsFor();
   };
@@ -425,17 +437,17 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
                   <button onClick={togglePlay} className="p-2 text-white hover:text-primary transition-colors">
                     {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
                   </button>
-                  <div className="flex items-center gap-1 group/vol">
-                    <button onClick={toggleMute} className="p-2 text-white hover:text-primary transition-colors">
+                  <div className="flex items-center gap-1">
+                    <button onClick={toggleMute} className="p-2 text-white hover:text-primary transition-colors shrink-0">
                       {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
                     </button>
-                    <div className="w-0 overflow-hidden group-hover/vol:w-20 group-hover/vol:ml-1 group-hover/vol:mr-2 transition-all duration-300 flex items-center">
+                    <div className="w-24 px-1 flex items-center">
                       <Slider
                         value={[volume]}
                         max={1}
                         step={0.01}
                         onValueChange={handleVolumeChange}
-                        className="w-20 cursor-pointer"
+                        className="w-full cursor-pointer"
                       />
                     </div>
                   </div>

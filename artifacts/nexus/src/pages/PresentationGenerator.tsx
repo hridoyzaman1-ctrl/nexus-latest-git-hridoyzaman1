@@ -50,7 +50,7 @@ import {
 } from '@/lib/presentationStorage';
 import { getLocalStorage } from '@/hooks/useLocalStorage';
 import type { StudySession } from '@/types';
-import { parsePlainText, parseDocx, parsePdf, parseTxt } from '@/lib/fileParsers';
+import { parsePlainText, parseDocx, parsePdf } from '@/lib/fileParsers';
 import { buildSlideBlueprint, buildSlidesFromAI, validateDeck, generateImagePlaceholders, getTextAreaWidth } from '@/lib/slideEngine';
 import { renderTextWithBreaks, renderSlidePreviewContent } from '@/lib/presentationRenderer';
 import { generatePptx, downloadPptx } from '@/lib/pptxGenerator';
@@ -187,7 +187,10 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const [expandedEditorSection, setExpandedEditorSection] = useState<string | null>('content');
   const [editingTitle, setEditingTitle] = useState(false);
   const [dragState, setDragState] = useState<{
-    imageId: string; mode: 'move' | 'resize'; startX: number; startY: number;
+    targetId: string; 
+    visualType: 'image' | 'chart' | 'table' | 'timeline' | 'kpi' | 'text';
+    mode: 'move' | 'resize'; 
+    startX: number; startY: number;
     origX: number; origY: number; origW: number; origH: number;
   } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -296,7 +299,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             parsedContent = await parseDocx(file);
           } else {
             const text = await file.text();
-            parsedContent = parseTxt(text);
+            parsedContent = parsePlainText(text);
           }
           finalSource = parsedContent.rawText;
         } catch {
@@ -929,18 +932,43 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     setTimeout(() => imageInputRef.current?.click(), 50);
   };
 
-  const startDrag = (e: React.MouseEvent | React.TouchEvent, imageId: string, mode: 'move' | 'resize') => {
+  const startDrag = (e: React.MouseEvent | React.TouchEvent, targetId: string, visualType: 'image' | 'chart' | 'table' | 'timeline' | 'kpi' | 'text', mode: 'move' | 'resize') => {
     e.preventDefault();
     e.stopPropagation();
-    const img = editingPresentation?.slides[editingSlideIdx]?.images?.find(i => i.id === imageId);
-    if (!img) return;
+    const slide = editingPresentation?.slides[editingSlideIdx];
+    if (!slide) return;
+
+    let x = 0, y = 0, w = 40, h = 30; // Defaults
+
+    if (visualType === 'image') {
+      const img = slide.images?.find(i => i.id === targetId);
+      if (!img) return;
+      x = img.x; y = img.y; w = img.width; h = img.height;
+      setEditingImageId(targetId);
+    } else if (visualType === 'text') {
+      x = slide.textX ?? 0;
+      y = slide.textY ?? 0;
+      w = slide.textWidth ?? getTextAreaWidth(slide.layout, slide.images || []);
+      h = slide.textHeight ?? (!!(slide.chartConfig || slide.tableConfig || slide.timelineConfig || slide.kpiConfig) ? 52 : 100);
+    } else {
+      const config = visualType === 'chart' ? slide.chartConfig 
+                   : visualType === 'table' ? slide.tableConfig
+                   : visualType === 'timeline' ? slide.timelineConfig
+                   : slide.kpiConfig;
+      if (!config) return;
+      x = config.x ?? 0; // Default X for visuals in editor
+      y = config.y ?? 55; // Default Y for visuals in editor
+      w = config.width ?? 100;
+      h = config.height ?? 40;
+    }
+
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
     setDragState({
-      imageId, mode, startX: clientX, startY: clientY,
-      origX: img.x, origY: img.y, origW: img.width, origH: img.height,
+      targetId, visualType, mode, startX: clientX, startY: clientY,
+      origX: x, origY: y, origW: w, origH: h,
     });
-    setEditingImageId(imageId);
   };
 
   const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
@@ -955,15 +983,33 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     if (dragState.mode === 'move') {
       const maxX = Math.max(0, 100 - dragState.origW);
       const maxY = Math.max(0, 100 - dragState.origH);
-      const newX = Math.max(0, Math.min(maxX, dragState.origX + dx));
-      const newY = Math.max(0, Math.min(maxY, dragState.origY + dy));
-      updateImage(editingSlideIdx, dragState.imageId, { x: Math.round(newX), y: Math.round(newY) });
+      const newX = Math.round(Math.max(0, Math.min(maxX, dragState.origX + dx)));
+      const newY = Math.round(Math.max(0, Math.min(maxY, dragState.origY + dy)));
+
+      if (dragState.visualType === 'image') {
+        updateImage(editingSlideIdx, dragState.targetId, { x: newX, y: newY });
+      } else if (dragState.visualType === 'text') {
+        updateSlide(editingSlideIdx, { textX: newX, textY: newY });
+      } else {
+        const key = `${dragState.visualType}Config` as keyof SlideContent;
+        const currentConfig = editingPresentation.slides[editingSlideIdx][key] as any;
+        updateSlide(editingSlideIdx, { [key]: { ...currentConfig, x: newX, y: newY } });
+      }
     } else {
       const maxW = 100 - dragState.origX;
       const maxH = 100 - dragState.origY;
-      const newW = Math.max(5, Math.min(maxW, dragState.origW + dx));
-      const newH = Math.max(5, Math.min(maxH, dragState.origH + dy));
-      updateImage(editingSlideIdx, dragState.imageId, { width: Math.round(newW), height: Math.round(newH) });
+      const newW = Math.round(Math.max(5, Math.min(maxW, dragState.origW + dx)));
+      const newH = Math.round(Math.max(5, Math.min(maxH, dragState.origH + dy)));
+
+      if (dragState.visualType === 'image') {
+        updateImage(editingSlideIdx, dragState.targetId, { width: newW, height: newH });
+      } else if (dragState.visualType === 'text') {
+        updateSlide(editingSlideIdx, { textWidth: newW, textHeight: newH });
+      } else {
+        const key = `${dragState.visualType}Config` as keyof SlideContent;
+        const currentConfig = editingPresentation.slides[editingSlideIdx][key] as any;
+        updateSlide(editingSlideIdx, { [key]: { ...currentConfig, width: newW, height: newH } });
+      }
     }
   }, [dragState, editingPresentation, editingSlideIdx]);
 
@@ -1052,110 +1098,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
     setStep(0);
   };
 
-  const renderSlidePreviewContent = (slide: SlideContent, theme: ReturnType<typeof getTheme>) => {
-    const bodyColor = `#${theme.bodyColor}`;
-    const accentColor = `#${theme.accentColor}`;
 
-    if (slide.chartConfig) {
-      return (
-        <div className="mt-2 space-y-1">
-          <div className="flex items-center gap-1">
-            <BarChart3 className="w-3 h-3" style={{ color: accentColor }} />
-            <span className="text-[9px] font-medium" style={{ color: accentColor }}>
-              {slide.chartConfig.type.toUpperCase()} CHART: {slide.chartConfig.title}
-            </span>
-          </div>
-          <div className="flex items-end gap-0.5 h-10">
-            {slide.chartConfig.labels.map((l, i) => {
-              const maxVal = Math.max(...(slide.chartConfig!.datasets[0]?.values || [1]));
-              const val = slide.chartConfig!.datasets[0]?.values[i] || 0;
-              const h = Math.max(4, (val / maxVal) * 36);
-              return (
-                <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
-                  <div className="rounded-sm w-full" style={{ height: `${h}px`, backgroundColor: accentColor, opacity: 0.6 + (i * 0.1) }} />
-                  <span className="text-[7px] truncate w-full text-center" style={{ color: bodyColor }}>{l}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    if (slide.tableConfig) {
-      return (
-        <div className="mt-2 overflow-hidden rounded text-[8px]">
-          <div className="flex gap-px" style={{ backgroundColor: accentColor }}>
-            {slide.tableConfig.headers.map((h, i) => (
-              <div key={i} className="flex-1 px-1 py-0.5 font-bold text-white truncate">{h}</div>
-            ))}
-          </div>
-          {slide.tableConfig.rows.slice(0, 3).map((row, ri) => (
-            <div key={ri} className="flex gap-px" style={{ backgroundColor: theme.darkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}>
-              {row.map((cell, ci) => (
-                <div key={ci} className="flex-1 px-1 py-0.5 truncate" style={{ color: bodyColor }}>{cell}</div>
-              ))}
-            </div>
-          ))}
-          {slide.tableConfig.rows.length > 3 && (
-            <div className="text-center py-0.5" style={{ color: bodyColor }}>+{slide.tableConfig.rows.length - 3} more rows</div>
-          )}
-        </div>
-      );
-    }
-
-    if (slide.timelineConfig) {
-      return (
-        <div className="mt-2 space-y-1">
-          <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3" style={{ color: accentColor }} />
-            <span className="text-[9px] font-medium" style={{ color: accentColor }}>TIMELINE</span>
-          </div>
-          <div className="space-y-0.5">
-            {slide.timelineConfig.items.slice(0, 4).map((item, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-                <span className="text-[8px] font-medium" style={{ color: accentColor }}>{item.date}</span>
-                <span className="text-[8px] truncate" style={{ color: bodyColor }}>{item.title}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (slide.kpiConfig) {
-      return (
-        <div className="mt-2 grid grid-cols-2 gap-1">
-          {slide.kpiConfig.items.slice(0, 4).map((item, i) => (
-            <div key={i} className="rounded p-1.5" style={{ backgroundColor: theme.darkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}>
-              <div className="text-[10px] font-bold" style={{ color: accentColor }}>{item.value}</div>
-              <div className="text-[7px] truncate" style={{ color: bodyColor }}>{item.label}</div>
-              {item.change && <div className="text-[7px]" style={{ color: item.change.startsWith('+') || item.change.startsWith('up') ? '#22c55e' : '#ef4444' }}>{item.change}</div>}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (slide.visualBlock) {
-      return (
-        <div
-          className="mt-2 rounded-lg h-12 flex items-center justify-center"
-          style={{
-            background: slide.visualBlock.colors.length > 1
-              ? `linear-gradient(135deg, ${slide.visualBlock.colors.map(c => `#${c}`).join(', ')})`
-              : `#${slide.visualBlock.colors[0] || theme.accentColor}`,
-            opacity: 0.3,
-          }}
-        >
-
-        </div>
-      );
-    }
-
-    return null;
-  };
 
   const renderLibrary = () => (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className={embedded ? 'space-y-4' : 'px-4 pt-12 pb-24'}>
@@ -1612,24 +1555,93 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
   const renderTableEditor = (slide: SlideContent) => {
     if (!slide.tableConfig) return null;
     const tbl = slide.tableConfig;
+    
+    const setCell = (rowIdx: number, colIdx: number, val: string) => {
+      const newRows = [...tbl.rows];
+      newRows[rowIdx] = [...newRows[rowIdx]];
+      newRows[rowIdx][colIdx] = val;
+      updateSlide(editingSlideIdx, { tableConfig: { ...tbl, rows: newRows } });
+    };
+
+    const setHeader = (colIdx: number, val: string) => {
+      const newHeaders = [...tbl.headers];
+      newHeaders[colIdx] = val;
+      updateSlide(editingSlideIdx, { tableConfig: { ...tbl, headers: newHeaders } });
+    };
+
+    const addRow = () => {
+      const newRows = [...tbl.rows, Array(tbl.headers.length).fill('')];
+      updateSlide(editingSlideIdx, { tableConfig: { ...tbl, rows: newRows } });
+    };
+
+    const removeRow = (idx: number) => {
+      if (tbl.rows.length <= 1) return;
+      const newRows = tbl.rows.filter((_, i) => i !== idx);
+      updateSlide(editingSlideIdx, { tableConfig: { ...tbl, rows: newRows } });
+    };
+
+    const addCol = () => {
+      const newHeaders = [...tbl.headers, `Col ${tbl.headers.length + 1}`];
+      const newRows = tbl.rows.map(r => [...r, '']);
+      updateSlide(editingSlideIdx, { tableConfig: { ...tbl, headers: newHeaders, rows: newRows } });
+    };
+
+    const removeCol = (idx: number) => {
+      if (tbl.headers.length <= 1) return;
+      const newHeaders = tbl.headers.filter((_, i) => i !== idx);
+      const newRows = tbl.rows.map(r => r.filter((_, i) => i !== idx));
+      updateSlide(editingSlideIdx, { tableConfig: { ...tbl, headers: newHeaders, rows: newRows } });
+    };
+
     return (
-      <div className="space-y-2">
-        <div>
-          <label className="text-[10px] text-muted-foreground mb-0.5 block">Headers (comma-separated)</label>
-          <input value={tbl.headers.join(', ')}
-            onChange={e => updateSlide(editingSlideIdx, { tableConfig: { ...tbl, headers: e.target.value.split(',').map(s => s.trim()) } })}
-            data-testid="input-table-headers"
-            className="w-full bg-secondary/30 rounded-lg px-2 py-1.5 text-xs border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/50" />
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] text-muted-foreground font-semibold">Grid Editor</label>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" onClick={addCol} className="h-6 text-[9px] px-1.5">+ Col</Button>
+            <Button variant="outline" size="sm" onClick={addRow} className="h-6 text-[9px] px-1.5">+ Row</Button>
+          </div>
         </div>
-        <div>
-          <label className="text-[10px] text-muted-foreground mb-0.5 block">Rows (one per line, comma-separated cells)</label>
-          <textarea value={tbl.rows.map(r => r.join(', ')).join('\n')}
-            onChange={e => {
-              const rows = e.target.value.split('\n').map(line => line.split(',').map(c => c.trim()));
-              updateSlide(editingSlideIdx, { tableConfig: { ...tbl, rows } });
-            }}
-            data-testid="input-table-rows"
-            className="w-full h-24 bg-secondary/30 rounded-lg px-2 py-1.5 text-xs resize-none border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/50" />
+        
+        <div className="overflow-x-auto border border-border/30 rounded-lg">
+          <table className="w-full text-[10px] border-collapse">
+            <thead>
+              <tr className="bg-secondary/50">
+                {tbl.headers.map((h, i) => (
+                  <th key={i} className="p-1 border-b border-border/30 font-bold min-w-[60px]">
+                    <div className="flex flex-col gap-1">
+                      <input 
+                        value={h} 
+                        onChange={e => setHeader(i, e.target.value)}
+                        className="w-full bg-transparent border-none focus:ring-0 text-center font-bold p-0"
+                      />
+                      <button onClick={() => removeCol(i)} className="text-[8px] text-red-400 hover:text-red-500">del</button>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tbl.rows.map((row, ri) => (
+                <tr key={ri} className="border-b border-border/10">
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="p-1 border-r border-border/10">
+                      <input 
+                        value={cell} 
+                        onChange={e => setCell(ri, ci, e.target.value)}
+                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-[10px]"
+                      />
+                    </td>
+                  ))}
+                  <td className="p-1 w-8 text-center">
+                    <button onClick={() => removeRow(ri)} className="text-red-400 hover:text-red-500">
+                      <Trash2 className="w-3 h-3 mx-auto" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     );
@@ -1905,61 +1917,108 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             return (
               <>
                 {/* Text zone — capped height when visual data is present */}
-                <div className="relative z-[1] overflow-hidden" style={{ ...textWidthStyle, maxHeight: hasVis ? '52%' : undefined }}>
-                  <p className="text-sm" style={titleStyle}>{renderTextWithBreaks(currentSlide.title)}</p>
-                  {currentSlide.subtitle && <p className="text-[11px] mt-1 opacity-70" style={bodyStyle}>{renderTextWithBreaks(currentSlide.subtitle)}</p>}
-                  {currentSlide.bullets && currentSlide.bullets.length > 0 && (
-                    <ul className="mt-2 space-y-0.5">
-                      {currentSlide.bullets.map((b, i) => (
-                        <li key={i} className="text-[10px] opacity-80 flex items-start gap-1" style={bulletStyle}>
-                          <span className="mt-0.5">&#8226;</span> <span>{renderTextWithBreaks(b)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {currentSlide.statement && <p className="text-xs mt-2 opacity-80" style={{ ...titleStyle, fontSize: '12px' }}>{renderTextWithBreaks(currentSlide.statement)}</p>}
-                  {currentSlide.leftColumn && (
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <div>
-                        {currentSlide.leftLabel && <p className="text-[9px] font-bold mb-0.5" style={{ color: accentColor }}>{currentSlide.leftLabel}</p>}
-                        {currentSlide.leftColumn.map((item, i) => (
-                          <p key={i} className="text-[9px] opacity-70" style={bulletStyle}>&#8226; {renderTextWithBreaks(item)}</p>
+                {/* Text zone — absolute if custom pos, otherwise relative with layout defaults */}
+                <div 
+                  className={`absolute transition-shadow ${dragState?.targetId === 'text' && dragState?.mode === 'move' ? 'cursor-grabbing' : 'cursor-grab'} z-[5] bg-card/5 backdrop-blur-[1px] rounded-lg p-1`}
+                  style={{
+                    left: `${currentSlide.textX ?? 0}%`,
+                    top: `${currentSlide.textY ?? 0}%`,
+                    width: `${currentSlide.textWidth ?? textWidthPct}%`,
+                    height: `${currentSlide.textHeight ?? (hasVis ? 52 : 100)}%`,
+                  }}
+                  onMouseDown={(e) => startDrag(e, 'text', 'text', 'move')}
+                  onTouchStart={(e) => startDrag(e, 'text', 'text', 'move')}
+                >
+                  <div className="w-full h-full overflow-hidden">
+                    <p className="text-sm" style={titleStyle}>{renderTextWithBreaks(currentSlide.title)}</p>
+                    {currentSlide.subtitle && <p className="text-[11px] mt-1 opacity-70" style={bodyStyle}>{renderTextWithBreaks(currentSlide.subtitle)}</p>}
+                    {currentSlide.bullets && currentSlide.bullets.length > 0 && (
+                      <ul className="mt-2 space-y-0.5">
+                        {currentSlide.bullets.map((b, i) => (
+                          <li key={i} className="text-[10px] opacity-80 flex items-start gap-1" style={bulletStyle}>
+                            <span className="mt-0.5">&#8226;</span> <span>{renderTextWithBreaks(b)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {currentSlide.statement && <p className="text-xs mt-2 opacity-80" style={{ ...titleStyle, fontSize: '12px' }}>{renderTextWithBreaks(currentSlide.statement)}</p>}
+                    {currentSlide.leftColumn && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <div>
+                          {currentSlide.leftLabel && <p className="text-[9px] font-bold mb-0.5" style={{ color: accentColor }}>{currentSlide.leftLabel}</p>}
+                          {currentSlide.leftColumn.map((item, i) => (
+                            <p key={i} className="text-[9px] opacity-70" style={bulletStyle}>&#8226; {renderTextWithBreaks(item)}</p>
+                          ))}
+                        </div>
+                        <div>
+                          {currentSlide.rightLabel && <p className="text-[9px] font-bold mb-0.5" style={{ color: accentColor }}>{currentSlide.rightLabel}</p>}
+                          {(currentSlide.rightColumn || []).map((item, i) => (
+                            <p key={i} className="text-[9px] opacity-70" style={bulletStyle}>&#8226; {renderTextWithBreaks(item)}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {currentSlide.agendaItems && (
+                      <div className="mt-2 space-y-0.5">
+                        {currentSlide.agendaItems.map((item, i) => (
+                          <p key={i} className="text-[10px] opacity-70" style={bodyStyle}>
+                            <span className="font-bold mr-1" style={{ color: accentColor }}>{String(i + 1).padStart(2, '0')}</span>
+                            {item}
+                          </p>
                         ))}
                       </div>
-                      <div>
-                        {currentSlide.rightLabel && <p className="text-[9px] font-bold mb-0.5" style={{ color: accentColor }}>{currentSlide.rightLabel}</p>}
-                        {(currentSlide.rightColumn || []).map((item, i) => (
-                          <p key={i} className="text-[9px] opacity-70" style={bulletStyle}>&#8226; {renderTextWithBreaks(item)}</p>
+                    )}
+                    {currentSlide.summaryPoints && (
+                      <div className="mt-2 space-y-0.5">
+                        {currentSlide.summaryPoints.map((point, i) => (
+                          <p key={i} className="text-[10px] opacity-70 flex items-center gap-1" style={bodyStyle}>
+                            <span className="w-3 h-3 rounded-full flex items-center justify-center text-[7px] text-white font-bold flex-shrink-0"
+                              style={{ backgroundColor: accentColor }}>{i + 1}</span>
+                            {point}
+                          </p>
                         ))}
                       </div>
-                    </div>
-                  )}
-                  {currentSlide.agendaItems && (
-                    <div className="mt-2 space-y-0.5">
-                      {currentSlide.agendaItems.map((item, i) => (
-                        <p key={i} className="text-[10px] opacity-70" style={bodyStyle}>
-                          <span className="font-bold mr-1" style={{ color: accentColor }}>{String(i + 1).padStart(2, '0')}</span>
-                          {item}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  {currentSlide.summaryPoints && (
-                    <div className="mt-2 space-y-0.5">
-                      {currentSlide.summaryPoints.map((point, i) => (
-                        <p key={i} className="text-[10px] opacity-70 flex items-center gap-1" style={bodyStyle}>
-                          <span className="w-3 h-3 rounded-full flex items-center justify-center text-[7px] text-white font-bold flex-shrink-0"
-                            style={{ backgroundColor: accentColor }}>{i + 1}</span>
-                          {point}
-                        </p>
-                      ))}
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  {/* Resize handle for text zone */}
+                  <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-blue-500 rounded-sm cursor-se-resize z-20 border border-white"
+                    onMouseDown={(e) => startDrag(e, 'text', 'text', 'resize')}
+                    onTouchStart={(e) => startDrag(e, 'text', 'text', 'resize')}
+                  />
                 </div>
                 {/* Visual data zone — always below text, never overlapping */}
                 {hasVis && (
-                  <div className="relative z-[1] mt-2 overflow-hidden" style={textWidthStyle}>
-                    {renderSlidePreviewContent(currentSlide, theme)}
+                  <div 
+                    className={`absolute transition-shadow ${dragState?.visualType !== 'image' && dragState?.mode === 'move' ? 'cursor-grabbing' : 'cursor-grab'} z-[5] bg-card/10 backdrop-blur-[2px] rounded-lg`}
+                    style={{
+                      left: `${currentSlide.chartConfig?.x ?? currentSlide.tableConfig?.x ?? currentSlide.timelineConfig?.x ?? currentSlide.kpiConfig?.x ?? 0}%`,
+                      top: `${currentSlide.chartConfig?.y ?? currentSlide.tableConfig?.y ?? currentSlide.timelineConfig?.y ?? currentSlide.kpiConfig?.y ?? 55}%`,
+                      width: `${currentSlide.chartConfig?.width ?? currentSlide.tableConfig?.width ?? currentSlide.timelineConfig?.width ?? currentSlide.kpiConfig?.width ?? 100}%`,
+                      height: `${currentSlide.chartConfig?.height ?? currentSlide.tableConfig?.height ?? currentSlide.timelineConfig?.height ?? currentSlide.kpiConfig?.height ?? 40}%`,
+                    }}
+                    onMouseDown={(e) => {
+                      const type = currentSlide.chartConfig ? 'chart' : currentSlide.tableConfig ? 'table' : currentSlide.timelineConfig ? 'timeline' : 'kpi';
+                      startDrag(e, 'vis', type, 'move');
+                    }}
+                    onTouchStart={(e) => {
+                      const type = currentSlide.chartConfig ? 'chart' : currentSlide.tableConfig ? 'table' : currentSlide.timelineConfig ? 'timeline' : 'kpi';
+                      startDrag(e, 'vis', type, 'move');
+                    }}
+                  >
+                    <div className="w-full h-full overflow-hidden p-2">
+                       {renderSlidePreviewContent(currentSlide, theme)}
+                    </div>
+                    {/* Resize handle for visuals */}
+                    <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-blue-500 rounded-sm cursor-se-resize z-20 border border-white"
+                      onMouseDown={(e) => {
+                        const type = currentSlide.chartConfig ? 'chart' : currentSlide.tableConfig ? 'table' : currentSlide.timelineConfig ? 'timeline' : 'kpi';
+                        startDrag(e, 'vis', type, 'resize');
+                      }}
+                      onTouchStart={(e) => {
+                        const type = currentSlide.chartConfig ? 'chart' : currentSlide.tableConfig ? 'table' : currentSlide.timelineConfig ? 'timeline' : 'kpi';
+                        startDrag(e, 'vis', type, 'resize');
+                      }}
+                    />
                   </div>
                 )}
               </>
@@ -1968,13 +2027,13 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
 
           {slideImages.map(img => (
             <div key={img.id}
-              className={`absolute transition-shadow ${dragState?.imageId === img.id ? 'cursor-grabbing' : 'cursor-grab'} ${editingImageId === img.id ? 'ring-2 ring-blue-400 z-10' : 'z-[5]'}`}
+              className={`absolute transition-shadow ${dragState?.targetId === img.id ? 'cursor-grabbing' : 'cursor-grab'} ${editingImageId === img.id ? 'ring-2 ring-blue-400 z-10' : 'z-[5]'}`}
               style={{
                 left: `${img.x}%`, top: `${img.y}%`, width: `${img.width}%`, height: `${img.height}%`,
                 borderRadius: `${img.borderRadius}px`, opacity: img.opacity / 100,
               }}
-              onMouseDown={(e) => startDrag(e, img.id, 'move')}
-              onTouchStart={(e) => startDrag(e, img.id, 'move')}
+              onMouseDown={(e) => startDrag(e, img.id, 'image', 'move')}
+              onTouchStart={(e) => startDrag(e, img.id, 'image', 'move')}
               onClick={(e) => { e.stopPropagation(); setEditingImageId(img.id); }}
               data-testid={`image-box-${img.id}`}>
               {img.dataUrl ? (
@@ -2006,9 +2065,9 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
               {editingImageId === img.id && (
                 <>
                   <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-blue-500 rounded-sm cursor-se-resize z-20 border border-white"
-                    onMouseDown={(e) => startDrag(e, img.id, 'resize')}
-                    onTouchStart={(e) => startDrag(e, img.id, 'resize')}
-                    data-testid={`handle-resize-${img.id}`} />
+                  onMouseDown={(e) => startDrag(e, img.id, 'image', 'resize')}
+                  onTouchStart={(e) => startDrag(e, img.id, 'image', 'resize')}
+                  data-testid={`handle-resize-${img.id}`} />
                   <button className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold z-20 hover:bg-red-600"
                     onClick={(e) => { e.stopPropagation(); removeImage(editingSlideIdx, img.id); }}
                     data-testid={`button-delete-image-preview-${img.id}`}>

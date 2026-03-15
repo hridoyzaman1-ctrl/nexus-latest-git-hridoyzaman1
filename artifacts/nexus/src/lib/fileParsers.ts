@@ -152,6 +152,182 @@ export async function parsePdf(file: File): Promise<ParsedContent> {
   return { title, sections, rawText: cleaned };
 }
 
-export function parseTxt(text: string): ParsedContent {
-  return parsePlainText(text);
+export async function parsePptxToSvgSlides(arrayBuffer: ArrayBuffer): Promise<string[]> {
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const slides: string[] = [];
+  const slideFiles = Object.keys(zip.files).filter(f => f.match(/ppt\/slides\/slide\d+\.xml$/)).sort((a, b) => {
+    const na = parseInt(a.match(/slide(\d+)/)?.[1] || '0');
+    const nb = parseInt(b.match(/slide(\d+)/)?.[1] || '0');
+    return na - nb;
+  });
+
+  const mediaFiles = Object.keys(zip.files).filter(f => f.startsWith('ppt/media/'));
+  const mediaMap: Record<string, string> = {};
+  for (const mf of mediaFiles) {
+    try {
+      const data = await zip.files[mf].async('base64');
+      const ext2 = mf.split('.').pop()?.toLowerCase() || 'png';
+      mediaMap[mf.split('/').pop() || ''] = `data:image/${ext2};base64,${data}`;
+    } catch { /* skip */ }
+  }
+
+  for (const sf of slideFiles) {
+    try {
+      const xml = await zip.files[sf].async('string');
+      const slideNum = sf.match(/slide(\d+)/)?.[1] || '?';
+
+      interface SlideShape {
+        x: number; y: number; cx: number; cy: number;
+        texts: { text: string; bold: boolean; fontSize: number; color: string }[];
+        isTitle: boolean;
+      }
+      const shapes: SlideShape[] = [];
+
+      const spBlocks = xml.match(/<p:sp>[\s\S]*?<\/p:sp>/g) || [];
+      for (const sp of spBlocks) {
+        const offMatch = sp.match(/<a:off\s+x="(\d+)"\s+y="(\d+)"/);
+        const extMatch = sp.match(/<a:ext\s+cx="(\d+)"\s+cy="(\d+)"/);
+        const emuToX = (emu: number) => (emu / 12192000) * 960;
+        const emuToY = (emu: number) => (emu / 6858000) * 540;
+
+        const x = offMatch ? emuToX(parseInt(offMatch[1])) : 48;
+        const y = offMatch ? emuToY(parseInt(offMatch[2])) : 80;
+        const cx = extMatch ? emuToX(parseInt(extMatch[1])) : 864;
+        const cy = extMatch ? emuToY(parseInt(extMatch[2])) : 60;
+
+        const isTitle = /<p:ph\s[^>]*type="(title|ctrTitle)"/.test(sp);
+        const texts: SlideShape['texts'] = [];
+        const paragraphs = sp.match(/<a:p>[\s\S]*?<\/a:p>/g) || [];
+        for (const para of paragraphs) {
+          const runs = para.match(/<a:r>[\s\S]*?<\/a:r>/g) || [];
+          for (const run of runs) {
+            const textMatch = run.match(/<a:t>([^<]*)<\/a:t>/);
+            if (!textMatch || !textMatch[1].trim()) continue;
+            const bold = /<a:rPr[^>]*\bb="1"/.test(run);
+            const szMatch = run.match(/<a:rPr[^>]*\bsz="(\d+)"/);
+            const fontSize = szMatch ? Math.max(12, Math.round((parseInt(szMatch[1]) / 100) * 1.0)) : (isTitle ? 28 : 16);
+            const colorMatch = run.match(/<a:solidFill>[\s\S]*?<a:srgbClr val="([A-Fa-f0-9]{6})"[\s\S]*?<\/a:solidFill>/);
+            const color = colorMatch ? `#${colorMatch[1]}` : '#333333';
+            texts.push({ text: textMatch[1].trim(), bold: bold || isTitle, fontSize, color });
+          }
+          if (runs.length === 0) {
+            const directText = para.match(/<a:t>([^<]*)<\/a:t>/);
+            if (directText && directText[1].trim()) {
+              texts.push({ text: directText[1].trim(), bold: isTitle, fontSize: isTitle ? 28 : 16, color: '#333333' });
+            }
+          }
+        }
+        if (texts.length > 0) shapes.push({ x, y, cx, cy, texts, isTitle });
+      }
+
+      const relFile = sf.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+      const imageRefs: string[] = [];
+      if (zip.files[relFile]) {
+        const relXml = await zip.files[relFile].async('string');
+        const imgMatches = relXml.match(/Target="\.\.\/media\/[^"]+"/g);
+        if (imgMatches) {
+          imgMatches.forEach(m => {
+            const fn = m.match(/media\/([^"]+)/)?.[1];
+            if (fn && mediaMap[fn]) imageRefs.push(mediaMap[fn]);
+          });
+        }
+      }
+
+      let bgColor = '#FFFFFF';
+      const bgSolidMatch = xml.match(/<p:bg>[\s\S]*?<a:srgbClr val="([A-Fa-f0-9]{6})"[\s\S]*?<\/p:bg>/);
+      if (bgSolidMatch) bgColor = `#${bgSolidMatch[1]}`;
+
+      const W = 960, H = 540;
+      let svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+      svg += `<defs><style>text { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }</style></defs>`;
+      svg += `<rect width="${W}" height="${H}" fill="${bgColor}"/>`;
+
+      if (imageRefs.length === 1) {
+        svg += `<image href="${imageRefs[0]}" x="80" y="40" width="800" height="460" preserveAspectRatio="xMidYMid meet"/>`;
+      } else if (imageRefs.length > 1) {
+        const cols = Math.min(imageRefs.length, 3);
+        const imgW = Math.floor((W - 80) / cols) - 16;
+        const imgH = Math.min(280, H - 160);
+        imageRefs.forEach((img, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const ix = 48 + col * (imgW + 16);
+          const iy = 60 + row * (imgH + 16);
+          svg += `<image href="${img}" x="${ix}" y="${iy}" width="${imgW}" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
+        });
+      }
+
+      if (shapes.length > 0) {
+        for (const shape of shapes) {
+          let textY = shape.y + 4;
+          for (const t of shape.texts) {
+            textY += t.fontSize + 4;
+            if (textY > H - 10) break;
+            const escaped = t.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').substring(0, 120);
+            svg += `<text x="${shape.x + 8}" y="${textY}" font-size="${t.fontSize}" font-weight="${t.bold ? 'bold' : 'normal'}" fill="${t.color}">${escaped}</text>`;
+          }
+        }
+      } else {
+        const textMatches = xml.match(/<a:t>([^<]*)<\/a:t>/g);
+        const texts = textMatches ? textMatches.map(t => t.replace(/<[^>]+>/g, '').trim()).filter(Boolean) : [];
+        const startY = imageRefs.length > 0 ? 380 : 80;
+        texts.forEach((t, i) => {
+          const y = startY + i * 28;
+          if (y < H - 20) {
+            const fontSize = i === 0 ? 26 : 16;
+            const weight = i === 0 ? 'bold' : 'normal';
+            svg += `<text x="48" y="${y}" font-size="${fontSize}" font-weight="${weight}" fill="#333">${t.replace(/&/g, '&amp;').replace(/</g, '&lt;').substring(0, 120)}</text>`;
+          }
+        });
+      }
+
+      svg += `<rect x="${W - 52}" y="${H - 28}" width="44" height="22" rx="4" fill="rgba(0,0,0,0.06)"/>`;
+      svg += `<text x="${W - 30}" y="${H - 13}" text-anchor="middle" font-size="11" fill="#999">${slideNum}</text>`;
+
+      if (shapes.length === 0 && imageRefs.length === 0) {
+        svg += `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="18" fill="#bbb">(Empty slide)</text>`;
+      }
+
+      svg += `</svg>`;
+      const b64 = btoa(unescape(encodeURIComponent(svg)));
+      slides.push(`data:image/svg+xml;base64,${b64}`);
+    } catch {
+      slides.push(`data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540"><rect width="960" height="540" fill="#f5f5f5"/><text x="480" y="270" text-anchor="middle" fill="#999" font-size="18">Could not render slide</text></svg>')}`);
+    }
+  }
+  return slides;
+}
+
+export async function parsePptxToText(arrayBuffer: ArrayBuffer): Promise<string> {
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const slideFiles = Object.keys(zip.files).filter(f => f.match(/ppt\/slides\/slide\d+\.xml$/)).sort((a, b) => {
+    const na = parseInt(a.match(/slide(\d+)/)?.[1] || '0');
+    const nb = parseInt(b.match(/slide(\d+)/)?.[1] || '0');
+    return na - nb;
+  });
+
+  let fullText = '';
+  for (const sf of slideFiles) {
+    try {
+      const xml = await zip.files[sf].async('string');
+      const textMatches = xml.match(/<a:t>([^<]*)<\/a:t>/g);
+      const slideText = textMatches ? textMatches.map(t => t.replace(/<[^>]+>/g, '').trim()).filter(Boolean).join(' ') : '';
+      if (slideText) fullText += slideText + '\n\n';
+    } catch { /* skip */ }
+  }
+  return cleanText(fullText);
+}
+
+export async function parsePptx(file: File): Promise<ParsedContent> {
+  const arrayBuffer = await file.arrayBuffer();
+  const rawText = await parsePptxToText(arrayBuffer);
+  const slides = await parsePptxToSvgSlides(arrayBuffer);
+  
+  const cleaned = cleanText(rawText);
+  const sections = splitIntoSections(cleaned);
+  const title = sections[0]?.heading || file.name.replace(/\.[^.]+$/, '');
+
+  return { title, sections, rawText: cleaned };
 }

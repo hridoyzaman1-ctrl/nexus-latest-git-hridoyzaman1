@@ -9,6 +9,7 @@ import MediaGenerationModal from '@/components/MediaGenerationModal';
 import MediaPlayer from '@/components/MediaPlayer';
 import { getAllMediaItems, deleteMediaItem, type GeneratedMediaItem } from '@/lib/mediaStorage';
 import { extractPdfText } from '@/lib/extractText';
+import { parsePptxToText, parseDocx } from '@/lib/fileParsers';
 import { chatWithStudioAI } from '@/lib/longcat';
 import { sanitiseAIScript } from '@/lib/contentMediaEngine';
 
@@ -76,15 +77,30 @@ export default function AudioStudio() {
   useEffect(() => { refreshItems(); }, [refreshItems]);
 
   const processFile = async (file: File) => {
-    if (!file.name.match(/\.(pdf|txt|md)$/i)) { setError('Only PDF, TXT, or MD files are supported.'); return; }
+    if (!file.name.match(/\.(pdf|docx|txt|md|pptx|ppt)$/i)) { 
+      setError('Only PDF, DOCX, TXT, MD, or PPTX files are supported.'); 
+      return; 
+    }
     setLoading(true); setError(null);
     try {
       const name = file.name.replace(/\.[^.]+$/, '');
-      let text = file.name.toLowerCase().endsWith('.pdf')
-        ? await extractPdfText(await fileToBase64(file), undefined, 1, 9999)
-        : await fileToText(file);
+      let text = '';
+      const ext = file.name.toLowerCase().split('.').pop();
+      if (ext === 'pdf') {
+        text = await extractPdfText(await fileToBase64(file), undefined, 1, 9999);
+      } else if (ext === 'pptx' || ext === 'ppt') {
+        text = await parsePptxToText(await file.arrayBuffer());
+      } else if (ext === 'docx') {
+        const parsed = await parseDocx(file);
+        text = parsed.rawText;
+      } else {
+        text = await fileToText(file);
+      }
       if (!text.trim()) throw new Error('No readable text found in this file.');
-      setSource({ id: `as-${Date.now()}`, name, type: file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'txt', text, wordCount: countWords(text) });
+      const typeMap: Record<string, StudioSource['type']> = { pdf: 'pdf', docx: 'pdf', pptx: 'pdf', ppt: 'pdf', txt: 'txt', md: 'txt' };
+      const sourceType = typeMap[ext || 'txt'] || 'txt';
+
+      setSource({ id: `as-${Date.now()}`, name, type: sourceType, text, wordCount: countWords(text) });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to read file.');
     } finally { setLoading(false); }
@@ -287,7 +303,7 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
                 data-tour="audio-studio-upload"
                 className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${dragging ? 'border-blue-400 bg-blue-500/10' : 'border-border hover:border-blue-400/60 hover:bg-muted/40'}`}
               >
-                <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md" className="hidden" onChange={handleFileInput} />
+                <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.pptx,.ppt" className="hidden" onChange={handleFileInput} />
                 {loading ? (
                   <div className="flex flex-col items-center gap-3">
                     <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
@@ -300,7 +316,7 @@ ABSOLUTE RULES — violating any of these makes the output unusable:
                     </div>
                     <div>
                       <p className="font-semibold text-base">Drop a file or tap to upload</p>
-                      <p className="text-xs text-muted-foreground mt-1">PDF, TXT, or Markdown · any size</p>
+                      <p className="text-xs text-muted-foreground mt-1">PDF, DOCX, TXT, MD, or PPTX · any size</p>
                     </div>
                   </div>
                 )}

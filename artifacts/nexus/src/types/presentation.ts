@@ -43,11 +43,19 @@ export interface ChartConfig {
   title: string;
   labels: string[];
   datasets: { label: string; values: number[] }[];
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface TableConfig {
   headers: string[];
   rows: string[][];
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface TimelineItem {
@@ -58,6 +66,10 @@ export interface TimelineItem {
 
 export interface TimelineConfig {
   items: TimelineItem[];
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface KpiItem {
@@ -69,6 +81,10 @@ export interface KpiItem {
 
 export interface KpiConfig {
   items: KpiItem[];
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export type VisualBlockType = 'gradient' | 'shape' | 'icon-card';
@@ -139,6 +155,10 @@ export interface SlideContent {
   kpiConfig?: KpiConfig;
   visualBlock?: VisualBlock;
   textStyle?: TextStyle;
+  textX?: number;
+  textY?: number;
+  textWidth?: number;
+  textHeight?: number;
 }
 
 export interface ThemeConfig {
