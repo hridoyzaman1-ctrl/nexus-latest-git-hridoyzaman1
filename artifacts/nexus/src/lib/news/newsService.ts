@@ -13,6 +13,7 @@ let lastFetchTime = 0;
 let lastFetchMode: string | null = null;
 let lastFetchCat: string | null = null;
 const DEBOUNCE_MS = 2000;
+const CORE_SOURCE_KEYWORDS = ['daily star', 'prothom alo', 'dhaka tribune', 'business standard', 'financial express'];
 
 function extractText(xml: string, tag: string): string {
   const cdataMatch = xml.match(new RegExp(`<${tag}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tag}>`));
@@ -173,12 +174,26 @@ export async function fetchNews(mode: NewsMode, category: NewsCategory, signal?:
       return { articles: [], fromCache: false, error: `No news available for this ${category} category in ${mode} mode.` };
     }
 
-    // Limit to 12 random sources per request to avoid overwhelming but ensure coverage
-    if (sources.length > 12) {
-      sources = sources.sort(() => Math.random() - 0.5).slice(0, 12);
+    // Limit to 12 sources per request, but ALWAYS include core sources first
+    const coreSources = sources.filter(s => 
+      CORE_SOURCE_KEYWORDS.some(kw => s.name.toLowerCase().includes(kw))
+    );
+    const otherSources = sources.filter(s => 
+      !CORE_SOURCE_KEYWORDS.some(kw => s.name.toLowerCase().includes(kw))
+    );
+
+    // Shuffle other sources but keep core sources
+    let selectedSources = [...coreSources];
+    if (selectedSources.length < 12) {
+      const remainingCount = 12 - selectedSources.length;
+      const shuffledOthers = otherSources.sort(() => Math.random() - 0.5);
+      selectedSources = [...selectedSources, ...shuffledOthers.slice(0, remainingCount)];
+    } else if (selectedSources.length > 12) {
+      // If we somehow have too many core sources, take the first 12
+      selectedSources = selectedSources.slice(0, 12);
     }
 
-    const feedResults = await Promise.allSettled(sources.map(s => fetchFeed(s, signal)));
+    const feedResults = await Promise.allSettled(selectedSources.map(s => fetchFeed(s, signal)));
     let allArticles: NewsArticle[] = [];
 
     for (const result of feedResults) {
