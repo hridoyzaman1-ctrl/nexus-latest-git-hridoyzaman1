@@ -10,6 +10,7 @@ import { ArrowLeft, Send, Sparkles, Trash2, Volume2, VolumeX, WifiOff, X } from 
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { audioRegistry } from '@/lib/audioRegistry';
 
 const quickPrompts = [
   "Having a rough day 😓",
@@ -66,17 +67,17 @@ export default function Chat() {
 
   // Cleanup speech on unmount
   useEffect(() => {
-    return () => { speechSynthesis.cancel(); };
+    return () => { audioRegistry.stopSpeech(); };
   }, []);
 
   const toggleSpeak = useCallback((msgId: string, text: string) => {
     if (speakingId === msgId) {
-      speechSynthesis.cancel();
+      audioRegistry.stopSpeech();
       setSpeakingId(null);
       return;
     }
 
-    speechSynthesis.cancel();
+    audioRegistry.stopSpeech();
     const cleaned = stripEmojis(text);
     const utterance = new SpeechSynthesisUtterance(cleaned);
     utterance.rate = 1;

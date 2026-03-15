@@ -5,6 +5,7 @@
 
 import type { VideoScene } from './mediaStorage';
 import { renderBgmBuffer, BGM_VOLUME, BGM_FADE_SECS } from './bgmEngine';
+import { audioRegistry } from './audioRegistry';
 
 // ── Limits config ─────────────────────────────────────────────────────────────
 
@@ -491,6 +492,8 @@ export class TTSController {
       }
     };
 
+    // Note: window.speechSynthesis.speak doesn't use HTMLAudioElement, 
+    // but audioRegistry.stopAll calls speechSynthesis.cancel() already.
     window.speechSynthesis.speak(utt);
   }
 

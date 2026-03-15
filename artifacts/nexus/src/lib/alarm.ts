@@ -1,16 +1,17 @@
 // Alarm sound player using real audio files
 import { AlarmSoundType } from '@/types';
 import { toast } from 'sonner';
+import { audioRegistry } from './audioRegistry';
 
 let currentAudio: HTMLAudioElement | null = null;
 let isPlaying = false;
 let warnedPlayback = false;
 
 const ALARM_FILES: Record<AlarmSoundType, string> = {
-  chime: '/audio/Melody.mp3',
-  bells: '/audio/Believer.mp3',
-  nature: '/audio/Gentle Rain.mp3',
-  urgent: '/audio/Stronger Every Day.mp3',
+  chime: '/audio/chime.mp3',
+  bells: '/audio/bells.mp3',
+  nature: '/audio/nature.mp3',
+  urgent: '/audio/urgent.mp3',
 };
 
 export const ALARM_SOUNDS: { value: AlarmSoundType; label: string; emoji: string }[] = [
@@ -42,7 +43,8 @@ export function playAlarmSound(type: AlarmSoundType = 'chime'): void {
 
   audio.addEventListener('ended', () => {
     isPlaying = false;
-    currentAudio = null;
+    audioRegistry.unregister(audio);
+    if (currentAudio === audio) currentAudio = null;
   });
 
   void audio.play()
@@ -50,12 +52,14 @@ export function playAlarmSound(type: AlarmSoundType = 'chime'): void {
       warnedPlayback = false;
       isPlaying = true;
       currentAudio = audio;
+      audioRegistry.register(audio);
     })
     .catch((err) => {
       console.warn(`Failed to play alarm sound ${src}:`, err);
       // Fallback if specific file fails
       if (src !== '/audio/Chill.mp3') {
         const fallback = createAudio('/audio/Chill.mp3', 0.85);
+        audioRegistry.register(fallback);
         fallback.play().catch(() => notifyPlaybackIssue());
       } else {
         notifyPlaybackIssue();
@@ -75,17 +79,20 @@ export function stopAlarmSound(): void {
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.currentTime = 0;
+    audioRegistry.unregister(currentAudio);
     currentAudio = null;
   }
 }
 
 export function playNotificationChime(): void {
   const audio = createAudio('/audio/Cafe.mp3', 0.5);
+  audioRegistry.register(audio);
   void audio.play()
     .then(() => {
       warnedPlayback = false;
     })
     .catch(() => {
+      audioRegistry.unregister(audio);
       notifyPlaybackIssue();
     });
 }

@@ -57,6 +57,7 @@ import { useAccessibility } from "@/hooks/useAccessibility";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { getLocalStorage, setLocalStorage } from "@/hooks/useLocalStorage";
 import { hasExistingData, clearAllMindflowData } from "@/lib/dataRestoreHelpers";
+import { audioRegistry } from "@/lib/audioRegistry";
 
 const queryClient = new QueryClient();
 
@@ -162,6 +163,11 @@ function AppInner() {
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   const [restoreChecked, setRestoreChecked] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+
+  useEffect(() => {
+    // Stop all non-meditation audio/speech whenever the location changes
+    audioRegistry.stopAll();
+  }, [location.pathname]);
 
   useEffect(() => {
     const hasOnboarded = getLocalStorage<boolean>('onboardingDone', false);
