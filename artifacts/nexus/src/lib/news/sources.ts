@@ -47,46 +47,30 @@ export const FEED_REGISTRY: Record<NewsMode, Record<NewsCategory, NewsSource[]>>
   },
   national: {
     top: [
-      { name: 'BDNews24', feedUrl: 'https://bdnews24.com/?widgetName=rssfeed&widgetId=1150&getXmlFeed=true' },
-      { name: 'Dhaka Post', feedUrl: 'https://www.dhakapost.com/rss' },
-      { name: 'Somoy News', feedUrl: 'https://en.somoynews.tv/rss' },
-      { name: 'Prothom Alo', feedUrl: 'https://en.prothomalo.com/feed' },
-      { name: 'UNB News', feedUrl: 'https://unb.com.bd/feed' },
-      { name: 'BSS News', feedUrl: 'https://www.bssnews.net/feed' },
-      { name: 'The Daily Star', feedUrl: 'https://www.thedailystar.net/rss.xml' },
-      { name: 'Dhaka Tribune', feedUrl: 'https://www.dhakatribune.com/feed' },
-      { name: 'TBS News', feedUrl: 'https://www.tbsnews.net/bangladesh/rss.xml' }
+      { name: 'Google News Bangladesh', feedUrl: 'https://news.google.com/rss?hl=en&gl=BD&ceid=BD:en' },
+      { name: 'BDNews24', feedUrl: 'https://bdnews24.com/?widgetName=rssfeed&widgetId=1150&getXmlFeed=true' }
     ],
     politics: [
-      { name: 'Prothom Alo Politics', feedUrl: 'https://en.prothomalo.com/feed/politics' },
-      { name: 'DH Politics', feedUrl: 'https://www.dhakatribune.com/feed/politics' },
-      { name: 'TBS Politics', feedUrl: 'https://www.tbsnews.net/bangladesh/politics/rss.xml' }
+      { name: 'Politics (Google BD)', feedUrl: 'https://news.google.com/rss/headlines/section/topic/POLITICS?hl=en&gl=BD&ceid=BD:en' }
     ],
     world: [
-      { name: 'Daily Star World', feedUrl: 'https://www.thedailystar.net/news/world/rss.xml' },
-      { name: 'Prothom Alo World', feedUrl: 'https://en.prothomalo.com/feed/world' },
-      { name: 'Dhaka Tribune World', feedUrl: 'https://www.dhakatribune.com/feed/world' }
+      { name: 'World (Google BD)', feedUrl: 'https://news.google.com/rss/headlines/section/topic/WORLD?hl=en&gl=BD&ceid=BD:en' }
     ],
     business: [
-      { name: 'TBS Business', feedUrl: 'https://www.tbsnews.net/business/rss.xml' },
-      { name: 'Financial Express', feedUrl: 'https://thefinancialexpress.com.bd/feed/business' },
-      { name: 'Prothom Alo Business', feedUrl: 'https://en.prothomalo.com/feed/business' },
-      { name: 'Daily Star Business', feedUrl: 'https://www.thedailystar.net/business/rss.xml' }
+      { name: 'Business (Google BD)', feedUrl: 'https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en&gl=BD&ceid=BD:en' }
     ],
     technology: [
-      { name: 'Prothom Alo Sci-Tech', feedUrl: 'https://en.prothomalo.com/feed/science-technology' },
-      { name: 'Daily Star Tech', feedUrl: 'https://www.thedailystar.net/tech-startup/rss.xml' },
-      { name: 'TBS Tech', feedUrl: 'https://www.tbsnews.net/technology/rss.xml' }
+      { name: 'Technology (Google BD)', feedUrl: 'https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en&gl=BD&ceid=BD:en' }
     ],
     sports: [
-      { name: 'TBS Sports', feedUrl: 'https://www.tbsnews.net/sports/rss.xml' },
-      { name: 'Prothom Alo Sports', feedUrl: 'https://en.prothomalo.com/feed/sports' },
-      { name: 'Daily Star Sports', feedUrl: 'https://www.thedailystar.net/sports/rss.xml' }
+      { name: 'Sports (Google BD)', feedUrl: 'https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en&gl=BD&ceid=BD:en' }
     ],
     entertainment: [
-      { name: 'The Daily Star Entertainment', feedUrl: 'https://www.thedailystar.net/entertainment/rss.xml' }
+      { name: 'Entertainment (Google BD)', feedUrl: 'https://news.google.com/rss/headlines/section/topic/ENTERTAINMENT?hl=en&gl=BD&ceid=BD:en' }
     ],
-    health: [],
+    health: [
+      { name: 'Health (Google BD)', feedUrl: 'https://news.google.com/rss/headlines/section/topic/HEALTH?hl=en&gl=BD&ceid=BD:en' }
+    ],
     bangladesh: []
   }
 };

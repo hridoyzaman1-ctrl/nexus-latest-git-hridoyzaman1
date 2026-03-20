@@ -5,7 +5,6 @@ import { getCachedNews, setCachedNews } from './cache';
 // Public CORS proxies as a safety layer for browser environments.
 // If the app runs in a native aggregate (like Capacitor) these may not be needed.
 const PROXIES = [
-  'https://api.allorigins.win/get?url=',
   'https://corsproxy.io/?',
   'https://api.codetabs.com/v1/proxy?quest=',
   'https://wrapper.jason-it.com/?url='
@@ -104,14 +103,7 @@ async function fetchWithRetry(url: string, signal?: AbortSignal, forceFresh?: bo
       const res = await fetch(proxiedUrl, { signal });
       if (!res.ok) throw new Error('Proxy failed');
       
-      let txt: string;
-      if (proxy.includes('allorigins')) {
-        const data = await res.json();
-        txt = data.contents;
-      } else {
-        txt = await res.text();
-      }
-      
+      const txt = await res.text();
       if (!txt || txt.trim().length < 50) throw new Error('Invalid proxy response');
       return txt;
     })());
