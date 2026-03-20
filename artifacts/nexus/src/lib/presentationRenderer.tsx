@@ -65,12 +65,12 @@ export function renderSlidePreviewContent(
         const fontSize = large ? '12px' : '8px';
         const maxRows = large ? 10 : 5;
         return (
-            <div className="overflow-hidden rounded-lg w-full h-full flex flex-col" style={{ fontSize, backgroundColor: cardBg }}>
-                <table className="w-full table-fixed border-collapse">
+            <div className="overflow-y-auto rounded-lg w-full h-full flex flex-col custom-scrollbar" style={{ fontSize, backgroundColor: cardBg }}>
+                <table className="w-full table-auto border-collapse">
                     <thead>
                         <tr style={{ backgroundColor: accentColor }}>
                             {slide.tableConfig.headers.map((h, i) => (
-                                <th key={i} className={`${cellPad} font-bold text-white text-left truncate border-r border-white/10 last:border-0`}>{h}</th>
+                                <th key={i} className={`${cellPad} font-bold text-white text-left whitespace-normal break-words border-r border-white/10 last:border-0`}>{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -78,7 +78,7 @@ export function renderSlidePreviewContent(
                         {slide.tableConfig.rows.slice(0, maxRows).map((row, ri) => (
                             <tr key={ri} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
                                 {row.map((cell, ci) => (
-                                    <td key={ci} className={`${cellPad} truncate border-r border-white/5 last:border-0`} style={{ color: bodyColor }}>{cell}</td>
+                                    <td key={ci} className={`${cellPad} whitespace-normal break-words border-r border-white/5 last:border-0`} style={{ color: bodyColor }}>{cell}</td>
                                 ))}
                             </tr>
                         ))}
