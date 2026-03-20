@@ -33,6 +33,12 @@ export interface AISlideResponse {
     headers: string[];
     rows: string[][];
   };
+  timelineSuggestion?: {
+    items: { date: string; title: string; description: string }[];
+  };
+  kpiSuggestion?: {
+    items: { label: string; value: string; change?: string }[];
+  };
   keyTakeaway?: string;
   transitionToNext?: string;
 }
@@ -195,6 +201,8 @@ Respond with JSON in this exact format:
       "visualSuggestion": "string (optional, describe a visual element)",
       "chartSuggestion": { "type": "bar|line|pie|donut", "title": "string", "labels": ["string"], "datasets": [{"label": "string", "values": [number]}] },
       "tableSuggestion": { "headers": ["string"], "rows": [["string"]] },
+      "timelineSuggestion": { "items": [{"date": "string", "title": "string", "description": "string"}] },
+      "kpiSuggestion": { "items": [{"label": "string", "value": "string", "change": "string (optional)"}] },
       "keyTakeaway": "string (optional)",
       "transitionToNext": "string (optional, transition phrase)"
     }
@@ -244,6 +252,8 @@ Respond with JSON in this exact format:
       "visualSuggestion": "string (optional)",
       "chartSuggestion": { "type": "bar|line|pie|donut", "title": "string", "labels": ["string"], "datasets": [{"label": "string", "values": [number]}] },
       "tableSuggestion": { "headers": ["string"], "rows": [["string"]] },
+      "timelineSuggestion": { "items": [{"date": "string", "title": "string", "description": "string"}] },
+      "kpiSuggestion": { "items": [{"label": "string", "value": "string", "change": "string"}] },
       "keyTakeaway": "string (optional)",
       "transitionToNext": "string (optional)"
     }
@@ -339,7 +349,21 @@ Generate a completely refreshed version with better content, varied slide types,
 Respond with the same JSON format:
 {
   "presentationTitle": "string",
-  "slides": [{ "slideNumber": number, "slideType": "string", "title": "string", "subtitle": "string", "bullets": ["string"], "speakerNotes": "string (REQUIRED)", "visualSuggestion": "string", "chartSuggestion": {}, "tableSuggestion": {}, "keyTakeaway": "string", "transitionToNext": "string" }]
+  "slides": [{ 
+    "slideNumber": number, 
+    "slideType": "string", 
+    "title": "string", 
+    "subtitle": "string", 
+    "bullets": ["string"], 
+    "speakerNotes": "string (REQUIRED)", 
+    "visualSuggestion": "string", 
+    "chartSuggestion": { "type": "bar|line|pie|donut", "title": "string", "labels": ["string"], "datasets": [{"label": "string", "values": [number]}] },
+    "tableSuggestion": { "headers": ["string"], "rows": [["string"]] },
+    "timelineSuggestion": { "items": [{"date": "string", "title": "string", "description": "string"}] },
+    "kpiSuggestion": { "items": [{"label": "string", "value": "string", "change": "string"}] },
+    "keyTakeaway": "string", 
+    "transitionToNext": "string" 
+  }]
 }`,
     },
   ];
@@ -400,6 +424,10 @@ Respond with JSON:
   "bullets": ["string"],
   "speakerNotes": "string (REQUIRED, 2-4 sentences)",
   "visualSuggestion": "string",
+  "chartSuggestion": { "type": "bar|line|pie|donut", "title": "string", "labels": ["string"], "datasets": [{"label": "string", "values": [number]}] },
+  "tableSuggestion": { "headers": ["string"], "rows": [["string"]] },
+  "timelineSuggestion": { "items": [{"date": "string", "title": "string", "description": "string"}] },
+  "kpiSuggestion": { "items": [{"label": "string", "value": "string", "change": "string"}] },
   "keyTakeaway": "string",
   "transitionToNext": "string"
 }`,

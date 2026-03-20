@@ -138,10 +138,32 @@ function convertChartSuggestion(suggestion: AISlideResponse['chartSuggestion']):
   return {
     type: chartType,
     title: suggestion.title || 'Chart',
-    labels: suggestion.labels || [],
-    datasets: (suggestion.datasets || []).map(d => ({
+    labels: suggestion.labels?.length ? suggestion.labels : ['A', 'B', 'C'],
+    datasets: (suggestion.datasets?.length ? suggestion.datasets : [{ label: 'Data', values: [1, 1, 1] }]).map(d => ({
       label: d.label || 'Data',
-      values: d.values || [],
+      values: d.values?.length ? d.values : [1, 1, 1],
+    })),
+  };
+}
+
+function convertTimelineSuggestion(suggestion: AISlideResponse['timelineSuggestion']): TimelineConfig | undefined {
+  if (!suggestion || !suggestion.items?.length) return undefined;
+  return {
+    items: suggestion.items.map(item => ({
+      date: item.date || 'Date',
+      title: item.title || 'Event',
+      description: item.description || '',
+    })),
+  };
+}
+
+function convertKpiSuggestion(suggestion: AISlideResponse['kpiSuggestion']): KpiConfig | undefined {
+  if (!suggestion || !suggestion.items?.length) return undefined;
+  return {
+    items: suggestion.items.map(item => ({
+      label: item.label || 'Metric',
+      value: item.value || '—',
+      change: item.change,
     })),
   };
 }
@@ -317,35 +339,43 @@ function aiSlideToContent(aiSlide: AISlideResponse, themeId: string, slideIndex:
     slide.bullets = undefined;
   }
 
-  if (layout === 'chart' && aiSlide.chartSuggestion) {
+  if (layout === 'chart') {
     slide.chartConfig = convertChartSuggestion(aiSlide.chartSuggestion);
   }
 
-  if (layout === 'table' && aiSlide.tableSuggestion) {
+  if (layout === 'table') {
     slide.tableConfig = convertTableSuggestion(aiSlide.tableSuggestion);
   }
 
-  if (layout === 'timeline' && aiSlide.bullets) {
-    slide.timelineConfig = {
-      items: aiSlide.bullets.map((b, i) => ({
-        date: `Step ${i + 1}`,
-        title: b.split(':')[0] || b,
-        description: b.split(':').slice(1).join(':').trim() || b,
-      })),
-    };
+  if (layout === 'timeline') {
+    slide.timelineConfig = convertTimelineSuggestion(aiSlide.timelineSuggestion);
+    // Fallback to bullets if no structured suggestion
+    if (!slide.timelineConfig && aiSlide.bullets?.length) {
+      slide.timelineConfig = {
+        items: aiSlide.bullets.map((b, i) => ({
+          date: `Step ${i + 1}`,
+          title: b.split(':')[0] || b,
+          description: b.split(':').slice(1).join(':').trim() || b,
+        })),
+      };
+    }
   }
 
-  if (layout === 'kpi' && aiSlide.bullets) {
-    slide.kpiConfig = {
-      items: aiSlide.bullets.slice(0, 6).map(b => {
-        const parts = b.split(':');
-        return {
-          label: parts[0]?.trim() || b,
-          value: parts[1]?.trim() || '—',
-          change: parts[2]?.trim(),
-        };
-      }),
-    };
+  if (layout === 'kpi') {
+    slide.kpiConfig = convertKpiSuggestion(aiSlide.kpiSuggestion);
+    // Fallback to bullets if no structured suggestion
+    if (!slide.kpiConfig && aiSlide.bullets?.length) {
+      slide.kpiConfig = {
+        items: aiSlide.bullets.slice(0, 6).map(b => {
+          const parts = b.split(':');
+          return {
+            label: parts[0]?.trim() || b,
+            value: parts[1]?.trim() || '—',
+            change: parts[2]?.trim(),
+          };
+        }),
+      };
+    }
   }
 
   if (layout === 'process' && aiSlide.bullets) {
