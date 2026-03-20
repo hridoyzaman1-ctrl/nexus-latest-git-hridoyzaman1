@@ -2592,6 +2592,8 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
           // even if the user records narration and immediately clicks Create Video.
           setEditingPresentation(updated);
           setPresentations(prev => prev.map(p => p.id === updated.id ? updated : p));
+          // Always set to recording mode if we just came from the record player
+          setPresNarrationMode('recording');
         }}
       />
     );

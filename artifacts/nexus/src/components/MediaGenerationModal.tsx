@@ -97,6 +97,8 @@ export default function MediaGenerationModal({
   const [narrationVolume, setNarrationVolume] = useState(1.0);
   const [bgmPreviewing, setBgmPreviewing] = useState<string | null>(null);
   const bgmPreviewRef = useRef<{ stop: () => void } | null>(null);
+
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [fromPage, setFromPage] = useState<number | string>(1);
   const [toPage, setToPage] = useState<number | string>(() => totalPages > 0 ? Math.min(totalPages, 20) : 1);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
@@ -178,9 +180,11 @@ export default function MediaGenerationModal({
     const checkRecording = async () => {
       try {
         const blob = await getPresentationAudio(sourceId);
-        setHasRecording(!!blob);
-        // If we have a recording and the prop says it should be 'recording' (or it was 'recording'), keep it.
-        // Otherwise default to ai-tts.
+        const exists = !!blob;
+        setHasRecording(exists);
+        if (exists) {
+          setLocalNarrationMode('recording');
+        }
       } catch (err) {
         console.warn('Failed to check recording storage:', err);
       }
@@ -249,6 +253,10 @@ export default function MediaGenerationModal({
     setVfsProgress(0);
     setVfsLabel('');
     setVfsDone(false);
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.src = '';
+    }
   }, [stopBgmPreview]);
 
   const handleClose = useCallback(() => {
@@ -265,6 +273,10 @@ export default function MediaGenerationModal({
       cancelSignal.current = { cancelled: true };
       bgmPreviewRef.current?.stop();
       bgmPreviewRef.current = null;
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = '';
+      }
       try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
     };
   }, []);
@@ -705,7 +717,69 @@ ${truncated}`;
   }, [script, savedItemId, sourceName, language, vfsBgm, bgmVolume, customVideoRenderFn, totalPages]);
 
   // TTS controls
-  const handlePlay = useCallback(() => {
+  const handlePlay = useCallback(async () => {
+    if (localNarrationMode === 'recording') {
+      if (paused && audioPlayerRef.current) {
+        audioPlayerRef.current.play();
+        setPlaying(true);
+        setPaused(false);
+        return;
+      }
+
+      const blob = await getPresentationAudio(sourceId);
+      if (!blob) {
+        toast.error('Narration recording not found.');
+        return;
+      }
+
+      if (!audioPlayerRef.current) {
+        audioPlayerRef.current = new Audio();
+      }
+
+      const url = URL.createObjectURL(blob);
+      audioPlayerRef.current.src = url;
+      audioPlayerRef.current.volume = narrationVolume;
+      
+      audioPlayerRef.current.ontimeupdate = () => {
+        if (!audioPlayerRef.current || scenes.length === 0) return;
+        const cur = audioPlayerRef.current.currentTime;
+        const dur = audioPlayerRef.current.duration;
+        if (!dur) return;
+
+        // Sync scene index based on time and known scene durations
+        let elapsed = 0;
+        let foundIdx = 0;
+        for (let i = 0; i < scenes.length; i++) {
+          elapsed += scenes[i].duration;
+          if (cur <= elapsed) {
+            foundIdx = i;
+            break;
+          }
+        }
+        setCurrentScene(foundIdx);
+        setTtsChunk(foundIdx + 1);
+        setTtsTotalChunks(scenes.length);
+      };
+
+      audioPlayerRef.current.onended = () => {
+        setPlaying(false);
+        setPaused(false);
+        setTtsChunk(0);
+        setCurrentScene(scenes.length - 1);
+        URL.revokeObjectURL(url);
+      };
+
+      try {
+        await audioPlayerRef.current.play();
+        setPlaying(true);
+        setPaused(false);
+      } catch (err) {
+        console.error('Audio playback failed:', err);
+        toast.error('Playback failed. Please try again.');
+      }
+      return;
+    }
+
     if (!script) return;
     if (paused && ttsRef.current) {
       ttsRef.current.resume();
@@ -742,21 +816,33 @@ ${truncated}`;
     ctrl.start(script);
     setPlaying(true);
     setPaused(false);
-  }, [script, paused, selectedVoice, rate, pitch, mode, scenes]);
+  }, [script, paused, selectedVoice, rate, pitch, mode, scenes, localNarrationMode, sourceId, narrationVolume]);
 
   const handlePause = useCallback(() => {
-    ttsRef.current?.pause();
+    if (localNarrationMode === 'recording') {
+      audioPlayerRef.current?.pause();
+    } else {
+      ttsRef.current?.pause();
+    }
     setPaused(true);
     setPlaying(false);
-  }, []);
+  }, [localNarrationMode]);
 
   const handleStop = useCallback(() => {
-    ttsRef.current?.stop();
+    if (localNarrationMode === 'recording') {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      }
+    } else {
+      ttsRef.current?.stop();
+    }
     setPlaying(false);
     setPaused(false);
     setTtsChunk(0);
     setTtsTotalChunks(0);
-  }, []);
+    setCurrentScene(0);
+  }, [localNarrationMode]);
 
   const handleDownloadScript = useCallback(() => {
     if (!script) return;
