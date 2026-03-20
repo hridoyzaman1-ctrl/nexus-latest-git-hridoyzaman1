@@ -953,6 +953,9 @@ export async function recordVideoScenes(
   let bgmAudioCtx: AudioContext | null = null;
   let bgmSrc: AudioBufferSourceNode | null = null;
 
+  // Cancel any ongoing TTS to prevent overlap if we are re-generating or switching modes
+  try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+
   try {
     const totalSceneSecs = scenes.reduce((s, sc) => s + sc.duration, 0);
     const canvasStream = canvas.captureStream(25); // 25 fps
@@ -1160,6 +1163,9 @@ export async function recordVideoWithUserAudio(
   let audioSrc: AudioBufferSourceNode | null = null;
   let bgmSrc: AudioBufferSourceNode | null = null;
   let recorder: MediaRecorder | null = null;
+
+  // Cancel any ongoing TTS to prevent overlap
+  try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
 
   try {
     // Browsers may suspend AudioContext by default (autoplay policy).

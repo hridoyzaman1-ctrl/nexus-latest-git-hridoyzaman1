@@ -11,9 +11,10 @@ import { toast } from 'sonner';
 import {
   getLimits, buildScriptForMode, sanitiseAIScript, estimateSpeechSeconds, countWords, truncateToWordLimit, trimToLastSentence,
   TTSController, getAvailableVoices, getDefaultVoice, isVideoSupported,
-  recordVideoScenes, renderSceneToCanvas,
+  recordVideoScenes, renderSceneToCanvas, recordVideoWithUserAudio,
   type MediaMode, type SourceModule,
 } from '@/lib/contentMediaEngine';
+import { getPresentationAudio } from '@/lib/presentationAudioStorage';
 import { BGM_TRACKS, previewBgmTrack, BGM_VOLUME } from '@/lib/bgmEngine';
 import { chatWithMediaGenAI } from '@/lib/longcat';
 import {
@@ -40,6 +41,8 @@ interface MediaGenerationModalProps {
   preGeneratedScript?: string;
   /** Pre-selected BGM track id (from parent video creator). Defaults to 'none'. */
   initialBgmId?: string;
+  /** Initial narration mode: 'ai-tts' or 'recording'. */
+  narrationMode?: 'ai-tts' | 'recording';
   /**
    * Optional custom canvas renderer for video mode. When provided it is called
    * instead of the generic VideoScene renderer for every animation frame.
@@ -84,7 +87,8 @@ export default function MediaGenerationModal({
   open, onClose, sourceModule, sourceId, sourceName,
   getSourceText, totalPages = 0, initialMode = 'summary', language = 'en',
   preGeneratedScript, initialBgmId = 'none', customVideoRenderFn,
-}: MediaGenerationModalProps) {
+  narrationMode = 'ai-tts',
+}: MediaGenerationModalProps & { narrationMode?: 'ai-tts' | 'recording' }) {
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<MediaMode>(initialMode);
@@ -110,6 +114,9 @@ export default function MediaGenerationModal({
   const [scenes, setScenes] = useState<VideoScene[]>([]);
   const [savedItemId, setSavedItemId] = useState<string | null>(null);
   const [hasVideoBlob, setHasVideoBlob] = useState(false);
+
+  const [localNarrationMode, setLocalNarrationMode] = useState<'ai-tts' | 'recording'>(narrationMode);
+  const [hasRecording, setHasRecording] = useState(false);
 
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -164,6 +171,22 @@ export default function MediaGenerationModal({
     window.speechSynthesis.onvoiceschanged = loadVoices;
     return () => { window.speechSynthesis.onvoiceschanged = null; };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check for existing recording when modal opens
+  useEffect(() => {
+    if (!open || sourceModule !== 'presentations') return;
+    const checkRecording = async () => {
+      try {
+        const blob = await getPresentationAudio(sourceId);
+        setHasRecording(!!blob);
+        // If we have a recording and the prop says it should be 'recording' (or it was 'recording'), keep it.
+        // Otherwise default to ai-tts.
+      } catch (err) {
+        console.warn('Failed to check recording storage:', err);
+      }
+    };
+    checkRecording();
+  }, [open, sourceId, sourceModule]);
 
   // Re-cap page range when mode or totalPages changes
   useEffect(() => {
@@ -488,25 +511,54 @@ ${truncated}`;
           canvas.width = 1280;
           canvas.height = 720;
           try {
-            const result = await recordVideoScenes(
-              canvas,
-              generatedScenes,
-              (sceneIdx, total) => {
-                setCurrentScene(sceneIdx);
-                setProgress(60 + Math.round((sceneIdx / total) * 35));
-                setProgressLabel(`Recording scene ${sceneIdx + 1} of ${total}…`);
-              },
-              cancelSignal.current,
-              selectedBgm,
-              generatedSceneScripts,
-              customVideoRenderFn,
-              bgmVolume,
-              {
-                voice: selectedVoice ?? undefined,
-                rate,
-                pitch
+            let result;
+            if (localNarrationMode === 'recording') {
+              setProgressLabel('Loading your recording…');
+              const audioBlob = await getPresentationAudio(sourceId);
+              if (!audioBlob) {
+                toast.error('Narration recording not found. Falling back to AI Voice.');
+                setLocalNarrationMode('ai-tts');
+                // We'll throw to trigger retry or just continue with AI (here we choose to let the user retry manually)
+                throw new Error('Recording not found');
               }
-            );
+
+              result = await recordVideoWithUserAudio(
+                canvas,
+                generatedScenes,
+                audioBlob,
+                (sceneIdx, total) => {
+                  setCurrentScene(sceneIdx);
+                  setProgress(60 + Math.round((sceneIdx / total) * 35));
+                  setProgressLabel(`Recording scene ${sceneIdx + 1} of ${total}…`);
+                },
+                cancelSignal.current,
+                selectedBgm,
+                customVideoRenderFn,
+                bgmVolume,
+                narrationVolume
+              );
+            } else {
+              result = await recordVideoScenes(
+                canvas,
+                generatedScenes,
+                (sceneIdx, total) => {
+                  setCurrentScene(sceneIdx);
+                  setProgress(60 + Math.round((sceneIdx / total) * 35));
+                  setProgressLabel(`Recording scene ${sceneIdx + 1} of ${total}…`);
+                },
+                cancelSignal.current,
+                selectedBgm,
+                generatedSceneScripts,
+                customVideoRenderFn,
+                bgmVolume,
+                {
+                  voice: selectedVoice ?? undefined,
+                  rate,
+                  pitch
+                }
+              );
+            }
+
             if (!cancelSignal.current.cancelled) {
               await saveVideoBlob(id, result.blob);
               item.hasVideoBlob = true;
@@ -1093,6 +1145,64 @@ ${truncated}`;
                   {selectedBgm !== 'none' && (
                     <p className="text-[9px] text-indigo-400/60 px-0.5">
                       Click any track to hear a 7-second preview · BGM fades in at start and out before end
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Narration Source Picker (Presentations only) */}
+              {mode === 'video' && sourceModule === 'presentations' && (stage === 'idle' || stage === 'error') && (
+                <div className="space-y-2.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Mic className="w-3 h-3" /> Narration Source
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setLocalNarrationMode('ai-tts')}
+                      className={cn(
+                        'flex-1 flex flex-col items-center gap-1.5 p-3 rounded-2xl border transition-all text-center',
+                        localNarrationMode === 'ai-tts'
+                          ? 'bg-primary/20 border-primary text-primary-foreground'
+                          : 'bg-secondary/20 border-border/40 text-muted-foreground hover:border-border'
+                      )}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <div className="text-center">
+                        <p className="text-[11px] font-bold leading-none">AI Voice</p>
+                        <p className="text-[9px] opacity-60 mt-0.5">Automated TTS</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!hasRecording) {
+                          toast.error('No voice recording found for this presentation.');
+                          return;
+                        }
+                        setLocalNarrationMode('recording');
+                      }}
+                      className={cn(
+                        'flex-1 flex flex-col items-center gap-1.5 p-3 rounded-2xl border transition-all text-center relative',
+                        localNarrationMode === 'recording'
+                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
+                          : 'bg-secondary/20 border-border/40 text-muted-foreground hover:border-border',
+                        !hasRecording && 'opacity-40 cursor-not-allowed'
+                      )}
+                    >
+                      <Mic className="w-4 h-4" />
+                      <div className="text-center">
+                        <p className="text-[11px] font-bold leading-none">My Voice</p>
+                        <p className="text-[9px] opacity-60 mt-0.5">Your recording</p>
+                      </div>
+                      {!hasRecording && (
+                        <div className="absolute top-1 right-1">
+                          <AlertCircle className="w-3 h-3 text-amber-500/60" />
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                  {localNarrationMode === 'recording' && (
+                    <p className="text-[10px] text-emerald-400/70 px-1 italic">
+                      ✓ Recording found. Video length will be synced to your audio.
                     </p>
                   )}
                 </div>

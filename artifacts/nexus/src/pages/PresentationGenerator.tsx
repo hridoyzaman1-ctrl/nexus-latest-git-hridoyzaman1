@@ -2943,6 +2943,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             initialMode={presVideoMode}
             language={presVideoLanguage}
             initialBgmId={presSelectedBgm}
+            narrationMode={presNarrationMode}
             customVideoRenderFn={(c, idx, prog) => {
               const slide = pres.slides[idx] ?? pres.slides[pres.slides.length - 1];
               if (slide) renderPresentationSlideToCanvas(c, slide, getTheme(pres.themeId), presImageCacheRef.current, prog);
@@ -3036,6 +3037,7 @@ export default function PresentationGenerator({ embedded }: PresentationGenerato
             sourceName={mp.settings.title || 'Presentation'}
             getSourceText={async (_f: number, _t: number) => slideText}
             totalPages={mp.slides.length}
+            narrationMode={presNarrationMode}
             customVideoRenderFn={(c, idx, prog) => {
               const slide = mp.slides[idx] ?? mp.slides[mp.slides.length - 1];
               if (slide) renderPresentationSlideToCanvas(c, slide, getTheme(mp.themeId), mediaModalImageCacheRef.current, prog);
