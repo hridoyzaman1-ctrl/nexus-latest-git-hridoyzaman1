@@ -74,30 +74,35 @@ function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[], hasVis
   let areaW = 100;
   let hasPanel = hasVisualData;
 
+  const PADDING = 4; // safety margin around images
+
   if (images && images.length > 0) {
-    // Sync with slideEngine.ts getTextAreaWidth logic
-    const rightSideImages = images.filter(img => img.x >= 55);
+    // Detect images on the right (x > 40%)
+    const rightSideImages = images.filter(img => img.x > 40);
     if (rightSideImages.length > 0) {
       const minX = Math.min(...rightSideImages.map(img => img.x));
-      areaW = Math.max(45, minX - 4);
+      areaW = Math.max(30, minX - PADDING);
       hasPanel = true;
     }
 
-    // Also handle left-side images for video engine specifically to avoid blocking
-    const leftSideImages = images.filter(img => img.x < 50 && (img.x + img.width) > 5);
+    // Detect images on the left (x + w < 60%)
+    const leftSideImages = images.filter(img => (img.x + img.width) < 60);
     if (leftSideImages.length > 0) {
       const maxX = Math.max(...leftSideImages.map(img => img.x + img.width));
       if (maxX > areaX) {
-        const shift = maxX + 4;
-        areaW -= (shift - areaX);
+        const shift = maxX + PADDING;
+        const widthReduction = shift - areaX;
         areaX = shift;
+        areaW = Math.max(30, areaW - widthReduction);
         hasPanel = true;
       }
     }
   }
 
-  // Ensure width doesn't go below a reasonable minimum
-  areaW = Math.max(30, areaW);
+  // Final bounds checks
+  if (areaX < 0) areaX = 0;
+  if (areaX > 70) areaX = 70; // cap at 70% to ensure some text space
+  if (areaW < 30) areaW = 30;
   if (areaX + areaW > 100) areaW = 100 - areaX;
 
   return { x: areaX, width: areaW, hasPanel };
@@ -392,104 +397,63 @@ export function renderPresentationSlideToCanvas(
   }
 
   /**
-   * Draw word-wrapped text with dynamic font scaling. 
-   * Returns the final y position and font size used.
+   * Draw word-wrapped text. Returns the y position of the NEXT available line.
+   * `align` sets ctx.textAlign for this call.
    */
-  function drawWrappedResponsive(
+  function drawWrapped(
     text: string,
     x: number, y: number,
     maxW: number,
-    initialSize: number,
+    size: number,
     color: string,
     bold = false,
-    maxLines = 10,
+    maxLines = 5,
     fontStack = tf,
     align: CanvasTextAlign = 'left',
-    maxY?: number, // if provided, will shrink font to stay above this Y
-  ): { lastY: number, usedSize: number } {
-    let currentSize = initialSize;
-    let minSize = Math.max(10, Math.round(initialSize * 0.5));
-    let attempts = 0;
+  ): number {
+    if (!text) return y;
+    ctx.save();
+    ctx.font = `${bold ? 'bold ' : ''}${size}px ${fontStack}`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'top';
 
-    while (attempts < 5) {
-      ctx.font = `${bold ? 'bold ' : ''}${currentSize}px ${fontStack}`;
-      ctx.fillStyle = color;
-      ctx.textAlign = align;
-      
-      const lineH = Math.round(currentSize * 1.28);
-      const words = text.trim().split(/\s+/).filter(Boolean);
-      let line = '';
-      let lineY = y;
-      let lineCount = 1;
-      let overflowed = false;
-
-      for (const word of words) {
-        const test = line ? `${line} ${word}` : word;
-        if (line && ctx.measureText(test).width > maxW) {
-          if (lineCount >= maxLines || (maxY && lineY + lineH > maxY)) {
-            overflowed = true;
-            break;
-          }
-          lineY += lineH;
-          line = word;
-          lineCount++;
-        } else {
-          line = test;
-        }
-      }
-
-      if (!overflowed && (!maxY || lineY + lineH <= maxY)) {
-        // Actually draw it now
-        line = '';
-        lineY = y;
-        lineCount = 1;
-
-        for (const [idx, word] of words.entries()) {
-          const test = line ? `${line} ${word}` : word;
-          if (line && ctx.measureText(test).width > maxW) {
-            ctx.fillText(line, x, lineY);
-            lineY += lineH;
-            line = word;
-            lineCount++;
-          } else {
-            line = test;
-          }
-        }
-        if (line) ctx.fillText(line, x, lineY);
-        return { lastY: lineY, usedSize: currentSize };
-      }
-
-      // If it overflowed, try smaller font
-      if (currentSize <= minSize) break;
-      currentSize = Math.max(minSize, currentSize - 2);
-      attempts++;
-    }
-
-    // Failure to fit perfectly: draw anyway at minSize with truncation
-    ctx.font = `${bold ? 'bold ' : ''}${currentSize}px ${fontStack}`;
-    const finalLineH = Math.round(currentSize * 1.28);
+    const lineH = size + Math.round(size * 0.3);
     const words = text.trim().split(/\s+/).filter(Boolean);
     let line = '';
-    let lineY = y;
-    let lineCount = 1;
+    let currY = y;
+    let drawn = 0;
 
-    for (const [idx, word] of words.entries()) {
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
       const test = line ? `${line} ${word}` : word;
-      if (line && ctx.measureText(test).width > maxW) {
-        if (lineCount >= maxLines) {
-          ctx.fillText(truncLine(line + ' ' + (words.slice(idx).join(' ')), maxW), x, lineY);
-          return { lastY: lineY, usedSize: currentSize };
+      const metrics = ctx.measureText(test);
+
+      if (line && metrics.width > maxW) {
+        // Current word makes the line too long, draw what we have
+        if (drawn >= maxLines - 1) {
+          // Last allowed line: use ellipsis if more words remain
+          ctx.fillText(truncLine(line + ' ' + (words.slice(i).join(' ')), maxW), x, currY);
+          ctx.restore();
+          return currY + lineH;
         }
-        ctx.fillText(line, x, lineY);
-        lineY += finalLineH;
+        ctx.fillText(line, x, currY);
+        currY += lineH;
         line = word;
-        lineCount++;
+        drawn++;
       } else {
         line = test;
       }
     }
-    if (line) ctx.fillText(line, x, lineY);
-    return { lastY: lineY, usedSize: currentSize };
+
+    // Final line
+    if (line) {
+      ctx.fillText(truncLine(line, maxW), x, currY);
+      currY += lineH;
+    }
+
+    ctx.restore();
+    return currY;
   }
 
   // ── Layout-specific rendering ───────────────────────────────────────────────
@@ -504,10 +468,9 @@ export function renderPresentationSlideToCanvas(
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
     const titleX = getAlignmentX(sStyle?.titleAlign);
-    const result = drawWrappedResponsive(
-      slide.title || '', titleX, startY, maxW, titleSize, finalTitleColor, true, 4, tf, sStyle?.titleAlign || 'center',
+    const titleBottom = drawWrapped(
+      slide.title || '', titleX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center',
     );
-    const titleBottom = result.lastY;
 
     // accent underline
     ctx.fillStyle = ac;
@@ -515,8 +478,8 @@ export function renderPresentationSlideToCanvas(
 
     if (slide.subtitle) {
       const subX = getAlignmentX(sStyle?.bodyAlign);
-      drawWrappedResponsive(
-        slide.subtitle, subX, titleBottom + 22, maxW, bodySize, finalBodyColor, false, 3, bf, sStyle?.bodyAlign || 'center',
+      drawWrapped(
+        slide.subtitle, subX, titleBottom + 22, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center',
       );
     }
 
@@ -529,21 +492,20 @@ export function renderPresentationSlideToCanvas(
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
     const textX = getAlignmentX(sStyle?.titleAlign);
-    const result = drawWrappedResponsive(text, textX, startY, maxW, titleSize, finalTitleColor, true, 5, tf, sStyle?.titleAlign || 'center');
+    drawWrapped(text, textX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center');
 
     if (slide.subtitle) {
       const subX = getAlignmentX(sStyle?.bodyAlign);
-      drawWrappedResponsive(slide.subtitle, subX, result.lastY + 20, maxW, bodySize, finalBodyColor, false, 3, bf, sStyle?.bodyAlign || 'center');
+      drawWrapped(slide.subtitle, subX, startY + (titleSize + 6) * approxLines + 10, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center');
     }
 
   } else {
     // ── Standard slide: title bar at top, content area below ─────────────────
     const alignX = getAlignmentX(sStyle?.titleAlign);
-    const titleY = my + titleSize;
-    const titleRes = drawWrappedResponsive(
-      slide.title || '', alignX, titleY, contentMaxW, titleSize, finalTitleColor, true, 4, tf, sStyle?.titleAlign || 'left'
+    const titleY = my;
+    const titleBottom = drawWrapped(
+      slide.title || '', alignX, titleY, contentMaxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'left'
     );
-    const titleBottom = titleRes.lastY;
 
     // Accent separator
     ctx.fillStyle = sStyle?.accentColor ? `#${sStyle.accentColor}` : ac;
@@ -551,19 +513,11 @@ export function renderPresentationSlideToCanvas(
 
     let cy = titleBottom + 20;
     // CRITICAL: Cap content height if visual data is present to prevent overlapping
-    const maxContentY = hasVisualData ? H * 0.52 : H - my;
+    const maxContentY = hasVisualData ? H * 0.55 : H - my;
 
     // ── Two-column / Comparison / Problem-Solution ──────────────────────────
-    if ((slide.layout === 'two-column' || slide.layout === 'comparison' || slide.layout === 'problem-solution')) {
-      // Fallback for missing leftColumn/rightColumn: try to split bullets
-      let left = slide.leftColumn || [];
-      let right = slide.rightColumn || [];
-      if (left.length === 0 && right.length === 0 && slide.bullets && slide.bullets.length > 1) {
-        const mid = Math.ceil(slide.bullets.length / 2);
-        left = slide.bullets.slice(0, mid);
-        right = slide.bullets.slice(mid);
-      }
-
+    if ((slide.layout === 'two-column' || slide.layout === 'comparison' || slide.layout === 'problem-solution') && 
+        (slide.leftColumn?.length || slide.rightColumn?.length)) {
       const colW = (contentMaxW - 40) / 2;
       let ly = cy, ry = cy;
 
@@ -601,24 +555,22 @@ export function renderPresentationSlideToCanvas(
       }
 
       // Left Column
-      for (const item of left.slice(0, 6)) {
-        if (ly > maxContentY) break;
+      for (const item of (slide.leftColumn || []).slice(0, 6)) {
+        if (ly + bulletSize > maxContentY) break;
         ctx.fillStyle = slide.layout === 'problem-solution' ? '#ef4444' : ac;
-        ctx.beginPath(); ctx.arc(mx + 3, ly - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
-        ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(item, colW - 10), mx + 12, ly);
-        ly += bulletSize + 8;
+        ctx.beginPath(); ctx.arc(mx + 6, ly + bulletSize / 2, 2.5, 0, Math.PI * 2); ctx.fill();
+        ly = drawWrapped(item, mx + 16, ly, colW - 16, bulletSize, bc, false, 2, bf, 'left');
+        ly += 4;
       }
 
       // Right Column
       const rx = mx + colW + 40;
-      for (const item of right.slice(0, 6)) {
-        if (ry > maxContentY) break;
+      for (const item of (slide.rightColumn || []).slice(0, 6)) {
+        if (ry + bulletSize > maxContentY) break;
         ctx.fillStyle = slide.layout === 'problem-solution' ? '#22c55e' : ac;
-        ctx.beginPath(); ctx.arc(rx + 3, ry - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
-        ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(item, colW - 10), rx + 12, ry);
-        ry += bulletSize + 8;
+        ctx.beginPath(); ctx.arc(rx + 6, ry + bulletSize / 2, 2.5, 0, Math.PI * 2); ctx.fill();
+        ry = drawWrapped(item, rx + 16, ry, colW - 16, bulletSize, bc, false, 2, bf, 'left');
+        ry += 4;
       }
 
     // ── KPI grid ──────────────────────────────────────────────────────────────
@@ -643,10 +595,7 @@ export function renderPresentationSlideToCanvas(
         ctx.font = `bold ${valSize}px ${tf}`;
         ctx.fillStyle = ac; ctx.textAlign = 'left';
         ctx.fillText(truncLine(kpi.value, kw - 8), kx + 6, ky + valSize + 6);
-        // label
-        ctx.font = `${bulletSize}px ${bf}`;
-        ctx.fillStyle = bc;
-        ctx.fillText(truncLine(kpi.label, kw - 8), kx + 6, ky + valSize + bulletSize + 10);
+        drawWrapped(kpi.label, kx + 6, ky + valSize + 10, kw - 12, bulletSize, bc, false, 2, bf, 'left');
         if (kpi.change) {
           const isPositive = kpi.change.startsWith('+') || /up/i.test(kpi.change);
           ctx.fillStyle = isPositive ? '#22c55e' : '#ef4444';
@@ -661,79 +610,90 @@ export function renderPresentationSlideToCanvas(
       const isRecs = slide.layout === 'recommendations';
       
       for (const [idx, bullet] of slide.bullets.slice(0, 7).entries()) {
-        if (cy > maxContentY) break;
+        if (cy + bulletSize > maxContentY) break;
         
-        ctx.save();
         if (isProcess) {
           // Circle with number for process
-          const br = bulletSize * 0.7;
-          ctx.beginPath(); ctx.arc(mx + br, cy - bulletSize/2 + 2, br, 0, Math.PI * 2); ctx.fill();
+          const br = Math.round(bulletSize * 0.7);
+          ctx.beginPath(); 
+          ctx.fillStyle = ac;
+          ctx.arc(mx + br, cy + bulletSize/2, br, 0, Math.PI * 2); 
+          ctx.fill();
+          
           ctx.fillStyle = theme.darkTheme ? '#000' : '#fff';
-          ctx.font = `bold ${bulletSize * 0.8}px ${tf}`;
+          ctx.font = `bold ${Math.round(bulletSize * 0.8)}px ${tf}`;
           ctx.textAlign = 'center';
-          ctx.fillText(String(idx + 1), mx + br, cy - bulletSize/2 + 2 + br*0.35);
-          ctx.restore();
-
-          const res = drawWrappedResponsive(bullet, mx + br*2 + 10, cy, contentMaxW - br*2 - 10, bulletSize, bc, false, 2, bf, 'left', maxContentY);
-          cy = res.lastY + 10;
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(idx + 1), mx + br, cy + bulletSize/2);
+          
+          cy = drawWrapped(bullet, mx + br*2 + 10, cy, contentMaxW - br*2 - 10, bulletSize, bc, false, 3, bf, 'left');
         } else if (isRecs) {
-          // Checkmark or star for recommendations
+          // Star for recommendations
           ctx.fillStyle = ac;
           ctx.font = `${bulletSize}px ${bf}`;
           ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
           ctx.fillText('★', mx, cy);
-          ctx.restore();
           
-          const res = drawWrappedResponsive(bullet, mx + 20, cy, contentMaxW - 30, bulletSize, bc, true, 2, bf, 'left', maxContentY);
-          cy = res.lastY + 10;
+          cy = drawWrapped(bullet, mx + 20, cy, contentMaxW - 20, bulletSize, bc, true, 3, bf, 'left');
         } else {
           // Normal bullet
           ctx.fillStyle = ac;
-          ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 3, 0, Math.PI * 2); ctx.fill();
-          const res = drawWrappedResponsive(bullet, mx + 15, cy, contentMaxW - 15, bulletSize, bc, false, 2, bf, 'left', maxContentY);
-          cy = res.lastY + 10;
+          ctx.beginPath(); 
+          ctx.arc(mx + 6, cy + bulletSize/2, 3, 0, Math.PI * 2); 
+          ctx.fill();
+          
+          cy = drawWrapped(bullet, mx + 20, cy, contentMaxW - 20, bulletSize, bc, false, 3, bf, 'left');
         }
+        cy += 4; // gap between items
       }
 
     // ── Agenda items ───────────────────────────────────────────────────────────
     } else if (slide.agendaItems?.length) {
       for (const [idx, item] of slide.agendaItems.slice(0, 7).entries()) {
-        if (cy > maxContentY) break;
+        if (cy + bulletSize > maxContentY) break;
         // number badge
-        ctx.save();
-        ctx.fillStyle = ac;
         const badgeR = Math.round(bulletSize * 0.65);
-        ctx.beginPath(); ctx.arc(mx + badgeR, cy - bulletSize / 2 + 2, badgeR, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); 
+        ctx.fillStyle = ac;
+        ctx.arc(mx + badgeR, cy + bulletSize / 2, badgeR, 0, Math.PI * 2); 
+        ctx.fill();
+        
         ctx.fillStyle = theme.darkTheme ? '#000' : '#fff';
         ctx.font = `bold ${Math.round(bulletSize * 0.7)}px ${tf}`;
         ctx.textAlign = 'center';
-        ctx.fillText(String(idx + 1), mx + badgeR, cy - bulletSize / 2 + 2 + badgeR * 0.4);
-        ctx.restore();
-        const res = drawWrappedResponsive(item, mx + badgeR * 2 + 6, cy, contentMaxW - badgeR * 2 - 8, bulletSize, bc, false, 2, bf, 'left', maxContentY);
-        cy = res.lastY + 7;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(idx + 1), mx + badgeR, cy + bulletSize / 2);
+        
+        cy = drawWrapped(item, mx + badgeR * 2 + 10, cy, contentMaxW - badgeR * 2 - 10, bulletSize, bc, false, 2, bf, 'left');
+        cy += 4;
       }
 
     // ── Summary points ─────────────────────────────────────────────────────────
     } else if (slide.summaryPoints?.length) {
       for (const pt of slide.summaryPoints.slice(0, 7)) {
-        if (cy > maxContentY) break;
+        if (cy + bulletSize > maxContentY) break;
         ctx.fillStyle = ac;
-        ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 2.5, 0, Math.PI * 2); ctx.fill();
-        const res = drawWrappedResponsive(pt, mx + 12, cy, contentMaxW - 12, bulletSize, bc, false, 2, bf, 'left', maxContentY);
-        cy = res.lastY + 7;
+        ctx.beginPath(); ctx.arc(mx + 6, cy + bulletSize / 2, 2.5, 0, Math.PI * 2); ctx.fill();
+        cy = drawWrapped(pt, mx + 20, cy, contentMaxW - 20, bulletSize, bc, false, 2, bf, 'left');
+        cy += 4;
       }
 
     // ── Body text ──────────────────────────────────────────────────────────────
+    } else if (slide.body) {
+      const maxLines = Math.floor((maxContentY - cy) / (bodySize + Math.round(bodySize * 0.28)));
       const bAlign = sStyle?.bodyAlign || 'left';
-      drawWrappedResponsive(slide.body, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 12, bf, bAlign, maxContentY);
+      if (maxLines > 0) {
+        drawWrapped(slide.body, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, maxLines, bf, bAlign);
+      }
 
     } else if (slide.statement) {
       const bAlign = sStyle?.bodyAlign || 'left';
-      drawWrappedResponsive(slide.statement, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 8, bf, bAlign, maxContentY);
+      drawWrapped(slide.statement, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 5, bf, bAlign);
 
     } else if (slide.subtitle) {
       const bAlign = sStyle?.bodyAlign || 'left';
-      drawWrappedResponsive(slide.subtitle, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 5, bf, bAlign, maxContentY);
+      drawWrapped(slide.subtitle, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 3, bf, bAlign);
     }
 
     // ── Visual Data Area (Charts / Tables / Timelines) ──
