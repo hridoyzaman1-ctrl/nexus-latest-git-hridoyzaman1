@@ -42,9 +42,10 @@ export function renderSlidePreviewContent(
                     </span>
                 </div>
                 <div className={`flex items-end ${gap} mt-1`} style={{ height: `${barAreaH}px` }}>
-                    {slide.chartConfig.datasets[0] && slide.chartConfig.labels.map((l, i) => {
-                        const maxVal = Math.max(...(slide.chartConfig!.datasets[0]?.values || [1]));
-                        const val = slide.chartConfig!.datasets[0]?.values[i] || 0;
+                    {slide.chartConfig.datasets[0] && slide.chartConfig.labels.slice(0, 10).map((l, i) => {
+                        const values = slide.chartConfig!.datasets[0]?.values || [];
+                        const maxVal = Math.max(...values, 1);
+                        const val = values[i] || 0;
                         const h = Math.max(large ? 10 : 4, (val / maxVal) * (barAreaH - (large ? 20 : 10)));
                         const opacity = 0.75 + (i * 0.05);
                         return (
@@ -102,13 +103,13 @@ export function renderSlidePreviewContent(
                     <Clock className={`${iconSize} flex-shrink-0`} style={{ color: accentColor }} />
                     <span className="font-semibold uppercase tracking-wide" style={{ fontSize: large ? '13px' : '9px', color: accentColor }}>TIMELINE</span>
                 </div>
-                <div className={`space-y-${large ? 2 : 1}`}>
+                <div className={`space-y-${large ? 4 : 1} mt-2`}>
                     {slide.timelineConfig.items.slice(0, large ? 6 : 4).map((item, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                            <div className={`${dotSize} rounded-full flex-shrink-0 mt-0.5`} style={{ backgroundColor: accentColor }} />
-                            <div>
-                                <span className="font-semibold" style={{ fontSize: labelSize, color: accentColor }}>{item.date} </span>
-                                <span style={{ fontSize: labelSize, color: bodyColor }}>{item.title}</span>
+                        <div key={i} className="flex items-start gap-3">
+                            <div className={`${dotSize} rounded-full flex-shrink-0 mt-1.5 shadow-sm`} style={{ backgroundColor: accentColor }} />
+                            <div className="flex flex-col">
+                                <span className="font-bold tracking-tight" style={{ fontSize: labelSize, color: accentColor }}>{item.date}</span>
+                                <span className="leading-tight mt-0.5 opacity-90" style={{ fontSize: large ? '13px' : '9px', color: bodyColor }}>{item.title}</span>
                             </div>
                         </div>
                     ))}
@@ -122,13 +123,14 @@ export function renderSlidePreviewContent(
         const labelSize = large ? '11px' : '7px';
         const pad       = large ? 'p-3' : 'p-1.5';
         return (
-            <div className={`grid ${slide.kpiConfig.items.length > 2 ? 'grid-cols-2' : 'grid-cols-2'} gap-2`}>
+            <div className={`grid ${slide.kpiConfig.items.length > 2 ? 'grid-cols-2' : 'grid-cols-2'} gap-3 mt-2`}>
                 {slide.kpiConfig.items.slice(0, 4).map((item, i) => (
-                    <div key={i} className={`rounded-lg ${pad}`} style={{ backgroundColor: cardBg }}>
-                        <div className="font-bold leading-none" style={{ fontSize: valSize, color: accentColor }}>{item.value}</div>
-                        <div className="mt-1 truncate opacity-80" style={{ fontSize: labelSize, color: bodyColor }}>{item.label}</div>
+                    <div key={i} className={`rounded-xl ${pad} border border-white/5 shadow-sm`} style={{ backgroundColor: cardBg }}>
+                        <div className="font-black tracking-tighter leading-none" style={{ fontSize: valSize, color: accentColor }}>{item.value}</div>
+                        <div className="mt-1.5 font-medium opacity-70 truncate" style={{ fontSize: labelSize, color: bodyColor }}>{item.label}</div>
                         {item.change && (
-                            <div className="mt-0.5 font-medium" style={{ fontSize: labelSize, color: item.change.startsWith('+') || /up/i.test(item.change) ? '#22c55e' : '#ef4444' }}>
+                            <div className="mt-1 flex items-center gap-1 font-bold" style={{ fontSize: labelSize, color: item.change.startsWith('+') || /up/i.test(item.change) ? '#22c55e' : '#ef4444' }}>
+                                <span>{item.change.startsWith('+') || /up/i.test(item.change) ? '▲' : '▼'}</span>
                                 {item.change}
                             </div>
                         )}

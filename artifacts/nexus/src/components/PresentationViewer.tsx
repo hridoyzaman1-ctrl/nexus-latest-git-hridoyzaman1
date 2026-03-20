@@ -172,6 +172,7 @@ export default function PresentationViewer({ presentation: initialPresentation, 
     const slideBg = theme.gradientCover
         ? `linear-gradient(135deg, #${theme.bgColor} 0%, #${theme.bgColorAlt} 100%)`
         : `#${theme.bgColor}`;
+    const cardBg = theme.darkTheme ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)';
     const hasVisualData = !!(currentSlide.chartConfig || currentSlide.tableConfig || currentSlide.timelineConfig || currentSlide.kpiConfig);
 
     return (
@@ -264,9 +265,9 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                             ...((currentSlide.textX !== undefined || currentSlide.textY !== undefined) ? {
                                 left: `${currentSlide.textX}%`,
                                 top: `${currentSlide.textY}%`,
-                                width: `${currentSlide.textWidth}%`,
-                                height: `${currentSlide.textHeight}%`,
-                            } : { ...textWidthStyle, maxHeight: hasVisualData ? '52%' : undefined })
+                                width: `${currentSlide.textWidth || 100}%`,
+                                height: `${currentSlide.textHeight || 100}%`,
+                            } : { ...textWidthStyle, maxHeight: hasVisualData ? '45%' : undefined })
                         }}
                     >
                         <p style={{ ...titleStyle, marginBottom: '10px' }}>{renderTextWithBreaks(currentSlide.title)}</p>
@@ -332,15 +333,17 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                             
                             return (
                                 <div 
-                                    className={`${hasCustomPos ? 'absolute' : 'relative mt-4 flex-1 min-h-0'} z-[1] overflow-hidden rounded-lg`} 
+                                    className={`${hasCustomPos ? 'absolute' : 'relative mt-auto mb-2 flex-shrink-0'} z-[10] overflow-hidden rounded-xl border border-white/10 shadow-2xl`} 
                                     style={hasCustomPos ? {
                                         left: `${config.x}%`,
                                         top: `${config.y}%`,
                                         width: `${config.width}%`,
                                         height: `${config.height}%`,
-                                    } : textWidthStyle}
+                                    } : { ...textWidthStyle, maxHeight: '48%' }}
                                 >
-                                    {renderSlidePreviewContent(currentSlide, theme, true)}
+                                    <div className="w-full h-full p-1" style={{ backgroundColor: cardBg, backdropFilter: 'blur(8px)' }}>
+                                        {renderSlidePreviewContent(currentSlide, theme, true)}
+                                    </div>
                                 </div>
                             );
                         })()
