@@ -43,9 +43,10 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
   const [lastVolume, setLastVolume] = useState(1);
 
   // TTS narration alongside video playback
+  const isUserRecording = item.voiceName === 'User Recording';
   const ttsRef = useRef<TTSController | null>(null);
   const ttsStartedRef = useRef(false);
-  const [narrationOn, setNarrationOn] = useState(true);
+  const [narrationOn, setNarrationOn] = useState(!isUserRecording);
 
   // Load blob from IndexedDB
   useEffect(() => {
@@ -78,7 +79,7 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
 
   // TTS: start/pause/resume in sync with video play state
   useEffect(() => {
-    if (!item.script) return;
+    if (!item.script || isUserRecording) return;
     if (isPlaying && narrationOn) {
       if (!ttsRef.current) {
         ttsRef.current = new TTSController({
@@ -451,7 +452,7 @@ export default function GeneratedVideoPlayer({ item, onClose }: Props) {
                       />
                     </div>
                   </div>
-                  {item.script && (
+                  {item.script && !isUserRecording && (
                     <button
                       onClick={() => setNarrationOn(v => !v)}
                       className={cn('p-2 rounded transition-colors text-xs flex items-center gap-1', narrationOn ? 'text-primary' : 'text-white/50 hover:text-white/80')}
