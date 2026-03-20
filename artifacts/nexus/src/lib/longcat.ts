@@ -22,7 +22,7 @@ function parseKeyPool(raw: string): string[] {
 
 // Primary pools
 const LONGCAT_KEYS      = [...parseKeyPool(import.meta.env.VITE_LONGCAT_API_KEY      || ''), 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
-const KIRA_KEYS         = parseKeyPool(import.meta.env.VITE_KIRA_API_KEY         || '');
+const KIRA_KEYS         = [...parseKeyPool(import.meta.env.VITE_KIRA_API_KEY         || ''), 'ak_2On26J3Gk79o0VD43n0Ix7qk0De6n'];
 const STUDIO_KEYS       = parseKeyPool(import.meta.env.VITE_STUDIO_API_KEY       || '');
 
 // Feature-specific fallback keys (merged into each pool below)
