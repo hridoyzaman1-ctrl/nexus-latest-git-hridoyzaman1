@@ -260,14 +260,14 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                 <div className="w-full h-full relative flex flex-col" style={{ boxSizing: 'border-box', padding: theme.shapeAccent ? '36px 32px 28px 36px' : '32px' }}>
                     {/* ── Text zone (capped when visual data is present) ── */}
                     <div
-                        className={`${(currentSlide.textX !== undefined || currentSlide.textY !== undefined) ? 'absolute' : 'relative z-[1] flex-shrink-0'} overflow-hidden`}
+                        className={`${(currentSlide.textX !== undefined || currentSlide.textY !== undefined) ? 'absolute' : 'relative z-[1] flex-shrink-0'} overflow-y-auto custom-scrollbar`}
                         style={{
                             ...((currentSlide.textX !== undefined || currentSlide.textY !== undefined) ? {
                                 left: `${currentSlide.textX}%`,
                                 top: `${currentSlide.textY}%`,
                                 width: `${currentSlide.textWidth || 100}%`,
                                 height: `${currentSlide.textHeight || 100}%`,
-                            } : { ...textWidthStyle, maxHeight: hasVisualData ? '45%' : undefined })
+                            } : { ...textWidthStyle, maxHeight: hasVisualData ? '45%' : undefined, paddingBottom: '20px' })
                         }}
                     >
                         <p style={{ ...titleStyle, marginBottom: '10px' }}>{renderTextWithBreaks(currentSlide.title)}</p>
@@ -333,13 +333,17 @@ export default function PresentationViewer({ presentation: initialPresentation, 
                             
                             return (
                                 <div 
-                                    className={`${hasCustomPos ? 'absolute' : 'relative mt-auto mb-2 flex-shrink-0'} z-[10] overflow-hidden rounded-xl border border-white/10 shadow-2xl`} 
+                                    className={`${hasCustomPos ? 'absolute' : 'relative mt-auto mb-[5%] flex-shrink-0'} z-[10] overflow-hidden rounded-xl border border-white/10 shadow-2xl mx-auto`} 
                                     style={hasCustomPos ? {
                                         left: `${config.x}%`,
                                         top: `${config.y}%`,
                                         width: `${config.width}%`,
                                         height: `${config.height}%`,
-                                    } : { ...textWidthStyle, maxHeight: '48%' }}
+                                    } : { 
+                                        width: '90%', 
+                                        height: '48%',
+                                        maxWidth: textWidthPct < 100 ? `${textWidthPct}%` : '100%' 
+                                    }}
                                 >
                                     <div className="w-full h-full p-1" style={{ backgroundColor: cardBg, backdropFilter: 'blur(8px)' }}>
                                         {renderSlidePreviewContent(currentSlide, theme, true)}
