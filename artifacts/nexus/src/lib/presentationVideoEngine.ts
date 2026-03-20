@@ -70,28 +70,37 @@ interface TextAreaConfig {
 }
 
 function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[], hasVisualData: boolean): TextAreaConfig {
-  if (!images || images.length === 0) return { x: 0, width: 100, hasPanel: hasVisualData };
+  let areaX = 0;
+  let areaW = 100;
+  let hasPanel = hasVisualData;
 
-  // Heuristic: Is there a large image covering the left or right side?
-  const leftBusy = images.some(img => img.x < 30 && img.width > 40);
-  const rightBusy = images.some(img => img.x > 40 && img.width > 40);
+  if (images && images.length > 0) {
+    // If there's any image on the right, shrink width
+    const rightSideImages = images.filter(img => img.x > 50);
+    if (rightSideImages.length > 0) {
+      const minX = Math.min(...rightSideImages.map(img => img.x));
+      areaW = Math.max(40, minX - 4);
+      hasPanel = true;
+    }
 
-  if (rightBusy && !leftBusy) {
-    const minX = Math.min(...images.filter(img => img.x > 40).map(img => img.x));
-    return { x: 0, width: Math.max(40, minX - 2), hasPanel: true };
+    // If there's any image on the left, shift X
+    const leftSideImages = images.filter(img => img.x < 50 && (img.x + img.width) > 5);
+    if (leftSideImages.length > 0) {
+      const maxX = Math.max(...leftSideImages.map(img => img.x + img.width));
+      if (maxX > areaX) {
+        const shift = maxX + 4;
+        areaW -= (shift - areaX);
+        areaX = shift;
+        hasPanel = true;
+      }
+    }
   }
 
-  if (leftBusy && !rightBusy) {
-    const maxX = Math.max(...images.filter(img => img.x < 30).map(img => img.x + img.width));
-    return { x: maxX + 2, width: 100 - (maxX - 2), hasPanel: true };
-  }
+  // Ensure width doesn't go below a reasonable minimum
+  areaW = Math.max(30, areaW);
+  if (areaX + areaW > 100) areaW = 100 - areaX;
 
-  // If both sides are busy or it's a complex layout, use a full-width reading panel
-  if (leftBusy && rightBusy) {
-    return { x: 5, width: 90, hasPanel: true };
-  }
-
-  return { x: 0, width: 100, hasPanel: hasVisualData };
+  return { x: areaX, width: areaW, hasPanel };
 }
 
 /** ── Visual Data Rendering Helpers ────────────────────────────────────────── */
@@ -473,7 +482,7 @@ export function renderPresentationSlideToCanvas(
     const alignX = getAlignmentX(sStyle?.titleAlign);
     const titleY = my + titleSize;
     const titleBottom = drawWrapped(
-      slide.title || '', alignX, titleY, contentMaxW, titleSize, finalTitleColor, true, 2, tf, sStyle?.titleAlign || 'left'
+      slide.title || '', alignX, titleY, contentMaxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'left'
     );
 
     // Accent separator
@@ -484,41 +493,64 @@ export function renderPresentationSlideToCanvas(
     // CRITICAL: Cap content height if visual data is present to prevent overlapping
     const maxContentY = hasVisualData ? H * 0.55 : H - my;
 
-    // ── Two-column ────────────────────────────────────────────────────────────
-    if (slide.layout === 'two-column' && (slide.leftColumn?.length || slide.rightColumn?.length)) {
-      const colW = (contentMaxW - 8) / 2;
+    // ── Two-column / Comparison / Problem-Solution ──────────────────────────
+    if ((slide.layout === 'two-column' || slide.layout === 'comparison' || slide.layout === 'problem-solution') && 
+        (slide.leftColumn?.length || slide.rightColumn?.length)) {
+      const colW = (contentMaxW - 40) / 2;
       let ly = cy, ry = cy;
 
-      if (slide.leftLabel) {
-        ctx.font = `bold ${bulletSize}px ${bf}`;
-        ctx.fillStyle = ac;
+      // Labels (Headers)
+      if (slide.leftLabel || slide.rightLabel) {
+        ctx.font = `bold ${bulletSize + 2}px ${bf}`;
         ctx.textAlign = 'left';
-        ctx.fillText(truncLine(slide.leftLabel, colW), mx, ly);
-        ly += bulletSize + 6;
-      }
-      for (const item of (slide.leftColumn || []).slice(0, 6)) {
-        if (ly > maxContentY) break;
-        ctx.fillStyle = ac;
-        ctx.beginPath(); ctx.arc(mx + 3, ly - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
-        ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(item, colW - 10), mx + 10, ly);
-        ly += bulletSize + 6;
+        
+        if (slide.leftLabel) {
+          ctx.fillStyle = slide.layout === 'problem-solution' ? '#ef4444' : ac;
+          ctx.fillText(truncLine(slide.leftLabel, colW), mx, ly);
+        }
+        if (slide.rightLabel) {
+          ctx.fillStyle = slide.layout === 'problem-solution' ? '#22c55e' : ac;
+          ctx.textAlign = 'left';
+          ctx.fillText(truncLine(slide.rightLabel, colW), mx + colW + 40, ry);
+        }
+        ly += bulletSize + 12;
+        ry += bulletSize + 12;
       }
 
-      const rx = mx + colW + 8;
-      if (slide.rightLabel) {
-        ctx.font = `bold ${bulletSize}px ${bf}`;
-        ctx.fillStyle = ac; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(slide.rightLabel, colW), rx, ry);
-        ry += bulletSize + 6;
+      // Arrow for Problem-Solution
+      if (slide.layout === 'problem-solution') {
+        const arrowX = mx + colW + 20;
+        const arrowY = cy + (H * 0.15);
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(arrowX - 8, arrowY);
+        ctx.lineTo(arrowX + 8, arrowY);
+        ctx.lineTo(arrowX + 2, arrowY - 6);
+        ctx.moveTo(arrowX + 8, arrowY);
+        ctx.lineTo(arrowX + 2, arrowY + 6);
+        ctx.stroke();
       }
+
+      // Left Column
+      for (const item of (slide.leftColumn || []).slice(0, 6)) {
+        if (ly > maxContentY) break;
+        ctx.fillStyle = slide.layout === 'problem-solution' ? '#ef4444' : ac;
+        ctx.beginPath(); ctx.arc(mx + 3, ly - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
+        ctx.fillText(truncLine(item, colW - 10), mx + 12, ly);
+        ly += bulletSize + 8;
+      }
+
+      // Right Column
+      const rx = mx + colW + 40;
       for (const item of (slide.rightColumn || []).slice(0, 6)) {
         if (ry > maxContentY) break;
-        ctx.fillStyle = ac;
+        ctx.fillStyle = slide.layout === 'problem-solution' ? '#22c55e' : ac;
         ctx.beginPath(); ctx.arc(rx + 3, ry - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
         ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(item, colW - 10), rx + 10, ry);
-        ry += bulletSize + 6;
+        ctx.fillText(truncLine(item, colW - 10), rx + 12, ry);
+        ry += bulletSize + 8;
       }
 
     // ── KPI grid ──────────────────────────────────────────────────────────────
@@ -557,13 +589,45 @@ export function renderPresentationSlideToCanvas(
 
     // ── Bullets / title-bullets / recommendations / process ───────────────────
     } else if (slide.bullets?.length) {
-      for (const bullet of slide.bullets.slice(0, 7)) {
+      const isProcess = slide.layout === 'process';
+      const isRecs = slide.layout === 'recommendations';
+      
+      for (const [idx, bullet] of slide.bullets.slice(0, 7).entries()) {
         if (cy > maxContentY) break;
-        ctx.fillStyle = ac;
-        ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(bullet, contentMaxW - 12), mx + 12, cy);
-        cy += bulletSize + 7;
+        
+        ctx.save();
+        if (isProcess) {
+          // Circle with number for process
+          ctx.fillStyle = ac;
+          const br = bulletSize * 0.7;
+          ctx.beginPath(); ctx.arc(mx + br, cy - bulletSize/2 + 2, br, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = theme.darkTheme ? '#000' : '#fff';
+          ctx.font = `bold ${bulletSize * 0.8}px ${tf}`;
+          ctx.textAlign = 'center';
+          ctx.fillText(String(idx + 1), mx + br, cy - bulletSize/2 + 2 + br*0.35);
+          ctx.restore();
+          
+          ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
+          ctx.fillText(truncLine(bullet, contentMaxW - br*2 - 10), mx + br*2 + 10, cy);
+        } else if (isRecs) {
+          // Checkmark or star for recommendations
+          ctx.fillStyle = ac;
+          ctx.font = `${bulletSize}px ${bf}`;
+          ctx.textAlign = 'left';
+          ctx.fillText('★', mx, cy);
+          ctx.restore();
+          
+          ctx.font = `bold ${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
+          ctx.fillText(truncLine(bullet, contentMaxW - 20), mx + 20, cy);
+        } else {
+          // Normal bullet
+          ctx.fillStyle = ac;
+          ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 3, 0, Math.PI * 2); ctx.fill();
+          ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
+          ctx.fillText(truncLine(bullet, contentMaxW - 15), mx + 15, cy);
+        }
+        ctx.restore();
+        cy += bulletSize + 10;
       }
 
     // ── Agenda items ───────────────────────────────────────────────────────────
