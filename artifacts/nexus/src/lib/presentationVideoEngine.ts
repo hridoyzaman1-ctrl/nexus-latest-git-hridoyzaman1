@@ -75,15 +75,15 @@ function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[], hasVis
   let hasPanel = hasVisualData;
 
   if (images && images.length > 0) {
-    // If there's any image on the right, shrink width
-    const rightSideImages = images.filter(img => img.x > 50);
+    // Sync with slideEngine.ts getTextAreaWidth logic
+    const rightSideImages = images.filter(img => img.x >= 55);
     if (rightSideImages.length > 0) {
       const minX = Math.min(...rightSideImages.map(img => img.x));
-      areaW = Math.max(40, minX - 4);
+      areaW = Math.max(45, minX - 4);
       hasPanel = true;
     }
 
-    // If there's any image on the left, shift X
+    // Also handle left-side images for video engine specifically to avoid blocking
     const leftSideImages = images.filter(img => img.x < 50 && (img.x + img.width) > 5);
     if (leftSideImages.length > 0) {
       const maxX = Math.max(...leftSideImages.map(img => img.x + img.width));
@@ -392,46 +392,104 @@ export function renderPresentationSlideToCanvas(
   }
 
   /**
-   * Draw word-wrapped text. Returns the y position of the last drawn line.
-   * `align` sets ctx.textAlign for this call.
+   * Draw word-wrapped text with dynamic font scaling. 
+   * Returns the final y position and font size used.
    */
-  function drawWrapped(
+  function drawWrappedResponsive(
     text: string,
     x: number, y: number,
     maxW: number,
-    size: number,
+    initialSize: number,
     color: string,
     bold = false,
-    maxLines = 5,
+    maxLines = 10,
     fontStack = tf,
     align: CanvasTextAlign = 'left',
-  ): number {
-    ctx.font = `${bold ? 'bold ' : ''}${size}px ${fontStack}`;
-    ctx.fillStyle = color;
-    ctx.textAlign = align;
-    const lineH = size + Math.round(size * 0.28);
+    maxY?: number, // if provided, will shrink font to stay above this Y
+  ): { lastY: number, usedSize: number } {
+    let currentSize = initialSize;
+    let minSize = Math.max(10, Math.round(initialSize * 0.5));
+    let attempts = 0;
+
+    while (attempts < 5) {
+      ctx.font = `${bold ? 'bold ' : ''}${currentSize}px ${fontStack}`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      
+      const lineH = Math.round(currentSize * 1.28);
+      const words = text.trim().split(/\s+/).filter(Boolean);
+      let line = '';
+      let lineY = y;
+      let lineCount = 1;
+      let overflowed = false;
+
+      for (const word of words) {
+        const test = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(test).width > maxW) {
+          if (lineCount >= maxLines || (maxY && lineY + lineH > maxY)) {
+            overflowed = true;
+            break;
+          }
+          lineY += lineH;
+          line = word;
+          lineCount++;
+        } else {
+          line = test;
+        }
+      }
+
+      if (!overflowed && (!maxY || lineY + lineH <= maxY)) {
+        // Actually draw it now
+        line = '';
+        lineY = y;
+        lineCount = 1;
+
+        for (const [idx, word] of words.entries()) {
+          const test = line ? `${line} ${word}` : word;
+          if (line && ctx.measureText(test).width > maxW) {
+            ctx.fillText(line, x, lineY);
+            lineY += lineH;
+            line = word;
+            lineCount++;
+          } else {
+            line = test;
+          }
+        }
+        if (line) ctx.fillText(line, x, lineY);
+        return { lastY: lineY, usedSize: currentSize };
+      }
+
+      // If it overflowed, try smaller font
+      if (currentSize <= minSize) break;
+      currentSize = Math.max(minSize, currentSize - 2);
+      attempts++;
+    }
+
+    // Failure to fit perfectly: draw anyway at minSize with truncation
+    ctx.font = `${bold ? 'bold ' : ''}${currentSize}px ${fontStack}`;
+    const finalLineH = Math.round(currentSize * 1.28);
     const words = text.trim().split(/\s+/).filter(Boolean);
     let line = '';
     let lineY = y;
-    let drawn = 0;
+    let lineCount = 1;
 
-    for (const word of words) {
+    for (const [idx, word] of words.entries()) {
       const test = line ? `${line} ${word}` : word;
       if (line && ctx.measureText(test).width > maxW) {
-        if (drawn >= maxLines - 1) {
-          ctx.fillText(truncLine(line + ' ' + word, maxW), x, lineY);
-          return lineY;
+        if (lineCount >= maxLines) {
+          ctx.fillText(truncLine(line + ' ' + (words.slice(idx).join(' ')), maxW), x, lineY);
+          return { lastY: lineY, usedSize: currentSize };
         }
         ctx.fillText(line, x, lineY);
-        lineY += lineH;
+        lineY += finalLineH;
         line = word;
-        drawn++;
+        lineCount++;
       } else {
         line = test;
       }
     }
-    if (line) ctx.fillText(truncLine(line, maxW), x, lineY);
-    return lineY;
+    if (line) ctx.fillText(line, x, lineY);
+    return { lastY: lineY, usedSize: currentSize };
   }
 
   // ── Layout-specific rendering ───────────────────────────────────────────────
@@ -446,9 +504,10 @@ export function renderPresentationSlideToCanvas(
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
     const titleX = getAlignmentX(sStyle?.titleAlign);
-    const titleBottom = drawWrapped(
-      slide.title || '', titleX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center',
+    const result = drawWrappedResponsive(
+      slide.title || '', titleX, startY, maxW, titleSize, finalTitleColor, true, 4, tf, sStyle?.titleAlign || 'center',
     );
+    const titleBottom = result.lastY;
 
     // accent underline
     ctx.fillStyle = ac;
@@ -456,8 +515,8 @@ export function renderPresentationSlideToCanvas(
 
     if (slide.subtitle) {
       const subX = getAlignmentX(sStyle?.bodyAlign);
-      drawWrapped(
-        slide.subtitle, subX, titleBottom + 22, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center',
+      drawWrappedResponsive(
+        slide.subtitle, subX, titleBottom + 22, maxW, bodySize, finalBodyColor, false, 3, bf, sStyle?.bodyAlign || 'center',
       );
     }
 
@@ -470,20 +529,21 @@ export function renderPresentationSlideToCanvas(
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
     const textX = getAlignmentX(sStyle?.titleAlign);
-    drawWrapped(text, textX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center');
+    const result = drawWrappedResponsive(text, textX, startY, maxW, titleSize, finalTitleColor, true, 5, tf, sStyle?.titleAlign || 'center');
 
     if (slide.subtitle) {
       const subX = getAlignmentX(sStyle?.bodyAlign);
-      drawWrapped(slide.subtitle, subX, startY + (titleSize + 6) * approxLines + 10, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center');
+      drawWrappedResponsive(slide.subtitle, subX, result.lastY + 20, maxW, bodySize, finalBodyColor, false, 3, bf, sStyle?.bodyAlign || 'center');
     }
 
   } else {
     // ── Standard slide: title bar at top, content area below ─────────────────
     const alignX = getAlignmentX(sStyle?.titleAlign);
     const titleY = my + titleSize;
-    const titleBottom = drawWrapped(
-      slide.title || '', alignX, titleY, contentMaxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'left'
+    const titleRes = drawWrappedResponsive(
+      slide.title || '', alignX, titleY, contentMaxW, titleSize, finalTitleColor, true, 4, tf, sStyle?.titleAlign || 'left'
     );
+    const titleBottom = titleRes.lastY;
 
     // Accent separator
     ctx.fillStyle = sStyle?.accentColor ? `#${sStyle.accentColor}` : ac;
@@ -491,11 +551,19 @@ export function renderPresentationSlideToCanvas(
 
     let cy = titleBottom + 20;
     // CRITICAL: Cap content height if visual data is present to prevent overlapping
-    const maxContentY = hasVisualData ? H * 0.55 : H - my;
+    const maxContentY = hasVisualData ? H * 0.52 : H - my;
 
     // ── Two-column / Comparison / Problem-Solution ──────────────────────────
-    if ((slide.layout === 'two-column' || slide.layout === 'comparison' || slide.layout === 'problem-solution') && 
-        (slide.leftColumn?.length || slide.rightColumn?.length)) {
+    if ((slide.layout === 'two-column' || slide.layout === 'comparison' || slide.layout === 'problem-solution')) {
+      // Fallback for missing leftColumn/rightColumn: try to split bullets
+      let left = slide.leftColumn || [];
+      let right = slide.rightColumn || [];
+      if (left.length === 0 && right.length === 0 && slide.bullets && slide.bullets.length > 1) {
+        const mid = Math.ceil(slide.bullets.length / 2);
+        left = slide.bullets.slice(0, mid);
+        right = slide.bullets.slice(mid);
+      }
+
       const colW = (contentMaxW - 40) / 2;
       let ly = cy, ry = cy;
 
@@ -533,7 +601,7 @@ export function renderPresentationSlideToCanvas(
       }
 
       // Left Column
-      for (const item of (slide.leftColumn || []).slice(0, 6)) {
+      for (const item of left.slice(0, 6)) {
         if (ly > maxContentY) break;
         ctx.fillStyle = slide.layout === 'problem-solution' ? '#ef4444' : ac;
         ctx.beginPath(); ctx.arc(mx + 3, ly - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
@@ -544,7 +612,7 @@ export function renderPresentationSlideToCanvas(
 
       // Right Column
       const rx = mx + colW + 40;
-      for (const item of (slide.rightColumn || []).slice(0, 6)) {
+      for (const item of right.slice(0, 6)) {
         if (ry > maxContentY) break;
         ctx.fillStyle = slide.layout === 'problem-solution' ? '#22c55e' : ac;
         ctx.beginPath(); ctx.arc(rx + 3, ry - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
@@ -598,7 +666,6 @@ export function renderPresentationSlideToCanvas(
         ctx.save();
         if (isProcess) {
           // Circle with number for process
-          ctx.fillStyle = ac;
           const br = bulletSize * 0.7;
           ctx.beginPath(); ctx.arc(mx + br, cy - bulletSize/2 + 2, br, 0, Math.PI * 2); ctx.fill();
           ctx.fillStyle = theme.darkTheme ? '#000' : '#fff';
@@ -606,9 +673,9 @@ export function renderPresentationSlideToCanvas(
           ctx.textAlign = 'center';
           ctx.fillText(String(idx + 1), mx + br, cy - bulletSize/2 + 2 + br*0.35);
           ctx.restore();
-          
-          ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-          ctx.fillText(truncLine(bullet, contentMaxW - br*2 - 10), mx + br*2 + 10, cy);
+
+          const res = drawWrappedResponsive(bullet, mx + br*2 + 10, cy, contentMaxW - br*2 - 10, bulletSize, bc, false, 2, bf, 'left', maxContentY);
+          cy = res.lastY + 10;
         } else if (isRecs) {
           // Checkmark or star for recommendations
           ctx.fillStyle = ac;
@@ -617,17 +684,15 @@ export function renderPresentationSlideToCanvas(
           ctx.fillText('★', mx, cy);
           ctx.restore();
           
-          ctx.font = `bold ${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-          ctx.fillText(truncLine(bullet, contentMaxW - 20), mx + 20, cy);
+          const res = drawWrappedResponsive(bullet, mx + 20, cy, contentMaxW - 30, bulletSize, bc, true, 2, bf, 'left', maxContentY);
+          cy = res.lastY + 10;
         } else {
           // Normal bullet
           ctx.fillStyle = ac;
           ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 3, 0, Math.PI * 2); ctx.fill();
-          ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-          ctx.fillText(truncLine(bullet, contentMaxW - 15), mx + 15, cy);
+          const res = drawWrappedResponsive(bullet, mx + 15, cy, contentMaxW - 15, bulletSize, bc, false, 2, bf, 'left', maxContentY);
+          cy = res.lastY + 10;
         }
-        ctx.restore();
-        cy += bulletSize + 10;
       }
 
     // ── Agenda items ───────────────────────────────────────────────────────────
@@ -644,9 +709,8 @@ export function renderPresentationSlideToCanvas(
         ctx.textAlign = 'center';
         ctx.fillText(String(idx + 1), mx + badgeR, cy - bulletSize / 2 + 2 + badgeR * 0.4);
         ctx.restore();
-        ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(item, contentMaxW - badgeR * 2 - 8), mx + badgeR * 2 + 6, cy);
-        cy += bulletSize + 7;
+        const res = drawWrappedResponsive(item, mx + badgeR * 2 + 6, cy, contentMaxW - badgeR * 2 - 8, bulletSize, bc, false, 2, bf, 'left', maxContentY);
+        cy = res.lastY + 7;
       }
 
     // ── Summary points ─────────────────────────────────────────────────────────
@@ -655,26 +719,21 @@ export function renderPresentationSlideToCanvas(
         if (cy > maxContentY) break;
         ctx.fillStyle = ac;
         ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
-        ctx.fillText(truncLine(pt, contentMaxW - 12), mx + 12, cy);
-        cy += bulletSize + 7;
+        const res = drawWrappedResponsive(pt, mx + 12, cy, contentMaxW - 12, bulletSize, bc, false, 2, bf, 'left', maxContentY);
+        cy = res.lastY + 7;
       }
 
     // ── Body text ──────────────────────────────────────────────────────────────
-    } else if (slide.body) {
-      const maxLines = Math.floor((maxContentY - cy) / (bodySize + Math.round(bodySize * 0.28)));
       const bAlign = sStyle?.bodyAlign || 'left';
-      if (maxLines > 0) {
-        drawWrapped(slide.body, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, maxLines, bf, bAlign);
-      }
+      drawWrappedResponsive(slide.body, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 12, bf, bAlign, maxContentY);
 
     } else if (slide.statement) {
       const bAlign = sStyle?.bodyAlign || 'left';
-      drawWrapped(slide.statement, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 5, bf, bAlign);
+      drawWrappedResponsive(slide.statement, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 8, bf, bAlign, maxContentY);
 
     } else if (slide.subtitle) {
       const bAlign = sStyle?.bodyAlign || 'left';
-      drawWrapped(slide.subtitle, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 3, bf, bAlign);
+      drawWrappedResponsive(slide.subtitle, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 5, bf, bAlign, maxContentY);
     }
 
     // ── Visual Data Area (Charts / Tables / Timelines) ──
