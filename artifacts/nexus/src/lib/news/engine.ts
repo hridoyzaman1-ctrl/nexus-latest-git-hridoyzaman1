@@ -72,10 +72,12 @@ export async function fetchFeedItems(
     return true;
   });
 
-  // Sort newest first
-  return deduplicated.sort((a, b) => 
-    new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
-  ).slice(0, 80);
+  // Sort newest first - Use a higher weight for "Today's" news
+  return deduplicated.sort((a, b) => {
+    const timeA = new Date(a.publishedAt).getTime();
+    const timeB = new Date(b.publishedAt).getTime();
+    return timeB - timeA;
+  }).slice(0, 80);
 }
 
 async function fetchWithRetry(url: string, signal?: AbortSignal, forceFresh?: boolean): Promise<string | null> {
