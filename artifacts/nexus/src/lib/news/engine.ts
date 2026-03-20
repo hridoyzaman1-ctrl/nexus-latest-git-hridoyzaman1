@@ -5,6 +5,7 @@ import { getCachedNews, setCachedNews } from './cache';
 // Public CORS proxies as a safety layer for browser environments.
 // If the app runs in a native aggregate (like Capacitor) these may not be needed.
 const PROXIES = [
+  'https://api.allorigins.win/raw?url=',
   'https://corsproxy.io/?',
   'https://api.codetabs.com/v1/proxy?quest=',
   'https://wrapper.jason-it.com/?url='
