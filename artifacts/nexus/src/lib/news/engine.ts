@@ -7,7 +7,8 @@ import { getCachedNews, setCachedNews } from './cache';
 const PROXIES = [
   'https://api.allorigins.win/get?url=',
   'https://corsproxy.io/?',
-  'https://api.codetabs.com/v1/proxy?quest='
+  'https://api.codetabs.com/v1/proxy?quest=',
+  'https://wrapper.jason-it.com/?url='
 ];
 
 export interface FetchOptions {
@@ -63,17 +64,21 @@ export async function fetchFeedItems(
 async function fetchWithRetry(url: string, signal?: AbortSignal, forceFresh?: boolean): Promise<string | null> {
   const cacheBust = forceFresh ? `&f=${Date.now()}` : '';
   
-  // 1. Try direct fetch first (fastest, best if CORS allows)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout for direct fetch
+  
   try {
     const directUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}${cacheBust}`;
     const res = await fetch(directUrl, { 
-      signal, 
+      signal: controller.signal, 
       headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' } 
     });
+    clearTimeout(timeoutId);
     if (res.ok) return await res.text();
   } catch (e) {
-    // If abort, stop entirely
-    if ((e as Error).name === 'AbortError') throw e;
+    clearTimeout(timeoutId);
+    // If user abort (passed via signal arg), stop entirely
+    if (signal?.aborted) throw new Error('AbortError');
   }
 
   // 2. Try proxies in parallel if direct fetch fails or is blocked by CORS

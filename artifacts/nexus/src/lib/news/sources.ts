@@ -47,12 +47,13 @@ export const FEED_REGISTRY: Record<NewsMode, Record<NewsCategory, NewsSource[]>>
   },
   national: {
     top: [
-      { name: 'The Daily Star', feedUrl: 'https://www.thedailystar.net/rss.xml' },
+      { name: 'BDNews24', feedUrl: 'https://bdnews24.com/?widgetName=rssfeed&widgetId=1150&getXmlFeed=true' },
       { name: 'Prothom Alo', feedUrl: 'https://en.prothomalo.com/feed' },
+      { name: 'UNB News', feedUrl: 'https://unb.com.bd/feed' },
+      { name: 'BSS News', feedUrl: 'https://www.bssnews.net/feed' },
+      { name: 'The Daily Star', feedUrl: 'https://www.thedailystar.net/rss.xml' },
       { name: 'Dhaka Tribune', feedUrl: 'https://www.dhakatribune.com/feed' },
-      { name: 'TBS News', feedUrl: 'https://www.tbsnews.net/bangladesh/rss.xml' },
-      { name: 'Financial Express', feedUrl: 'https://thefinancialexpress.com.bd/feed/bangladesh' },
-      { name: 'Daily Sun', feedUrl: 'https://www.daily-sun.com/rss' }
+      { name: 'TBS News', feedUrl: 'https://www.tbsnews.net/bangladesh/rss.xml' }
     ],
     politics: [
       { name: 'Prothom Alo Politics', feedUrl: 'https://en.prothomalo.com/feed/politics' },
