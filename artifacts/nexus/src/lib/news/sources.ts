@@ -48,6 +48,8 @@ export const FEED_REGISTRY: Record<NewsMode, Record<NewsCategory, NewsSource[]>>
   national: {
     top: [
       { name: 'BDNews24', feedUrl: 'https://bdnews24.com/?widgetName=rssfeed&widgetId=1150&getXmlFeed=true' },
+      { name: 'Dhaka Post', feedUrl: 'https://www.dhakapost.com/rss' },
+      { name: 'Somoy News', feedUrl: 'https://en.somoynews.tv/rss' },
       { name: 'Prothom Alo', feedUrl: 'https://en.prothomalo.com/feed' },
       { name: 'UNB News', feedUrl: 'https://unb.com.bd/feed' },
       { name: 'BSS News', feedUrl: 'https://www.bssnews.net/feed' },

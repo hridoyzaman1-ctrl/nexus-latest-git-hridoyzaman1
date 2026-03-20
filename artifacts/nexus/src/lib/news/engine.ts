@@ -26,7 +26,16 @@ export async function fetchFeedItems(
   
   const fetchPromises = sources.map(async (source) => {
     try {
-      const xml = await fetchWithRetry(source.feedUrl, signal, forceFresh);
+      // Add a 6s timeout per source to prevent one slow source from hanging the whole portal
+      const sourceTimeout = new Promise<string | null>((_, reject) => 
+        setTimeout(() => reject(new Error('Source timeout')), 6000)
+      );
+      
+      const xml = await Promise.race([
+        fetchWithRetry(source.feedUrl, signal, forceFresh),
+        sourceTimeout
+      ]);
+      
       if (!xml) return [];
       return parseFeed(xml, source.name, mainCategory, subCategory);
     } catch (err) {
@@ -63,41 +72,46 @@ export async function fetchFeedItems(
 
 async function fetchWithRetry(url: string, signal?: AbortSignal, forceFresh?: boolean): Promise<string | null> {
   const cacheBust = forceFresh ? `&f=${Date.now()}` : '';
+  const fullUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}${cacheBust}`;
   
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout for direct fetch
-  
-  try {
-    const directUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}${cacheBust}`;
-    const res = await fetch(directUrl, { 
-      signal: controller.signal, 
+  // Create all racing promises
+  const allAttempts: Promise<string>[] = [];
+
+  // 1. Direct fetch promise
+  allAttempts.push((async () => {
+    const res = await fetch(fullUrl, { 
+      signal, 
       headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' } 
     });
-    clearTimeout(timeoutId);
-    if (res.ok) return await res.text();
-  } catch (e) {
-    clearTimeout(timeoutId);
-    // If user abort (passed via signal arg), stop entirely
-    if (signal?.aborted) throw new Error('AbortError');
-  }
+    if (!res.ok) throw new Error('Direct failed');
+    const txt = await res.text();
+    if (txt.trim().length < 50) throw new Error('Empty response');
+    return txt;
+  })());
 
-  // 2. Try proxies in parallel if direct fetch fails or is blocked by CORS
-  const proxyPromises = PROXIES.map(async (proxy) => {
-    const proxiedUrl = `${proxy}${encodeURIComponent(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now() + cacheBust)}`;
-    const res = await fetch(proxiedUrl, { signal });
-    if (!res.ok) throw new Error('Proxy failed');
-    
-    if (proxy.includes('allorigins')) {
-      const data = await res.json();
-      return data.contents;
-    }
-    return await res.text();
+  // 2. Proxy promises
+  PROXIES.forEach(proxy => {
+    allAttempts.push((async () => {
+      const proxiedUrl = `${proxy}${encodeURIComponent(fullUrl)}`;
+      const res = await fetch(proxiedUrl, { signal });
+      if (!res.ok) throw new Error('Proxy failed');
+      
+      let txt: string;
+      if (proxy.includes('allorigins')) {
+        const data = await res.json();
+        txt = data.contents;
+      } else {
+        txt = await res.text();
+      }
+      
+      if (!txt || txt.trim().length < 50) throw new Error('Invalid proxy response');
+      return txt;
+    })());
   });
 
   try {
-    const result = await Promise.any(proxyPromises);
-    if (!result || result.trim().length < 50) throw new Error('Invalid proxy response');
-    return result;
+    // Race them all! First one to finish (and not throw) wins.
+    return await Promise.any(allAttempts);
   } catch (e) {
     return null;
   }
