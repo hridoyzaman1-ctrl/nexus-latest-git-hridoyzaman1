@@ -1,4 +1,4 @@
-import type { SlideContent, ThemeConfig, SlideLayoutType, SlideImage } from '@/types/presentation';
+import type { SlideContent, ThemeConfig, SlideLayoutType, SlideImage, TableConfig } from '@/types/presentation';
 
 /**
  * Pre-load all images referenced by slide.images[] from their dataUrls.
@@ -209,43 +209,80 @@ function drawChart(
 
 function drawTable(
   ctx: CanvasRenderingContext2D,
-  config: any, // TableConfig
+  config: TableConfig,
   theme: ThemeConfig,
   x: number, y: number, w: number, h: number,
-  fontSize: number
+  fontSize: number,
+  drawWrappedFn: any
 ) {
   const ac = `#${theme.accentColor}`;
   const bc = `#${theme.bodyColor}`;
   const bf = `"${theme.bodyFont}", sans-serif`;
 
-  const rowH = fontSize * 1.8;
-  const colW = w / config.headers.length;
+  const headers = config.headers || [];
+  const rows = config.rows || [];
+  const colCount = headers.length || 1;
+  
+  // Proportional widths: last column usually has the findings/meat
+  const widths = headers.map(() => 1 / colCount);
+  if (colCount >= 3) {
+    widths[0] = 0.2; widths[1] = 0.15; widths[2] = 0.65; // prioritize findings
+  }
+
+  const rowH = fontSize * 2.2;
+  let currY = y;
 
   // Header
   ctx.fillStyle = ac;
-  ctx.fillRect(x, y, w, rowH);
+  ctx.fillRect(x, currY, w, rowH);
   ctx.font = `bold ${fontSize}px ${bf}`;
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
 
-  config.headers.forEach((h: string, i: number) => {
-    ctx.fillText(h.length > 15 ? h.slice(0, 13) + '…' : h, x + i * colW + 8, y + fontSize * 1.3);
+  let currX = x;
+  headers.forEach((h: string, i: number) => {
+    const colW = w * (widths[i] || (1 / colCount));
+    ctx.fillText(h, currX + 8, currY + rowH / 2);
+    currX += colW;
   });
+
+  currY += rowH;
+  ctx.textBaseline = 'top';
 
   // Rows
-  ctx.font = `${fontSize}px ${bf}`;
-  config.rows.slice(0, 8).forEach((row: string[], ri: number) => {
-    const ry = y + (ri + 1) * rowH;
-    if (ry + rowH > y + h) return;
+  const cellFontSize = Math.max(10, fontSize - 1);
+  for (const row of rows.slice(0, 5)) {
+    let maxRowHeight = rowH;
+    currX = x;
     
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.beginPath(); ctx.moveTo(x, ry + rowH); ctx.lineTo(x + w, ry + rowH); ctx.stroke();
-    
-    ctx.fillStyle = bc;
-    row.forEach((cell, ci) => {
-      ctx.fillText(cell.length > 20 ? cell.slice(0, 18) + '…' : cell, x + ci * colW + 8, ry + fontSize * 1.3);
+    // First pass: measure all cells in row to find max height
+    const rowY = currY;
+    row.forEach((cell: string, ci: number) => {
+      const colW = w * (widths[ci] || (1 / colCount));
+      // Temporarily draw to a dummy value to get height
+      const cellBottom = drawWrappedFn(cell, currX + 8, rowY + 6, colW - 16, cellFontSize, bc, false, 3, bf, 'left', true);
+      maxRowHeight = Math.max(maxRowHeight, cellBottom - rowY + 12);
+      currX += colW;
     });
-  });
+
+    if (rowY + maxRowHeight > y + h) break;
+
+    // Second pass: actually draw
+    currX = x;
+    row.forEach((cell: string, ci: number) => {
+      const colW = w * (widths[ci] || (1 / colCount));
+      drawWrappedFn(cell, currX + 8, rowY + 6, colW - 16, cellFontSize, bc, false, 3, bf, 'left');
+      currX += colW;
+    });
+
+    // Divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, rowY + maxRowHeight); ctx.lineTo(x + w, rowY + maxRowHeight); ctx.stroke();
+    
+    currY += maxRowHeight;
+  }
 }
 
 function drawTimeline(
@@ -410,50 +447,70 @@ export function renderPresentationSlideToCanvas(
     maxLines = 5,
     fontStack = tf,
     align: CanvasTextAlign = 'left',
+    measureOnly = false
   ): number {
     if (!text) return y;
-    ctx.save();
-    ctx.font = `${bold ? 'bold ' : ''}${size}px ${fontStack}`;
-    ctx.fillStyle = color;
-    ctx.textAlign = align;
-    ctx.textBaseline = 'top';
+    
+    // Recursive shrink-to-fit for titles if they are being truncated
+    let currentSize = size;
+    let attempts = 0;
+    
+    const internalDraw = (fs: number) => {
+      ctx.save();
+      ctx.font = `${bold ? 'bold ' : ''}${fs}px ${fontStack}`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'top';
 
-    const lineH = size + Math.round(size * 0.3);
-    const words = text.trim().split(/\s+/).filter(Boolean);
-    let line = '';
-    let currY = y;
-    let drawn = 0;
+      const lineH = fs + Math.round(fs * 0.3);
+      const words = text.trim().split(/\s+/).filter(Boolean);
+      let line = '';
+      let currY = y;
+      let drawn = 0;
+      let truncated = false;
 
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      const test = line ? `${line} ${word}` : word;
-      const metrics = ctx.measureText(test);
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const test = line ? `${line} ${word}` : word;
+        const metrics = ctx.measureText(test);
 
-      if (line && metrics.width > maxW) {
-        // Current word makes the line too long, draw what we have
-        if (drawn >= maxLines - 1) {
-          // Last allowed line: use ellipsis if more words remain
-          ctx.fillText(truncLine(line + ' ' + (words.slice(i).join(' ')), maxW), x, currY);
-          ctx.restore();
-          return currY + lineH;
+        if (line && metrics.width > maxW) {
+          if (drawn >= maxLines - 1) {
+            if (!measureOnly) ctx.fillText(truncLine(line + ' ' + (words.slice(i).join(' ')), maxW), x, currY);
+            truncated = true;
+            drawn++;
+            break;
+          }
+          if (!measureOnly) ctx.fillText(line, x, currY);
+          currY += lineH;
+          line = word;
+          drawn++;
+        } else {
+          line = test;
         }
-        ctx.fillText(line, x, currY);
+      }
+
+      if (line && drawn < maxLines) {
+        if (!measureOnly) ctx.fillText(truncLine(line, maxW), x, currY);
         currY += lineH;
-        line = word;
-        drawn++;
-      } else {
-        line = test;
+      }
+
+      ctx.restore();
+      return { currY, truncated };
+    };
+
+    let result = internalDraw(currentSize);
+    
+    // If it's a title and it truncated, try shrinking font up to 3 times
+    if (result.truncated && maxLines <= 4 && attempts < 3 && !measureOnly) {
+      while (result.truncated && attempts < 3) {
+        currentSize = Math.round(currentSize * 0.85);
+        attempts++;
+        result = internalDraw(currentSize);
       }
     }
 
-    // Final line
-    if (line) {
-      ctx.fillText(truncLine(line, maxW), x, currY);
-      currY += lineH;
-    }
-
-    ctx.restore();
-    return currY;
+    return result.currY;
   }
 
   // ── Layout-specific rendering ───────────────────────────────────────────────
@@ -698,13 +755,13 @@ export function renderPresentationSlideToCanvas(
 
     // ── Visual Data Area (Charts / Tables / Timelines) ──
     if (hasVisualData) {
-      const vY = H * 0.6; // Start visual data at 60% of height
-      const vH = H * 0.35; // Visual data takes 35% of height
+      const vY = H * 0.5; // Start visual data higher to give more room (50%)
+      const vH = H * 0.45; // Take up 45% of height
       
       if (slide.chartConfig) {
         drawChart(ctx, slide.chartConfig, theme, mx, vY, contentMaxW, vH, bulletSize + 2, bulletSize - 2);
       } else if (slide.tableConfig) {
-        drawTable(ctx, slide.tableConfig, theme, mx, vY, contentMaxW, vH, bulletSize - 1);
+        drawTable(ctx, slide.tableConfig, theme, mx, vY, contentMaxW, vH, bulletSize + 2, drawWrapped);
       } else if (slide.timelineConfig) {
         drawTimeline(ctx, slide.timelineConfig, theme, mx, vY, contentMaxW, vH, bulletSize - 1);
       }
