@@ -69,8 +69,8 @@ interface TextAreaConfig {
   hasPanel: boolean;
 }
 
-function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[]): TextAreaConfig {
-  if (!images || images.length === 0) return { x: 0, width: 100, hasPanel: false };
+function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[], hasVisualData: boolean): TextAreaConfig {
+  if (!images || images.length === 0) return { x: 0, width: 100, hasPanel: hasVisualData };
 
   // Heuristic: Is there a large image covering the left or right side?
   const leftBusy = images.some(img => img.x < 30 && img.width > 40);
@@ -80,7 +80,7 @@ function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[]): TextA
     const minX = Math.min(...images.filter(img => img.x > 40).map(img => img.x));
     return { x: 0, width: Math.max(40, minX - 2), hasPanel: true };
   }
-  
+
   if (leftBusy && !rightBusy) {
     const maxX = Math.max(...images.filter(img => img.x < 30).map(img => img.x + img.width));
     return { x: maxX + 2, width: 100 - (maxX - 2), hasPanel: true };
@@ -91,7 +91,186 @@ function getTextAreaConfig(layout: SlideLayoutType, images: SlideImage[]): TextA
     return { x: 5, width: 90, hasPanel: true };
   }
 
-  return { x: 0, width: 100, hasPanel: false };
+  return { x: 0, width: 100, hasPanel: hasVisualData };
+}
+
+/** ── Visual Data Rendering Helpers ────────────────────────────────────────── */
+
+function drawChart(
+  ctx: CanvasRenderingContext2D,
+  config: any, // ChartConfig
+  theme: ThemeConfig,
+  x: number, y: number, w: number, h: number,
+  titleSize: number, labelSize: number
+) {
+  const ac = `#${theme.accentColor}`;
+  const bc = `#${theme.bodyColor}`;
+  const bf = `"${theme.bodyFont}", sans-serif`;
+  const tf = `"${theme.titleFont}", sans-serif`;
+
+  // Draw Title
+  ctx.font = `bold ${titleSize}px ${tf}`;
+  ctx.fillStyle = ac;
+  ctx.textAlign = 'left';
+  ctx.fillText(`${config.type.toUpperCase()} CHART: ${config.title || ''}`, x, y + titleSize);
+
+  const chartY = y + titleSize + 15;
+  const chartH = h - (titleSize + 25);
+
+  if (config.type === 'bar' || config.type === 'line') {
+    const dataset = config.datasets?.[0];
+    if (!dataset || !config.labels?.length) return;
+
+    const maxVal = Math.max(...dataset.values, 1);
+    const colW = w / config.labels.length;
+    const barW = colW * 0.7;
+
+    config.labels.forEach((label: string, i: number) => {
+      const val = dataset.values[i] || 0;
+      const valH = (val / maxVal) * (chartH - labelSize - 10);
+      const cx = x + i * colW + colW / 2;
+
+      if (config.type === 'bar') {
+        ctx.fillStyle = ac;
+        ctx.globalAlpha = 0.8;
+        ctx.fillRect(cx - barW / 2, chartY + chartH - labelSize - 5 - valH, barW, valH);
+        ctx.globalAlpha = 1.0;
+      } else {
+        // Line chart dot
+        ctx.fillStyle = ac;
+        ctx.beginPath();
+        ctx.arc(cx, chartY + chartH - labelSize - 5 - valH, 4, 0, Math.PI * 2);
+        ctx.fill();
+        // Line to next
+        if (i < config.labels.length - 1) {
+          const nextVal = dataset.values[i + 1] || 0;
+          const nextValH = (nextVal / maxVal) * (chartH - labelSize - 10);
+          const nextCx = x + (i + 1) * colW + colW / 2;
+          ctx.strokeStyle = ac;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(cx, chartY + chartH - labelSize - 5 - valH);
+          ctx.lineTo(nextCx, chartY + chartH - labelSize - 5 - nextValH);
+          ctx.stroke();
+        }
+      }
+
+      // Label
+      ctx.font = `${labelSize}px ${bf}`;
+      ctx.fillStyle = bc;
+      ctx.textAlign = 'center';
+      const truncatedLabel = label.length > 10 ? label.slice(0, 8) + '…' : label;
+      ctx.fillText(truncatedLabel, cx, chartY + chartH);
+    });
+  } else if (config.type === 'pie' || config.type === 'donut') {
+    const dataset = config.datasets?.[0];
+    if (!dataset || !config.labels?.length) return;
+
+    const total = dataset.values.reduce((a: number, b: number) => a + b, 0);
+    const centerX = x + w / 2;
+    const centerY = chartY + chartH / 2;
+    const radius = Math.min(w, chartH) / 2.5;
+
+    let startAngle = -Math.PI / 2;
+    dataset.values.forEach((val: number, i: number) => {
+      const sliceAngle = (val / total) * Math.PI * 2;
+      ctx.fillStyle = ac;
+      ctx.globalAlpha = 0.6 + (i % 5) * 0.1;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+      startAngle += sliceAngle;
+    });
+
+    if (config.type === 'donut') {
+      ctx.fillStyle = `#${theme.bgColor}`;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawTable(
+  ctx: CanvasRenderingContext2D,
+  config: any, // TableConfig
+  theme: ThemeConfig,
+  x: number, y: number, w: number, h: number,
+  fontSize: number
+) {
+  const ac = `#${theme.accentColor}`;
+  const bc = `#${theme.bodyColor}`;
+  const bf = `"${theme.bodyFont}", sans-serif`;
+
+  const rowH = fontSize * 1.8;
+  const colW = w / config.headers.length;
+
+  // Header
+  ctx.fillStyle = ac;
+  ctx.fillRect(x, y, w, rowH);
+  ctx.font = `bold ${fontSize}px ${bf}`;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'left';
+
+  config.headers.forEach((h: string, i: number) => {
+    ctx.fillText(h.length > 15 ? h.slice(0, 13) + '…' : h, x + i * colW + 8, y + fontSize * 1.3);
+  });
+
+  // Rows
+  ctx.font = `${fontSize}px ${bf}`;
+  config.rows.slice(0, 8).forEach((row: string[], ri: number) => {
+    const ry = y + (ri + 1) * rowH;
+    if (ry + rowH > y + h) return;
+    
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.moveTo(x, ry + rowH); ctx.lineTo(x + w, ry + rowH); ctx.stroke();
+    
+    ctx.fillStyle = bc;
+    row.forEach((cell, ci) => {
+      ctx.fillText(cell.length > 20 ? cell.slice(0, 18) + '…' : cell, x + ci * colW + 8, ry + fontSize * 1.3);
+    });
+  });
+}
+
+function drawTimeline(
+  ctx: CanvasRenderingContext2D,
+  config: any, // TimelineConfig
+  theme: ThemeConfig,
+  x: number, y: number, w: number, h: number,
+  fontSize: number
+) {
+  const ac = `#${theme.accentColor}`;
+  const bc = `#${theme.bodyColor}`;
+  const bf = `"${theme.bodyFont}", sans-serif`;
+
+  const items = config.items.slice(0, 6);
+  const itemH = (h - 20) / items.length;
+
+  ctx.strokeStyle = ac;
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(x + 10, y + 10);
+  ctx.lineTo(x + 10, y + h - 10);
+  ctx.stroke();
+  ctx.globalAlpha = 1.0;
+
+  items.forEach((item: any, i: number) => {
+    const iy = y + 10 + i * itemH;
+    ctx.fillStyle = ac;
+    ctx.beginPath(); ctx.arc(x + 10, iy + 5, 5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.font = `bold ${fontSize}px ${bf}`;
+    ctx.fillStyle = ac;
+    ctx.textAlign = 'left';
+    ctx.fillText(item.date, x + 25, iy + fontSize);
+
+    ctx.font = `${fontSize}px ${bf}`;
+    ctx.fillStyle = bc;
+    ctx.fillText(item.title.length > 40 ? item.title.slice(0, 38) + '…' : item.title, x + 25, iy + fontSize * 2.2);
+  });
 }
 
 export function renderPresentationSlideToCanvas(
@@ -139,42 +318,9 @@ export function renderPresentationSlideToCanvas(
     }
   }
 
-  // ── Images (rendered behind text) ─────────────────────────────────────────
-  // x, y, width, height are percentages of the slide container
-  for (const imgMeta of slide.images ?? []) {
-    // (drawn first so text sits on top)
-    const el = imageCache.get(imgMeta.id);
-    if (!el) continue;
-
-    const ix = (imgMeta.x / 100) * W;
-    const iy = (imgMeta.y / 100) * H;
-    const iw = (imgMeta.width / 100) * W;
-    const ih = (imgMeta.height / 100) * H;
-    if (iw < 1 || ih < 1) continue;
-
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, imgMeta.opacity ?? 1));
-
-    const br = (imgMeta.borderRadius ?? 0);
-    if (br > 0) {
-      roundRectPath(ctx, ix, iy, iw, ih, br);
-      ctx.clip();
-    }
-
-    if (imgMeta.fit === 'contain') {
-      const ar = el.naturalWidth / Math.max(el.naturalHeight, 1);
-      const iar = iw / Math.max(ih, 1);
-      let dw = iw, dh = ih;
-      if (ar > iar) { dh = iw / ar; } else { dw = ih * ar; }
-      ctx.drawImage(el, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
-    } else {
-      ctx.drawImage(el, ix, iy, iw, ih);
-    }
-    ctx.restore();
-  }
-
   // ── Text readability panel ────────────────────────────────────────────────
-  const textCfg = getTextAreaConfig(slide.layout, slide.images || []);
+  const hasVisualData = !!(slide.chartConfig || slide.tableConfig || slide.timelineConfig || slide.kpiConfig);
+  const textCfg = getTextAreaConfig(slide.layout, slide.images || [], hasVisualData);
   const panelX = (textCfg.x / 100) * W;
   const panelW = (textCfg.width / 100) * W;
 
@@ -335,6 +481,8 @@ export function renderPresentationSlideToCanvas(
     ctx.fillRect(alignX, titleBottom + 6, Math.min(44, W * 0.09), 2);
 
     let cy = titleBottom + 20;
+    // CRITICAL: Cap content height if visual data is present to prevent overlapping
+    const maxContentY = hasVisualData ? H * 0.55 : H - my;
 
     // ── Two-column ────────────────────────────────────────────────────────────
     if (slide.layout === 'two-column' && (slide.leftColumn?.length || slide.rightColumn?.length)) {
@@ -349,7 +497,7 @@ export function renderPresentationSlideToCanvas(
         ly += bulletSize + 6;
       }
       for (const item of (slide.leftColumn || []).slice(0, 6)) {
-        if (ly > H - my) break;
+        if (ly > maxContentY) break;
         ctx.fillStyle = ac;
         ctx.beginPath(); ctx.arc(mx + 3, ly - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
         ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
@@ -365,7 +513,7 @@ export function renderPresentationSlideToCanvas(
         ry += bulletSize + 6;
       }
       for (const item of (slide.rightColumn || []).slice(0, 6)) {
-        if (ry > H - my) break;
+        if (ry > maxContentY) break;
         ctx.fillStyle = ac;
         ctx.beginPath(); ctx.arc(rx + 3, ry - bulletSize / 2 + 1, 2, 0, Math.PI * 2); ctx.fill();
         ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
@@ -382,6 +530,7 @@ export function renderPresentationSlideToCanvas(
       kpis.forEach((kpi, i) => {
         const kx = mx + (i % cols) * (kw + 8);
         const ky = cy + Math.floor(i / cols) * kh;
+        if (ky + kh * 0.85 > H - my) return;
         // card bg
         ctx.save();
         ctx.globalAlpha = theme.darkTheme ? 0.12 : 0.07;
@@ -409,7 +558,7 @@ export function renderPresentationSlideToCanvas(
     // ── Bullets / title-bullets / recommendations / process ───────────────────
     } else if (slide.bullets?.length) {
       for (const bullet of slide.bullets.slice(0, 7)) {
-        if (cy > H - my) break;
+        if (cy > maxContentY) break;
         ctx.fillStyle = ac;
         ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 2.5, 0, Math.PI * 2); ctx.fill();
         ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
@@ -420,7 +569,7 @@ export function renderPresentationSlideToCanvas(
     // ── Agenda items ───────────────────────────────────────────────────────────
     } else if (slide.agendaItems?.length) {
       for (const [idx, item] of slide.agendaItems.slice(0, 7).entries()) {
-        if (cy > H - my) break;
+        if (cy > maxContentY) break;
         // number badge
         ctx.save();
         ctx.fillStyle = ac;
@@ -439,7 +588,7 @@ export function renderPresentationSlideToCanvas(
     // ── Summary points ─────────────────────────────────────────────────────────
     } else if (slide.summaryPoints?.length) {
       for (const pt of slide.summaryPoints.slice(0, 7)) {
-        if (cy > H - my) break;
+        if (cy > maxContentY) break;
         ctx.fillStyle = ac;
         ctx.beginPath(); ctx.arc(mx + 3, cy - bulletSize / 2 + 1, 2.5, 0, Math.PI * 2); ctx.fill();
         ctx.font = `${bulletSize}px ${bf}`; ctx.fillStyle = bc; ctx.textAlign = 'left';
@@ -449,9 +598,11 @@ export function renderPresentationSlideToCanvas(
 
     // ── Body text ──────────────────────────────────────────────────────────────
     } else if (slide.body) {
-      const maxLines = Math.floor((H - cy - my) / (bodySize + Math.round(bodySize * 0.28)));
+      const maxLines = Math.floor((maxContentY - cy) / (bodySize + Math.round(bodySize * 0.28)));
       const bAlign = sStyle?.bodyAlign || 'left';
-      drawWrapped(slide.body, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, Math.max(1, maxLines), bf, bAlign);
+      if (maxLines > 0) {
+        drawWrapped(slide.body, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, maxLines, bf, bAlign);
+      }
 
     } else if (slide.statement) {
       const bAlign = sStyle?.bodyAlign || 'left';
@@ -461,6 +612,52 @@ export function renderPresentationSlideToCanvas(
       const bAlign = sStyle?.bodyAlign || 'left';
       drawWrapped(slide.subtitle, getAlignmentX(bAlign), cy, contentMaxW, bodySize, finalBodyColor, false, 3, bf, bAlign);
     }
+
+    // ── Visual Data Area (Charts / Tables / Timelines) ──
+    if (hasVisualData) {
+      const vY = H * 0.6; // Start visual data at 60% of height
+      const vH = H * 0.35; // Visual data takes 35% of height
+      
+      if (slide.chartConfig) {
+        drawChart(ctx, slide.chartConfig, theme, mx, vY, contentMaxW, vH, bulletSize + 2, bulletSize - 2);
+      } else if (slide.tableConfig) {
+        drawTable(ctx, slide.tableConfig, theme, mx, vY, contentMaxW, vH, bulletSize - 1);
+      } else if (slide.timelineConfig) {
+        drawTimeline(ctx, slide.timelineConfig, theme, mx, vY, contentMaxW, vH, bulletSize - 1);
+      }
+    }
+  }
+
+  // ── Images Rendering (Moved to last to be on top, matching viewer UI) ──
+  for (const imgMeta of slide.images ?? []) {
+    const el = imageCache.get(imgMeta.id);
+    if (!el) continue;
+
+    const ix = (imgMeta.x / 100) * W;
+    const iy = (imgMeta.y / 100) * H;
+    const iw = (imgMeta.width / 100) * W;
+    const ih = (imgMeta.height / 100) * H;
+    if (iw < 1 || ih < 1) continue;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, imgMeta.opacity ?? 1));
+
+    const br = (imgMeta.borderRadius ?? 0);
+    if (br > 0) {
+      roundRectPath(ctx, ix, iy, iw, ih, br);
+      ctx.clip();
+    }
+
+    if (imgMeta.fit === 'contain') {
+      const ar = el.naturalWidth / Math.max(el.naturalHeight, 1);
+      const iar = iw / Math.max(ih, 1);
+      let dw = iw, dh = ih;
+      if (ar > iar) { dh = iw / ar; } else { dw = ih * ar; }
+      ctx.drawImage(el, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
+    } else {
+      ctx.drawImage(el, ix, iy, iw, ih);
+    }
+    ctx.restore();
   }
 
   // ── Progress bar ────────────────────────────────────────────────────────────
