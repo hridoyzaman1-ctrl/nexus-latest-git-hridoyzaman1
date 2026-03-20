@@ -517,11 +517,12 @@ export function renderPresentationSlideToCanvas(
 
   if (slide.layout === 'cover') {
     // Vertically centred large title + optional subtitle
-    const maxW = W - mx * 3;
+    const maxW = contentMaxW;
     ctx.font = `bold ${titleSize}px ${tf}`;
     // Estimate approx line count to vertically centre the block
-    const approxLines = Math.max(1, Math.ceil(ctx.measureText(slide.title || '').width / maxW) + 1);
-    const blockH = approxLines * (titleSize + 4) + (slide.subtitle ? bodySize + 14 : 0) + 8;
+    const testText = slide.title || '';
+    const approxLines = Math.max(1, Math.ceil(ctx.measureText(testText).width / maxW));
+    const blockH = approxLines * (titleSize + 4) + (slide.subtitle ? bodySize + 22 : 0) + 8;
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
     const titleX = getAlignmentX(sStyle?.titleAlign);
@@ -531,7 +532,8 @@ export function renderPresentationSlideToCanvas(
 
     // accent underline
     ctx.fillStyle = ac;
-    ctx.fillRect(W / 2 - Math.min(36, W * 0.07), titleBottom + 9, Math.min(72, W * 0.14), 2);
+    const lineX = sStyle?.titleAlign === 'center' ? W / 2 - 36 : titleX;
+    ctx.fillRect(lineX, titleBottom + 9, 72, 2);
 
     if (slide.subtitle) {
       const subX = getAlignmentX(sStyle?.bodyAlign);
@@ -542,14 +544,14 @@ export function renderPresentationSlideToCanvas(
 
   } else if (slide.layout === 'section-divider' || slide.layout === 'big-statement') {
     const text = slide.statement || slide.title || '';
-    const maxW = W - mx * 3;
+    const maxW = contentMaxW;
     ctx.font = `bold ${titleSize}px ${tf}`;
     const approxLines = Math.max(1, Math.ceil(ctx.measureText(text).width / maxW));
     const blockH = approxLines * (titleSize + 6);
     const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
 
     const textX = getAlignmentX(sStyle?.titleAlign);
-    drawWrapped(text, textX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center');
+    drawWrapped(text, textX, startY, maxW, titleSize, finalTitleColor, true, 4, tf, sStyle?.titleAlign || 'center');
 
     if (slide.subtitle) {
       const subX = getAlignmentX(sStyle?.bodyAlign);
