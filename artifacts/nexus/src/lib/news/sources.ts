@@ -47,38 +47,38 @@ export const FEED_REGISTRY: Record<NewsMode, Record<NewsCategory, NewsSource[]>>
   },
   national: {
     top: [
-      { name: 'The Daily Star Home', feedUrl: 'https://www.thedailystar.net/frontpage/rss.xml' },
-      { name: 'Prothom Alo Home', feedUrl: 'https://en.prothomalo.com/feed' },
-      { name: 'Dhaka Tribune Home', feedUrl: 'https://www.dhakatribune.com/rss.xml' },
-      { name: 'The Business Standard Home', feedUrl: 'https://www.tbsnews.net/rss.xml' },
-      { name: 'New Age Bangladesh', feedUrl: 'https://www.newagebd.net/rss.xml' },
-      { name: 'bdnews24 Bangladesh', feedUrl: 'https://bdnews24.com/feed' }
+      { name: 'The Daily Star', feedUrl: 'https://www.thedailystar.net/rss.xml' },
+      { name: 'Prothom Alo', feedUrl: 'https://en.prothomalo.com/feed' },
+      { name: 'Dhaka Tribune', feedUrl: 'https://www.dhakatribune.com/feed' },
+      { name: 'TBS News', feedUrl: 'https://www.tbsnews.net/bangladesh/rss.xml' },
+      { name: 'Financial Express', feedUrl: 'https://thefinancialexpress.com.bd/feed/bangladesh' },
+      { name: 'Daily Sun', feedUrl: 'https://www.daily-sun.com/rss' }
     ],
     politics: [
-      { name: 'Dhaka Tribune Politics', feedUrl: 'https://www.dhakatribune.com/articles/politics/rss.xml' },
       { name: 'Prothom Alo Politics', feedUrl: 'https://en.prothomalo.com/feed/politics' },
-      { name: 'The Business Standard Politics', feedUrl: 'https://www.tbsnews.net/bangladesh/politics/rss.xml' },
-      { name: 'The Financial Express Politics', feedUrl: 'https://thefinancialexpress.com.bd/feed/politics' }
+      { name: 'DH Politics', feedUrl: 'https://www.dhakatribune.com/feed/politics' },
+      { name: 'TBS Politics', feedUrl: 'https://www.tbsnews.net/bangladesh/politics/rss.xml' }
     ],
     world: [
-      { name: 'The Daily Star World', feedUrl: 'https://www.thedailystar.net/news/world/rss.xml' },
-      { name: 'Dhaka Tribune World', feedUrl: 'https://www.dhakatribune.com/articles/world/rss.xml' }
+      { name: 'Daily Star World', feedUrl: 'https://www.thedailystar.net/news/world/rss.xml' },
+      { name: 'Prothom Alo World', feedUrl: 'https://en.prothomalo.com/feed/world' },
+      { name: 'Dhaka Tribune World', feedUrl: 'https://www.dhakatribune.com/feed/world' }
     ],
     business: [
-      { name: 'The Daily Star Business', feedUrl: 'https://www.thedailystar.net/business/rss.xml' },
-      { name: 'Dhaka Tribune Business', feedUrl: 'https://www.dhakatribune.com/articles/business/rss.xml' },
+      { name: 'TBS Business', feedUrl: 'https://www.tbsnews.net/business/rss.xml' },
+      { name: 'Financial Express', feedUrl: 'https://thefinancialexpress.com.bd/feed/business' },
       { name: 'Prothom Alo Business', feedUrl: 'https://en.prothomalo.com/feed/business' },
-      { name: 'The Business Standard Business', feedUrl: 'https://www.tbsnews.net/business/rss.xml' },
-      { name: 'The Financial Express Business', feedUrl: 'https://thefinancialexpress.com.bd/feed/business' }
+      { name: 'Daily Star Business', feedUrl: 'https://www.thedailystar.net/business/rss.xml' }
     ],
     technology: [
-      { name: 'The Daily Star Tech', feedUrl: 'https://www.thedailystar.net/tech-startup/rss.xml' },
-      { name: 'Dhaka Tribune Tech', feedUrl: 'https://www.dhakatribune.com/articles/technology/rss.xml' }
+      { name: 'Prothom Alo Sci-Tech', feedUrl: 'https://en.prothomalo.com/feed/science-technology' },
+      { name: 'Daily Star Tech', feedUrl: 'https://www.thedailystar.net/tech-startup/rss.xml' },
+      { name: 'TBS Tech', feedUrl: 'https://www.tbsnews.net/technology/rss.xml' }
     ],
     sports: [
-      { name: 'The Daily Star Sports', feedUrl: 'https://www.thedailystar.net/sports/rss.xml' },
-      { name: 'Dhaka Tribune Sports', feedUrl: 'https://www.dhakatribune.com/articles/sport/rss.xml' },
-      { name: 'Prothom Alo Sports', feedUrl: 'https://en.prothomalo.com/feed/sports' }
+      { name: 'TBS Sports', feedUrl: 'https://www.tbsnews.net/sports/rss.xml' },
+      { name: 'Prothom Alo Sports', feedUrl: 'https://en.prothomalo.com/feed/sports' },
+      { name: 'Daily Star Sports', feedUrl: 'https://www.thedailystar.net/sports/rss.xml' }
     ],
     entertainment: [
       { name: 'The Daily Star Entertainment', feedUrl: 'https://www.thedailystar.net/entertainment/rss.xml' }

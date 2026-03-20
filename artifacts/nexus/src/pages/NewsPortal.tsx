@@ -80,7 +80,10 @@ export default function NewsPortal() {
 
     try {
       const startTime = Date.now();
-      const items = await fetchFeedItems(sources, mode, category, { signal: controller.signal });
+      const items = await fetchFeedItems(sources, mode, category, { 
+        signal: controller.signal,
+        forceFresh: isManual 
+      });
       
       if (controller.signal.aborted) return;
 

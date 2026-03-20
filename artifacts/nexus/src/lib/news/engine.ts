@@ -25,7 +25,7 @@ export async function fetchFeedItems(
   
   const fetchPromises = sources.map(async (source) => {
     try {
-      const xml = await fetchWithRetry(source.feedUrl, signal);
+      const xml = await fetchWithRetry(source.feedUrl, signal, forceFresh);
       if (!xml) return [];
       return parseFeed(xml, source.name, mainCategory, subCategory);
     } catch (err) {
@@ -60,10 +60,12 @@ export async function fetchFeedItems(
   ).slice(0, 80);
 }
 
-async function fetchWithRetry(url: string, signal?: AbortSignal): Promise<string | null> {
+async function fetchWithRetry(url: string, signal?: AbortSignal, forceFresh?: boolean): Promise<string | null> {
+  const cacheBust = forceFresh ? `&f=${Date.now()}` : '';
+  
   // 1. Try direct fetch first (fastest, best if CORS allows)
   try {
-    const directUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    const directUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}${cacheBust}`;
     const res = await fetch(directUrl, { 
       signal, 
       headers: { 'Accept': 'application/rss+xml, application/xml, text/xml' } 
@@ -76,7 +78,7 @@ async function fetchWithRetry(url: string, signal?: AbortSignal): Promise<string
 
   // 2. Try proxies in parallel if direct fetch fails or is blocked by CORS
   const proxyPromises = PROXIES.map(async (proxy) => {
-    const proxiedUrl = `${proxy}${encodeURIComponent(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now())}`;
+    const proxiedUrl = `${proxy}${encodeURIComponent(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now() + cacheBust)}`;
     const res = await fetch(proxiedUrl, { signal });
     if (!res.ok) throw new Error('Proxy failed');
     
@@ -88,7 +90,9 @@ async function fetchWithRetry(url: string, signal?: AbortSignal): Promise<string
   });
 
   try {
-    return await Promise.any(proxyPromises);
+    const result = await Promise.any(proxyPromises);
+    if (!result || result.trim().length < 50) throw new Error('Invalid proxy response');
+    return result;
   } catch (e) {
     return null;
   }

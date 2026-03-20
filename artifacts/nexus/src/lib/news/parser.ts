@@ -118,6 +118,16 @@ function hashString(s: string): number {
 
 function parseDate(dateStr: string): string {
   if (!dateStr) return new Date().toISOString();
-  const t = Date.parse(dateStr);
+  
+  // Try standard parsing
+  let t = Date.parse(dateStr);
+  if (!isNaN(t)) return new Date(t).toISOString();
+
+  // Try custom cleaning for common RSS issues
+  const cleaned = dateStr.trim()
+    .replace(/ (GMT|UTC)$/, '') // Remove zone names that sometimes confuse Date.parse
+    .replace(/(\+|-)\d{4}$/, ''); // Remove simple offsets
+
+  t = Date.parse(cleaned);
   return isNaN(t) ? new Date().toISOString() : new Date(t).toISOString();
 }
