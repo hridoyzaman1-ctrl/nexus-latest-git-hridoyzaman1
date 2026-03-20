@@ -80,9 +80,46 @@ export default function NewsPortal() {
 
     try {
       const startTime = Date.now();
-      const items = await fetchFeedItems(sources, mode, category, { 
+      
+      const handleIncrementalArticles = (newItems: NewsArticle[]) => {
+        if (controller.signal.aborted) return;
+        setFeedStore(prev => {
+          const currentItems = prev[key]?.items || [];
+          const combined = [...currentItems, ...newItems];
+          
+          // Deduplicate
+          const seen = new Set<string>();
+          const deduplicated = combined.filter(art => {
+            const id = (art.title + art.url).toLowerCase().replace(/\s/g, '');
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+          
+          // Sort
+          const sorted = deduplicated.sort((a, b) => 
+            new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+          );
+
+          return {
+            ...prev,
+            [key]: {
+              ...(prev[key] || initialFeedState),
+              items: sorted,
+              isLoading: false,
+              isRefreshing: true, // Still refreshing other sources
+              fromCache: false,
+              hasLoadedOnce: true,
+              lastUpdated: Date.now()
+            }
+          };
+        });
+      };
+
+      const finalItems = await fetchFeedItems(sources, mode, category, { 
         signal: controller.signal,
-        forceFresh: isManual 
+        forceFresh: isManual,
+        onArticles: handleIncrementalArticles
       });
       
       if (controller.signal.aborted) return;
@@ -90,10 +127,10 @@ export default function NewsPortal() {
       setFeedStore(prev => ({
         ...prev,
         [key]: {
-          items,
+          items: finalItems,
           isLoading: false,
           isRefreshing: false,
-          error: items.length === 0 ? 'No articles found for this category.' : null,
+          error: finalItems.length === 0 ? 'No articles found for this category.' : null,
           fromCache: false,
           hasLoadedOnce: true,
           lastUpdated: Date.now()
@@ -101,8 +138,8 @@ export default function NewsPortal() {
       }));
 
       // Update Local Cache
-      if (items.length > 0) {
-        setCachedNews(mode, category, items);
+      if (finalItems.length > 0) {
+        setCachedNews(mode, category, finalItems);
       }
 
     } catch (err: any) {

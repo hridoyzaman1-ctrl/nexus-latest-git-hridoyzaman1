@@ -14,6 +14,7 @@ const PROXIES = [
 export interface FetchOptions {
   signal?: AbortSignal;
   forceFresh?: boolean;
+  onArticles?: (articles: NewsArticle[]) => void;
 }
 
 export async function fetchFeedItems(
@@ -37,7 +38,14 @@ export async function fetchFeedItems(
       ]);
       
       if (!xml) return [];
-      return parseFeed(xml, source.name, mainCategory, subCategory);
+      const sourceArticles = parseFeed(xml, source.name, mainCategory, subCategory);
+      
+      // Notify caller incrementally
+      if (sourceArticles.length > 0 && options.onArticles) {
+        options.onArticles(sourceArticles);
+      }
+      
+      return sourceArticles;
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         console.warn(`Failed to fetch ${source.name}:`, err);
