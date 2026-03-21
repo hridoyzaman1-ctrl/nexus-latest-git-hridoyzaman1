@@ -451,11 +451,7 @@ export function renderPresentationSlideToCanvas(
   ): number {
     if (!text) return y;
     
-    // Recursive shrink-to-fit for titles if they are being truncated
-    let currentSize = size;
-    let attempts = 0;
-    
-    const internalDraw = (fs: number) => {
+    const internalDraw = (fs: number, isMeasure: boolean) => {
       ctx.save();
       ctx.font = `${bold ? 'bold ' : ''}${fs}px ${fontStack}`;
       ctx.fillStyle = color;
@@ -476,12 +472,12 @@ export function renderPresentationSlideToCanvas(
 
         if (line && metrics.width > maxW) {
           if (drawn >= maxLines - 1) {
-            if (!measureOnly) ctx.fillText(truncLine(line + ' ' + (words.slice(i).join(' ')), maxW), x, currY);
+            if (!isMeasure) ctx.fillText(truncLine(line + ' ' + (words.slice(i).join(' ')), maxW), x, currY);
             truncated = true;
             drawn++;
             break;
           }
-          if (!measureOnly) ctx.fillText(line, x, currY);
+          if (!isMeasure) ctx.fillText(line, x, currY);
           currY += lineH;
           line = word;
           drawn++;
@@ -491,7 +487,7 @@ export function renderPresentationSlideToCanvas(
       }
 
       if (line && drawn < maxLines) {
-        if (!measureOnly) ctx.fillText(truncLine(line, maxW), x, currY);
+        if (!isMeasure) ctx.fillText(truncLine(line, maxW), x, currY);
         currY += lineH;
       }
 
@@ -499,18 +495,22 @@ export function renderPresentationSlideToCanvas(
       return { currY, truncated };
     };
 
-    let result = internalDraw(currentSize);
+    let currentSize = size;
+    let attempts = 0;
     
-    // If it's a title and it truncated, try shrinking font up to 3 times
-    if (result.truncated && maxLines <= 4 && attempts < 3 && !measureOnly) {
-      while (result.truncated && attempts < 3) {
+    // 1. Decide final font size using "invisible" measurement passes if shrinking is enabled
+    // (Only shrink titles/headers with small line caps)
+    if (!measureOnly && maxLines <= 4) {
+      let test = internalDraw(currentSize, true);
+      while (test.truncated && attempts < 3) {
         currentSize = Math.round(currentSize * 0.85);
         attempts++;
-        result = internalDraw(currentSize);
+        test = internalDraw(currentSize, true);
       }
     }
 
-    return result.currY;
+    // 2. Perform the final pass (either measurement or actual drawing)
+    return internalDraw(currentSize, measureOnly).currY;
   }
 
   // ── Layout-specific rendering ───────────────────────────────────────────────
@@ -518,16 +518,26 @@ export function renderPresentationSlideToCanvas(
   if (slide.layout === 'cover') {
     // Vertically centred large title + optional subtitle
     const maxW = contentMaxW;
-    ctx.font = `bold ${titleSize}px ${tf}`;
-    // Estimate approx line count to vertically centre the block
-    const testText = slide.title || '';
-    const approxLines = Math.max(1, Math.ceil(ctx.measureText(testText).width / maxW));
-    const blockH = approxLines * (titleSize + 4) + (slide.subtitle ? bodySize + 22 : 0) + 8;
-    const startY = Math.max(my + titleSize, (H - blockH) / 2 + titleSize);
-
     const titleX = getAlignmentX(sStyle?.titleAlign);
+
+    // Accurate centering: Measure title height first (including any auto-shrinking)
+    const titleHeight = drawWrapped(
+      slide.title || '', titleX, 0, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center', true
+    );
+    
+    // Subtitle measurement
+    let subtitleHeight = 0;
+    if (slide.subtitle) {
+      subtitleHeight = drawWrapped(
+        slide.subtitle, titleX, 0, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center', true
+      ) + 22;
+    }
+
+    const totalBlockH = titleHeight + subtitleHeight;
+    const startY = Math.max(my + titleSize/2, (H - totalBlockH) / 2);
+
     const titleBottom = drawWrapped(
-      slide.title || '', titleX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center',
+      slide.title || '', titleX, startY, maxW, titleSize, finalTitleColor, true, 3, tf, sStyle?.titleAlign || 'center', false
     );
 
     // accent underline
@@ -538,7 +548,7 @@ export function renderPresentationSlideToCanvas(
     if (slide.subtitle) {
       const subX = getAlignmentX(sStyle?.bodyAlign);
       drawWrapped(
-        slide.subtitle, subX, titleBottom + 22, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center',
+        slide.subtitle, subX, titleBottom + 22, maxW, bodySize, finalBodyColor, false, 2, bf, sStyle?.bodyAlign || 'center', false
       );
     }
 
