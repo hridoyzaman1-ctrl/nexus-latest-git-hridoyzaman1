@@ -46,7 +46,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {!hideNav && (
           <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-50">
-            <div className="glass-strong mx-2 mb-2 rounded-2xl px-1 py-1.5 flex justify-between items-center overflow-hidden">
+            <div className="glass-strong mx-1 mb-2 rounded-2xl px-0.5 py-1.5 flex justify-between items-center">
               {tabs.map(({ path, icon: Icon, label }) => {
                 const active = location.pathname === path ||
                   (path !== '/' && location.pathname.startsWith(path));

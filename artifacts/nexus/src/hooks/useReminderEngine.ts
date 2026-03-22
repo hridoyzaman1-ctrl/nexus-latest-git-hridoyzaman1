@@ -5,6 +5,7 @@ import { playAlarmSound, playNotificationChime } from '@/lib/alarm';
 import { sendPersistentNotification, requestNotificationPermission } from '@/lib/notifications';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useAlarm } from '@/contexts/AlarmContext';
 
 /** Days until a scheduled/deadline date */
 function daysUntil(dateStr: string): number {
@@ -54,12 +55,34 @@ function fireCountdownReminder(
 }
 
 export function useReminderEngine() {
+  const { triggerAlarm } = useAlarm();
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const countdownFired = useRef<Set<string>>(new Set());
 
   const checkReminders = useCallback(() => {
     const now = new Date();
+    const nowISO = now.toISOString();
     const defaultAlarm = getLocalStorage<AlarmSoundType>('defaultAlarmSound', 'chime');
+
+    // ── Snoozes ──
+    const activeSnoozes = getLocalStorage<any[]>('activeSnoozes', []);
+    if (activeSnoozes.length > 0) {
+      let changed = false;
+      const validSnoozes = activeSnoozes.filter(s => {
+        if (nowISO >= s.triggerAt) {
+          triggerAlarm({
+            id: s.id,
+            title: `Snoozed: ${s.title}`,
+            notes: s.notes,
+            sound: s.sound
+          });
+          changed = true;
+          return false; // remove after triggering
+        }
+        return true;
+      });
+      if (changed) setLocalStorage('activeSnoozes', validSnoozes);
+    }
 
     // ── Tasks ──
     const tasks = getLocalStorage<Task[]>('tasks', []);
@@ -78,15 +101,20 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         tasksChanged = true;
         if (task.alarmEnabled) {
-          playAlarmSound(task.alarmSound || defaultAlarm);
+          triggerAlarm({
+            id: task.id,
+            title: `Task: ${task.title}`,
+            notes: task.notes,
+            sound: task.alarmSound || defaultAlarm
+          });
         } else {
           playNotificationChime();
+          toast(`⏰ Task Reminder: ${task.title}`, {
+            description: task.notes || 'Your scheduled reminder is due!',
+            duration: 10000,
+            action: { label: 'Dismiss', onClick: () => { } },
+          });
         }
-        toast(`⏰ Task Reminder: ${task.title}`, {
-          description: task.notes || 'Your scheduled reminder is due!',
-          duration: 10000,
-          action: { label: 'Dismiss', onClick: () => {} },
-        });
         sendPersistentNotification('MindFlow — Task Reminder', task.title, `task_${task.id}`);
         return { ...task, alarmFired: true };
       }
@@ -111,15 +139,20 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         todosChanged = true;
         if (todo.alarmEnabled) {
-          playAlarmSound(todo.alarmSound || defaultAlarm);
+          triggerAlarm({
+            id: todo.id,
+            title: `To-Do: ${todo.text}`,
+            notes: todo.notes,
+            sound: todo.alarmSound || defaultAlarm
+          });
         } else {
           playNotificationChime();
+          toast(`⏰ To-Do Reminder: ${todo.text}`, {
+            description: todo.notes || 'Your scheduled reminder is due!',
+            duration: 10000,
+            action: { label: 'Dismiss', onClick: () => { } },
+          });
         }
-        toast(`⏰ To-Do Reminder: ${todo.text}`, {
-          description: todo.notes || 'Your scheduled reminder is due!',
-          duration: 10000,
-          action: { label: 'Dismiss', onClick: () => {} },
-        });
         sendPersistentNotification('MindFlow — To-Do Reminder', todo.text, `todo_${todo.id}`);
         return { ...todo, alarmFired: true };
       }
@@ -142,15 +175,19 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         notesChanged = true;
         if (note.alarmEnabled) {
-          playAlarmSound(note.alarmSound || defaultAlarm);
+          triggerAlarm({
+            id: note.id,
+            title: `Note: ${note.title}`,
+            sound: note.alarmSound || defaultAlarm
+          });
         } else {
           playNotificationChime();
+          toast(`📝 Note Reminder: ${note.title}`, {
+            description: 'Your scheduled note reminder is due!',
+            duration: 10000,
+            action: { label: 'Dismiss', onClick: () => { } },
+          });
         }
-        toast(`📝 Note Reminder: ${note.title}`, {
-          description: 'Your scheduled note reminder is due!',
-          duration: 10000,
-          action: { label: 'Dismiss', onClick: () => {} },
-        });
         sendPersistentNotification('MindFlow — Note Reminder', note.title, `note_${note.id}`);
         return { ...note, alarmFired: true };
       }
@@ -175,15 +212,20 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         sessionsChanged = true;
         if (session.alarmEnabled) {
-          playAlarmSound(session.alarmSound || defaultAlarm);
+          triggerAlarm({
+            id: session.id,
+            title: `Study: ${session.subject}`,
+            notes: session.topic,
+            sound: session.alarmSound || defaultAlarm
+          });
         } else {
           playNotificationChime();
+          toast(`📚 Study Reminder: ${session.subject}`, {
+            description: session.topic || 'Your study session is due!',
+            duration: 10000,
+            action: { label: 'Dismiss', onClick: () => { } },
+          });
         }
-        toast(`📚 Study Reminder: ${session.subject}`, {
-          description: session.topic || 'Your study session is due!',
-          duration: 10000,
-          action: { label: 'Dismiss', onClick: () => {} },
-        });
         sendPersistentNotification('MindFlow — Study Reminder', session.subject, `study_${session.id}`);
         return { ...session, alarmFired: true };
       }
@@ -208,15 +250,20 @@ export function useReminderEngine() {
       if (now >= reminderDateTime) {
         goalsChanged = true;
         if (goal.alarmEnabled) {
-          playAlarmSound(goal.alarmSound || defaultAlarm);
+          triggerAlarm({
+            id: goal.id,
+            title: `Goal: ${goal.title}`,
+            notes: goal.description,
+            sound: goal.alarmSound || defaultAlarm
+          });
         } else {
           playNotificationChime();
+          toast(`🎯 Goal Reminder: ${goal.title}`, {
+            description: goal.description || 'Your goal deadline is here!',
+            duration: 10000,
+            action: { label: 'Dismiss', onClick: () => { } },
+          });
         }
-        toast(`🎯 Goal Reminder: ${goal.title}`, {
-          description: goal.description || 'Your goal deadline is here!',
-          duration: 10000,
-          action: { label: 'Dismiss', onClick: () => {} },
-        });
         sendPersistentNotification('MindFlow — Goal Reminder', goal.title, `goal_${goal.id}`);
         return { ...goal, alarmFired: true };
       }

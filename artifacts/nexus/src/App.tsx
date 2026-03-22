@@ -58,6 +58,8 @@ import { useAccessibility } from "@/hooks/useAccessibility";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { getLocalStorage, setLocalStorage } from "@/hooks/useLocalStorage";
 import { hasExistingData, clearAllMindflowData } from "@/lib/dataRestoreHelpers";
+import { AlarmProvider } from "@/contexts/AlarmContext";
+import { AlarmDialog } from "@/components/AlarmDialog";
 import { audioRegistry } from "@/lib/audioRegistry";
 
 const queryClient = new QueryClient();
@@ -265,6 +267,7 @@ function AppInner() {
       <Suspense fallback={null}><MiniMusicPlayer /></Suspense>
       <Suspense fallback={null}><KiraChatFAB /></Suspense>
       <Suspense fallback={null}><TutorialDialog open={showTutorial} onOpenChange={handleTutorialClose} /></Suspense>
+      <AlarmDialog />
     </>
   );
 }
@@ -273,12 +276,14 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <MusicPlayerProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <ScrollToTop />
-          <AppInner />
-        </BrowserRouter>
+        <AlarmProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ScrollToTop />
+            <AppInner />
+          </BrowserRouter>
+        </AlarmProvider>
       </MusicPlayerProvider>
     </TooltipProvider>
   </QueryClientProvider>

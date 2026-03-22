@@ -56,14 +56,7 @@ export function playAlarmSound(type: AlarmSoundType = 'chime'): void {
     })
     .catch((err) => {
       console.warn(`Failed to play alarm sound ${src}:`, err);
-      // Fallback if specific file fails
-      if (src !== '/audio/Chill.mp3') {
-        const fallback = createAudio('/audio/Chill.mp3', 0.85);
-        audioRegistry.register(fallback);
-        fallback.play().catch(() => notifyPlaybackIssue());
-      } else {
-        notifyPlaybackIssue();
-      }
+      notifyPlaybackIssue();
       isPlaying = false;
       currentAudio = null;
     });
@@ -85,7 +78,7 @@ export function stopAlarmSound(): void {
 }
 
 export function playNotificationChime(): void {
-  const audio = createAudio('/audio/Cafe.mp3', 0.5);
+  const audio = createAudio('/audio/chime.mp3', 0.5);
   audioRegistry.register(audio);
   void audio.play()
     .then(() => {
