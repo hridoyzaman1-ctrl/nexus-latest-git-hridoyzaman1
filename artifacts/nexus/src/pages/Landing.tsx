@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { SHOCASE_PROJECTS } from './Showcase';
+import { useMusicPlayer } from '@/contexts/MusicPlayerContext';
+import { audioRegistry } from '@/lib/audioRegistry';
 
 /* ─── Reveal on scroll ─── */
 function Reveal({ children, className = '', delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
@@ -225,9 +227,36 @@ function PremiumShowcase() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
+  const { pause, resume, tracks, play, isPlaying: globalPlaying, stop: stopGlobal } = useMusicPlayer();
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { margin: '-100px' });
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Handle auto-pausing when out of view
+  useEffect(() => {
+    if (!inView) {
+      if (globalPlaying) pause();
+      audioRegistry.stopAll();
+    }
+  }, [inView, globalPlaying, pause]);
+
+  // Sync mute button with global audio
+  const toggleSound = useCallback(() => {
+    const newSoundOn = !soundOn;
+    setSoundOn(newSoundOn);
+    
+    if (!newSoundOn) {
+      pause();
+      audioRegistry.stopAll();
+    } else {
+      // If no track is playing, play the first one as ambient for the showcase
+      if (!globalPlaying && tracks.length > 0) {
+        play(tracks[0]);
+      } else if (!globalPlaying) {
+        resume();
+      }
+    }
+  }, [soundOn, pause, resume, globalPlaying, tracks, play]);
 
   useEffect(() => {
     return () => {
@@ -391,7 +420,7 @@ function PremiumShowcase() {
 
           <div className="absolute top-3 sm:top-4 right-3 sm:right-4 flex items-center gap-1.5 z-20">
             <button
-              onClick={() => setSoundOn(!soundOn)}
+              onClick={toggleSound}
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-background/60 backdrop-blur-sm border border-border/50 flex items-center justify-center hover:bg-background/80 transition-colors"
               aria-label={soundOn ? 'Mute' : 'Unmute'}
             >

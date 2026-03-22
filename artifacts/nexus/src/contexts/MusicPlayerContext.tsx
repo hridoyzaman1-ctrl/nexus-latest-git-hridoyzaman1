@@ -291,6 +291,13 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   // Autoplay on mount if preference is set
   useEffect(() => {
     if (autoplayDoneRef.current) return;
+    
+    // Prevent autoplay on landing page or in demo mode (e.g. iframes)
+    if (typeof window !== 'undefined' && (window.location.pathname === '/landing' || window.location.search.includes('demo=true'))) {
+      autoplayDoneRef.current = true;
+      return;
+    }
+
     autoplayDoneRef.current = true;
     if (audioPrefs.autoplay && audioPrefs.defaultTrackId) {
       const track = allTracks.find(t => t.id === audioPrefs.defaultTrackId);
@@ -299,7 +306,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
         setTimeout(() => play(track), 500);
       }
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [audioPrefs, allTracks, play]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {
