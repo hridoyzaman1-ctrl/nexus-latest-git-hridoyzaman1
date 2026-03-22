@@ -109,7 +109,6 @@ export default function PresentationCoach() {
   const trendDataRef = useRef<TrendDataPoint[]>([]);
   const markersRef = useRef<TimelineMarker[]>([]);
   const teleprompterRef = useRef<HTMLDivElement>(null);
-  const autoScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const questionResultsRef = useRef<QuestionResult[]>([]);
   const questionStartTimeRef = useRef(0);
   const sessionStartTimeRef = useRef(0);
@@ -122,14 +121,37 @@ export default function PresentationCoach() {
   useEffect(() => { refreshReports(); }, [refreshReports]);
 
   useEffect(() => {
+    let animationFrameId: number;
+    let lastTime = performance.now();
+    let scrollAccumulator = 0;
+
+    const scroll = (time: number) => {
+      if (!teleprompterRef.current || !teleprompterAutoScroll) return;
+
+      const delta = time - lastTime;
+      lastTime = time;
+
+      // teleprompterSpeed is "pixels per 100ms"
+      // So (speed / 100) is pixels per ms.
+      const pixelsToScroll = (teleprompterSpeed / 100) * delta;
+      scrollAccumulator += pixelsToScroll;
+
+      if (scrollAccumulator >= 1 && teleprompterRef.current) {
+        const scrollAmount = Math.floor(scrollAccumulator);
+        teleprompterRef.current.scrollTop += scrollAmount;
+        scrollAccumulator -= scrollAmount;
+      }
+
+      animationFrameId = requestAnimationFrame(scroll);
+    };
+
     if (teleprompterAutoScroll && showTeleprompter && teleprompterRef.current) {
-      autoScrollRef.current = setInterval(() => {
-        teleprompterRef.current?.scrollBy({ top: teleprompterSpeed, behavior: 'smooth' });
-      }, 100);
-    } else {
-      if (autoScrollRef.current) clearInterval(autoScrollRef.current);
+      animationFrameId = requestAnimationFrame(scroll);
     }
-    return () => { if (autoScrollRef.current) clearInterval(autoScrollRef.current); };
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
   }, [teleprompterAutoScroll, showTeleprompter, teleprompterSpeed]);
 
   const attachStream = useCallback(() => {
