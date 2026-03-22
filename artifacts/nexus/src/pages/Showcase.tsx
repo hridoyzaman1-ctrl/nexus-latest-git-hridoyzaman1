@@ -210,7 +210,7 @@ export default function Showcase() {
                        </div>
                     </div>
                     {/* iFrame Container - 16:9 aspect ratio simulated desktop */}
-                    <div className="w-full aspect-video relative bg-background overflow-hidden">
+                    <div className="w-full aspect-video relative bg-background overflow-hidden rounded-b-2xl sm:rounded-b-[2rem]">
                        {/* Loading Placeholder */}
                        <div className="absolute inset-0 flex items-center justify-center bg-background z-0">
                           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />

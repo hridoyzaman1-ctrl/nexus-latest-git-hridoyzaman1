@@ -27,8 +27,17 @@ export function AlarmDialog() {
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          className="relative w-full max-w-sm glass rounded-3xl p-6 shadow-2xl border-2 border-primary/20 overflow-hidden"
+          className="relative w-full max-w-sm glass rounded-[2rem] p-6 shadow-2xl border-2 border-primary/20 overflow-hidden"
         >
+          {/* Top-right X button for quick dismissal */}
+          <button 
+            onClick={dismissAlarm}
+            className="absolute top-4 right-4 p-2 rounded-full hover:bg-secondary/80 transition-colors z-20 group"
+            aria-label="Dismiss Alarm"
+          >
+            <X className="w-5 h-5 text-muted-foreground group-hover:text-destructive transition-colors" />
+          </button>
+
           {/* Animated Background Pulse */}
           <motion.div
             className="absolute inset-0 bg-primary/10 -z-10"

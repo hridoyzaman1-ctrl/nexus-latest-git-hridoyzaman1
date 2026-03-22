@@ -920,7 +920,7 @@ export default function Landing() {
                              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400" />
                            </div>
                         </div>
-                        <div className="w-full aspect-video relative overflow-hidden bg-background">
+                        <div className="w-full aspect-video relative overflow-hidden bg-background rounded-b-xl sm:rounded-b-2xl">
                           <div 
                             className="absolute top-0 left-0 z-10"
                             style={{ 

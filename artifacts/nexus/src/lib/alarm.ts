@@ -15,10 +15,10 @@ const ALARM_FILES: Record<AlarmSoundType, string> = {
 };
 
 export const ALARM_SOUNDS: { value: AlarmSoundType; label: string; emoji: string }[] = [
-  { value: 'chime', label: 'Chime', emoji: '🎵' },
-  { value: 'bells', label: 'Gentle Bells', emoji: '🔔' },
-  { value: 'nature', label: 'Nature', emoji: '🌿' },
-  { value: 'urgent', label: 'Urgent Beep', emoji: '🚨' },
+  { value: 'chime', label: 'Lo-Fi Alarm', emoji: '🎵' },
+  { value: 'bells', label: 'Funny Alarm', emoji: '🔔' },
+  { value: 'nature', label: 'Electronic Alarm', emoji: '🌿' },
+  { value: 'urgent', label: 'EAS Thailand', emoji: '🚨' },
 ];
 
 function notifyPlaybackIssue() {
@@ -35,16 +35,19 @@ function createAudio(src: string, volume: number) {
   return audio;
 }
 
-export function playAlarmSound(type: AlarmSoundType = 'chime'): void {
+export function playAlarmSound(type: AlarmSoundType = 'chime', loop: boolean = true): void {
   stopAlarmSound();
 
   const src = ALARM_FILES[type];
-  const audio = createAudio(src, 0.85);
+  const audio = createAudio(src, 1.0); // Full volume for alarms
+  audio.loop = loop;
 
   audio.addEventListener('ended', () => {
-    isPlaying = false;
-    audioRegistry.unregister(audio);
-    if (currentAudio === audio) currentAudio = null;
+    if (!audio.loop) {
+      isPlaying = false;
+      audioRegistry.unregister(audio);
+      if (currentAudio === audio) currentAudio = null;
+    }
   });
 
   void audio.play()
@@ -64,7 +67,14 @@ export function playAlarmSound(type: AlarmSoundType = 'chime'): void {
 
 export function previewAlarmSound(type: AlarmSoundType): void {
   stopAlarmSound();
-  setTimeout(() => playAlarmSound(type), 50);
+  // Play without loop for preview, or stop manually after 5s
+  setTimeout(() => {
+    playAlarmSound(type, false);
+    // Explicitly stop after 5 seconds as requested
+    setTimeout(() => {
+      stopAlarmSound();
+    }, 5000);
+  }, 50);
 }
 
 export function stopAlarmSound(): void {
