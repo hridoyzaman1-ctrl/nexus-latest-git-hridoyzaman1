@@ -133,6 +133,12 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   const play = useCallback((track: MusicTrack) => {
     const sessionId = ++playSessionIdRef.current;
 
+    // Hard-coded safety for demo mode - NEVER play audio on landing page/demo
+    if (typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.pathname === '/landing')) {
+      console.log('Audio playback blocked in demo mode');
+      return;
+    }
+
     // Immediately update UI so user knows track was selected and doesn't spam click
     setCurrentTrack(track);
     setIsPlaying(true);
@@ -299,6 +305,12 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     }
 
     autoplayDoneRef.current = true;
+    // Secondary safety for autoplay logic in context
+    if (typeof window !== 'undefined' && (window.location.pathname === '/landing' || window.location.search.includes('demo=true'))) {
+      autoplayDoneRef.current = true;
+      return;
+    }
+
     if (audioPrefs.autoplay && audioPrefs.defaultTrackId) {
       const track = allTracks.find(t => t.id === audioPrefs.defaultTrackId);
       if (track) {

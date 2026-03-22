@@ -46,7 +46,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {!hideNav && (
           <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-50">
-            <div className="glass-strong mx-2 mb-2 rounded-2xl px-1 py-1.5 flex justify-around items-center">
+            <div className="glass-strong mx-2 mb-2 rounded-2xl px-1 py-1.5 flex justify-between items-center overflow-hidden">
               {tabs.map(({ path, icon: Icon, label }) => {
                 const active = location.pathname === path ||
                   (path !== '/' && location.pathname.startsWith(path));
@@ -55,7 +55,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   <button
                     key={path}
                     onClick={() => navigate(path)}
-                    className={`relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all duration-200 ${active
+                    className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-xl transition-all duration-200 ${active
                         ? 'text-primary bg-primary/10'
                         : 'text-muted-foreground hover:text-foreground'
                       }`}
