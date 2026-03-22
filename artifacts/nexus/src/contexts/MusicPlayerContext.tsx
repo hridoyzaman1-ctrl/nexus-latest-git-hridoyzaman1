@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
-import { useLocalStorage, getLocalStorage } from '@/hooks/useLocalStorage';
+import { useLocalStorage, getLocalStorage, isDemoMode } from '@/hooks/useLocalStorage';
 import { toast } from 'sonner';
 
 export interface MusicTrack {
@@ -133,9 +133,8 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   const play = useCallback((track: MusicTrack) => {
     const sessionId = ++playSessionIdRef.current;
 
-    // Hard-coded safety for demo mode - NEVER play audio on landing page/demo
-    if (typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.pathname === '/landing')) {
-      console.log('Audio playback blocked in demo mode');
+    // ABSOLUTE BLOCK: Never play audio on landing page or in demo mode
+    if (isDemoMode || (typeof window !== 'undefined' && window.location.pathname === '/landing')) {
       return;
     }
 
@@ -228,6 +227,11 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const resume = useCallback(() => {
+    // ABSOLUTE BLOCK: Never resume audio on landing page or in demo mode
+    if (isDemoMode || (typeof window !== 'undefined' && (window.location.pathname === '/landing' || window.location.search.includes('demo=true')))) {
+      return;
+    }
+
     if (!audioElementRef.current) return;
 
     // Start play synchronously to preserve user gesture
@@ -298,15 +302,8 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (autoplayDoneRef.current) return;
     
-    // Prevent autoplay on landing page or in demo mode (e.g. iframes)
-    if (typeof window !== 'undefined' && (window.location.pathname === '/landing' || window.location.search.includes('demo=true'))) {
-      autoplayDoneRef.current = true;
-      return;
-    }
-
-    autoplayDoneRef.current = true;
-    // Secondary safety for autoplay logic in context
-    if (typeof window !== 'undefined' && (window.location.pathname === '/landing' || window.location.search.includes('demo=true'))) {
+    // ABSOLUTE BLOCK: Never autoplay on landing or in demo mode
+    if (isDemoMode || (typeof window !== 'undefined' && (window.location.pathname === '/landing' || window.location.search.includes('demo=true')))) {
       autoplayDoneRef.current = true;
       return;
     }
